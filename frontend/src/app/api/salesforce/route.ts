@@ -30,6 +30,30 @@ async function getAccessToken() {
   };
 }
 
+// Search for existing records via SOQL
+async function queryRecords(
+  accessToken: string,
+  instanceUrl: string,
+  soql: string
+) {
+  const response = await fetch(
+    `${instanceUrl}/services/data/v59.0/query?q=${encodeURIComponent(soql)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result[0]?.message || "Query failed");
+  }
+
+  return result.records || [];
+}
+
 async function createRecord(
   accessToken: string,
   instanceUrl: string,
@@ -51,7 +75,21 @@ async function createRecord(
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(result[0]?.message || `Failed to create ${objectType}`);
+    // Check if this is a duplicate error
+    const errorMsg = result[0]?.message || "";
+    const isDuplicate =
+      errorMsg.toLowerCase().includes("duplicate") ||
+      errorMsg.toLowerCase().includes("already exists") ||
+      errorMsg.toLowerCase().includes("use one of these") ||
+      result[0]?.errorCode === "DUPLICATES_DETECTED";
+
+    if (isDuplicate) {
+      const error = new Error(errorMsg) as Error & { isDuplicate: boolean };
+      error.isDuplicate = true;
+      throw error;
+    }
+
+    throw new Error(errorMsg || `Failed to create ${objectType}`);
   }
 
   return {
@@ -108,6 +146,59 @@ export async function POST(request: Request) {
     if (action === "createFamily") {
       const results: Record<string, unknown> = {};
 
+      // ── Check for existing records first ──────────────────────────────
+      const existingContacts = await queryRecords(
+        accessToken,
+        instanceUrl,
+        `SELECT Id, FirstName, LastName, Email, Account.Name FROM Contact WHERE LastName = '${data.familyName}' ORDER BY CreatedDate DESC`
+      );
+
+      const existingHouseholds = await queryRecords(
+        accessToken,
+        instanceUrl,
+        `SELECT Id, Name FROM Account WHERE Name = '${data.familyName} Household' AND Type = 'Household' ORDER BY CreatedDate DESC`
+      );
+
+      if (existingContacts.length > 0 || existingHouseholds.length > 0) {
+        // Return duplicate info instead of error
+        const duplicateDetails = [];
+
+        if (existingHouseholds.length > 0) {
+          duplicateDetails.push(
+            `${existingHouseholds.length} existing "${data.familyName} Household" account(s)`
+          );
+        }
+
+        if (existingContacts.length > 0) {
+          const names = existingContacts
+            .map((c: Record<string, string>) => `${c.FirstName} ${c.LastName}`)
+            .join(", ");
+          duplicateDetails.push(
+            `${existingContacts.length} existing contact(s): ${names}`
+          );
+        }
+
+        return NextResponse.json({
+          success: false,
+          isDuplicate: true,
+          duplicateDetails,
+          existingContacts: existingContacts.map((c: Record<string, unknown>) => ({
+            id: c.Id,
+            name: `${c.FirstName} ${c.LastName}`,
+            email: c.Email,
+            url: `${instanceUrl}/${c.Id}`,
+          })),
+          existingHouseholds: existingHouseholds.map((h: Record<string, unknown>) => ({
+            id: h.Id,
+            name: h.Name,
+            url: `${instanceUrl}/${h.Id}`,
+          })),
+          error: `${data.familyName} family records already exist in Salesforce. Found ${duplicateDetails.join(" and ")}. Would you like to create new records anyway?`,
+        });
+      }
+
+      // ── No duplicates — create everything ─────────────────────────────
+
       // 1. Create household
       const household = await createRecord(accessToken, instanceUrl, "Account", {
         Name: `${data.familyName} Household`,
@@ -132,7 +223,53 @@ export async function POST(request: Request) {
       // 3. Create tasks for primary contact
       const primaryContact = contacts[0];
       const tasks = [];
-      
+
+      const taskList = [
+        { subject: "Schedule introductory meeting", priority: "High" },
+        { subject: "Review signed documents", priority: "Normal" },
+        { subject: "Set up portfolio accounts", priority: "Normal" },
+      ];
+
+      for (const taskData of taskList) {
+        const task = await createRecord(accessToken, instanceUrl, "Task", {
+          Subject: taskData.subject,
+          WhoId: primaryContact.id,
+          Status: "Not Started",
+          Priority: taskData.priority,
+        });
+        tasks.push({ ...task, subject: taskData.subject });
+      }
+      results.tasks = tasks;
+
+      return NextResponse.json({ success: true, ...results });
+    }
+
+    // Force create family (bypass duplicate check)
+    if (action === "createFamilyForce") {
+      const results: Record<string, unknown> = {};
+
+      const household = await createRecord(accessToken, instanceUrl, "Account", {
+        Name: `${data.familyName} Household`,
+        Type: "Household",
+      });
+      results.household = household;
+
+      const contacts = [];
+      for (const member of data.members) {
+        const contact = await createRecord(accessToken, instanceUrl, "Contact", {
+          FirstName: member.firstName,
+          LastName: member.lastName,
+          Email: member.email,
+          Phone: member.phone,
+          AccountId: household.id,
+        });
+        contacts.push({ ...contact, name: `${member.firstName} ${member.lastName}` });
+      }
+      results.contacts = contacts;
+
+      const primaryContact = contacts[0];
+      const tasks = [];
+
       const taskList = [
         { subject: "Schedule introductory meeting", priority: "High" },
         { subject: "Review signed documents", priority: "Normal" },
