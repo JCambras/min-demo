@@ -11,7 +11,7 @@ import { custodian } from "@/lib/custodian";
 type SFContact = { Id: string; FirstName: string; LastName: string; Email: string; Phone: string; CreatedDate: string };
 type SFTask = { Id: string; Subject: string; Status: string; Priority: string; Description: string; CreatedDate: string; ActivityDate: string };
 
-interface HHResult { id: string; name: string; description: string; createdDate: string }
+interface HHResult { id: string; name: string; description: string; createdDate: string; contactNames: string }
 
 // Parsed intelligence from raw SF data
 interface ClientIntel {
@@ -214,8 +214,9 @@ export function BriefingScreen({ onExit }: { onExit: () => void }) {
     const t = setTimeout(async () => {
       try {
         const res = await callSF("searchHouseholds", { query: s.searchQuery });
-        if (res.success) d({ type: "SET_RESULTS", v: res.households.map((h: { Id: string; Name: string; Description: string; CreatedDate: string }) => ({
+        if (res.success) d({ type: "SET_RESULTS", v: res.households.map((h: { Id: string; Name: string; Description: string; CreatedDate: string; Contacts?: { records: { FirstName: string }[] } }) => ({
           id: h.Id, name: h.Name, description: h.Description || "", createdDate: new Date(h.CreatedDate).toLocaleDateString(),
+          contactNames: h.Contacts?.records?.map(c => c.FirstName).filter(Boolean).join(" & ") || "",
         })) });
       } catch { /* swallow */ }
       d({ type: "SET_SEARCHING", v: false });
@@ -274,7 +275,8 @@ export function BriefingScreen({ onExit }: { onExit: () => void }) {
                           <p className="font-medium text-slate-800">{h.name}</p>
                           <ChevronRight size={16} className="text-slate-300" />
                         </div>
-                        <p className="text-sm text-slate-400">Created {h.createdDate}</p>
+                        <p className="text-sm text-slate-500">{h.contactNames ? `${h.contactNames} · ` : ""}Created {h.createdDate}</p>
+                        {h.description && <p className="text-xs text-slate-400 mt-0.5 truncate">{h.description.split("\n")[0].slice(0, 80)}</p>}
                       </button>
                     ))}
                   </div>

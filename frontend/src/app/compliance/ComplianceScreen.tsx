@@ -23,7 +23,7 @@ interface CheckResult {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SFHousehold = { Id: string; Name: string; Description: string; CreatedDate: string };
+type SFHousehold = { Id: string; Name: string; Description: string; CreatedDate: string; Contacts?: { records: { FirstName: string }[] } };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SFContact = { Id: string; FirstName: string; LastName: string; Email: string; Phone: string; CreatedDate: string };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,6 +34,7 @@ interface HouseholdSearchResult {
   name: string;
   description: string;
   createdDate: string;
+  contactNames: string;
 }
 
 // ─── Compliance Engine ───────────────────────────────────────────────────────
@@ -338,6 +339,7 @@ export function ComplianceScreen({ onExit }: { onExit: () => void }) {
           d({ type: "SET_SEARCH_RESULTS", value: res.households.map((h: SFHousehold) => ({
             id: h.Id, name: h.Name, description: h.Description || "",
             createdDate: new Date(h.CreatedDate).toLocaleDateString(),
+            contactNames: h.Contacts?.records?.map(c => c.FirstName).filter(Boolean).join(" & ") || "",
           })) });
         }
       } catch { /* swallow */ }
@@ -499,7 +501,8 @@ export function ComplianceScreen({ onExit }: { onExit: () => void }) {
                           <p className="font-medium text-slate-800">{h.name}</p>
                           <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-600">Salesforce</span>
                         </div>
-                        <p className="text-sm text-slate-400">Created {h.createdDate}</p>
+                        <p className="text-sm text-slate-500">{h.contactNames ? `${h.contactNames} · ` : ""}Created {h.createdDate}</p>
+                        {h.description && <p className="text-xs text-slate-400 mt-0.5 truncate">{h.description.split("\n")[0].slice(0, 80)}</p>}
                       </button>
                     ))}
                   </div>
