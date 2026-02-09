@@ -4,7 +4,10 @@ import * as crypto from "crypto";
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const COOKIE_NAME = "min_sf_connection";
-const ENCRYPTION_KEY = process.env.SF_COOKIE_SECRET || "min-demo-dev-key-change-in-prod!!"; // 32+ chars
+const ENCRYPTION_KEY = process.env.SF_COOKIE_SECRET || (() => {
+  if (process.env.NODE_ENV === "production") throw new Error("SF_COOKIE_SECRET must be set in production");
+  return "min-demo-dev-key-change-in-prod!!";
+})();
 
 // OAuth app config — these are for YOUR Connected App in Salesforce
 // In production, each customer would use their own Connected App or you'd use a managed package
