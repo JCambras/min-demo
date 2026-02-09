@@ -106,7 +106,7 @@ const handlers: Record<string, Handler> = {
   recordFunding: async (data, { accessToken, instanceUrl }) => {
     const note = `FUNDING DETAILS (recorded by Min at ${new Date().toLocaleString()}):\n` + data.fundingDetails.map((f: Record<string, string>) => `• ${f.account}: ${f.detail}`).join("\n") + `\n\nPTE Required: ${data.pteRequired ? "YES — auto-generated" : "No"}`;
     // Append to existing description instead of overwriting
-    const existing = await queryRecords(accessToken, instanceUrl, `SELECT Description FROM Account WHERE Id = '${data.householdId}' LIMIT 1`);
+    const existing = await queryRecords(accessToken, instanceUrl, `SELECT Description FROM Account WHERE Id = '${safeSOQL(data.householdId)}' LIMIT 1`);
     const prevDesc = existing[0]?.Description || "";
     const fullDesc = prevDesc ? `${prevDesc}\n\n───────────────────\n\n${note}` : note;
     await updateRecord(accessToken, instanceUrl, "Account", data.householdId, { Description: fullDesc });
