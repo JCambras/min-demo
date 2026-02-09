@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Min — Your back office, handled.",
+  title: "Min — Your practice, simplified.",
   description: "Workflow orchestration for Registered Investment Advisors",
 };
 
