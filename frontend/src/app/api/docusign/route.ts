@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import * as crypto from "crypto";
 import type { ClientInfo } from "@/lib/types";
 import { custodian } from "@/lib/custodian";
+import { requireProtectedApiAccess } from "@/lib/api-guard";
 
 // ─── Config (from environment) ───────────────────────────────────────────────
 const DS_AUTH = process.env.DOCUSIGN_AUTH_URL || "https://account-d.docusign.com";
@@ -10,6 +11,13 @@ const DS_ACCOUNT_ID = process.env.DOCUSIGN_ACCOUNT_ID || "";
 const DS_USER_ID = process.env.DOCUSIGN_USER_ID || "";
 const DS_INTEGRATION_KEY = process.env.DOCUSIGN_INTEGRATION_KEY || "";
 const DS_PRIVATE_KEY = process.env.DOCUSIGN_PRIVATE_KEY || "";
+const DS_AUD = (() => {
+  try {
+    return new URL(DS_AUTH).host;
+  } catch {
+    return "account-d.docusign.com";
+  }
+})();
 
 // ─── JWT Auth ─────────────────────────────────────────────────────────────────
 function base64url(data: string | Buffer): string {
@@ -18,9 +26,13 @@ function base64url(data: string | Buffer): string {
 }
 
 async function getToken(): Promise<string> {
+  if (!DS_ACCOUNT_ID || !DS_USER_ID || !DS_INTEGRATION_KEY || !DS_PRIVATE_KEY) {
+    throw new Error("DocuSign environment variables are not fully configured");
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const segments = `${base64url(JSON.stringify({ typ: "JWT", alg: "RS256" }))}.${base64url(JSON.stringify({
-    iss: DS_INTEGRATION_KEY, sub: DS_USER_ID, aud: "account-d.docusign.com",
+    iss: DS_INTEGRATION_KEY, sub: DS_USER_ID, aud: DS_AUD,
     iat: now, exp: now + 3600, scope: "signature impersonation",
   }))}`;
   const sign = crypto.createSign("RSA-SHA256");
@@ -369,6 +381,9 @@ async function getEnvelopeStatus(token: string, envelopeId: string) {
 // ─── API Route ────────────────────────────────────────────────────────────────
 export async function POST(request: Request) {
   try {
+    const denied = await requireProtectedApiAccess(request);
+    if (denied) return denied;
+
     const { action, data } = await request.json();
 
     if (action === "sendEnvelopes") {
@@ -414,9 +429,12 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const token = await getToken();
+    const denied = await requireProtectedApiAccess(request);
+    if (denied) return denied;
+
+    await getToken();
     return NextResponse.json({ success: true, message: "DocuSign JWT auth working!" });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Failed" }, { status: 500 });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/sf-connection";
 import { custodian } from "@/lib/custodian";
+import { requireProtectedApiAccess } from "@/lib/api-guard";
 
 async function queryRecords(accessToken: string, instanceUrl: string, soql: string) {
   const response = await fetch(
@@ -202,6 +203,9 @@ const handlers: Record<string, Handler> = {
 
 export async function POST(request: Request) {
   try {
+    const denied = await requireProtectedApiAccess(request);
+    if (denied) return denied;
+
     const body = await request.json();
     const { action, data } = body;
     const ctx = await getAccessToken();
@@ -221,8 +225,11 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const denied = await requireProtectedApiAccess(request);
+    if (denied) return denied;
+
     const { instanceUrl } = await getAccessToken();
     return NextResponse.json({ success: true, instanceUrl, message: "Connected to Salesforce!" });
   } catch (error) {

@@ -7,6 +7,7 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
     const error = url.searchParams.get("error");
     const errorDesc = url.searchParams.get("error_description");
 
@@ -23,9 +24,16 @@ export async function GET(request: Request) {
     const cookieStore = await cookies();
     const domainCookie = cookieStore.get("min_sf_domain");
     const domain = domainCookie?.value;
+    const expectedState = cookieStore.get("min_sf_state")?.value;
 
     if (!domain) {
+      cookieStore.delete("min_sf_state");
       return NextResponse.redirect(new URL("/?sf_error=session_expired", url.origin));
+    }
+    if (!state || !expectedState || state !== expectedState) {
+      cookieStore.delete("min_sf_domain");
+      cookieStore.delete("min_sf_state");
+      return NextResponse.redirect(new URL("/?sf_error=invalid_state", url.origin));
     }
 
     // Exchange the authorization code for tokens
@@ -33,6 +41,7 @@ export async function GET(request: Request) {
 
     // Clean up the domain cookie
     cookieStore.delete("min_sf_domain");
+    cookieStore.delete("min_sf_state");
 
     // Redirect to home with success indicator
     return NextResponse.redirect(

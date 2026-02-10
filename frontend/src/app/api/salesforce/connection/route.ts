@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { getConnectionStatus, clearConnection } from "@/lib/sf-connection";
+import { requireProtectedApiAccess } from "@/lib/api-guard";
 
 // GET /api/salesforce/connection — current connection status
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const denied = await requireProtectedApiAccess(request);
+    if (denied) return denied;
+
     const status = await getConnectionStatus();
     return NextResponse.json({ success: true, ...status });
   } catch (error) {
@@ -16,8 +20,11 @@ export async function GET() {
 }
 
 // DELETE /api/salesforce/connection — disconnect OAuth
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
+    const denied = await requireProtectedApiAccess(request);
+    if (denied) return denied;
+
     await clearConnection();
     return NextResponse.json({ success: true, message: "Disconnected from Salesforce" });
   } catch (error) {

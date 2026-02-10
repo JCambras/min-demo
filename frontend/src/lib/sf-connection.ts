@@ -37,6 +37,38 @@ export interface SFConnectionStatus {
   source?: "oauth" | "env";
 }
 
+const SF_ALLOWED_HOSTS = ["login.salesforce.com", "test.salesforce.com"];
+
+export function normalizeSalesforceDomain(input: string): string {
+  const trimmed = (input || "").trim();
+  const candidate = trimmed.startsWith("http://") || trimmed.startsWith("https://")
+    ? trimmed
+    : `https://${trimmed}`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error("Invalid Salesforce domain");
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new Error("Salesforce domain must use HTTPS");
+  }
+
+  if (parsed.pathname !== "/" || parsed.search || parsed.hash || parsed.username || parsed.password) {
+    throw new Error("Salesforce domain must be a bare host");
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const allowed = SF_ALLOWED_HOSTS.includes(host) || host.endsWith(".salesforce.com") || host.endsWith(".my.salesforce.com");
+  if (!allowed) {
+    throw new Error("Salesforce domain is not allowed");
+  }
+
+  return `https://${host}`;
+}
+
 // ─── Encryption ──────────────────────────────────────────────────────────────
 
 function deriveKey(secret: string): Buffer {
@@ -177,23 +209,23 @@ async function refreshAccessToken(conn: SFConnection): Promise<{ accessToken: st
 
 // ─── OAuth URL Builder ───────────────────────────────────────────────────────
 
-export function buildAuthUrl(sfDomain: string): string {
+export function buildAuthUrl(sfDomain: string, state: string): string {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: OAUTH_CLIENT_ID,
     redirect_uri: OAUTH_REDIRECT_URI,
     scope: "api refresh_token",
     prompt: "consent",
+    state,
   });
-  // Normalize domain — user might enter "myorg.my.salesforce.com" or "https://myorg.my.salesforce.com"
-  const base = sfDomain.startsWith("http") ? sfDomain : `https://${sfDomain}`;
+  const base = normalizeSalesforceDomain(sfDomain);
   return `${base}/services/oauth2/authorize?${params.toString()}`;
 }
 
 // ─── OAuth Token Exchange ────────────────────────────────────────────────────
 
 export async function exchangeCodeForTokens(code: string, sfDomain: string): Promise<SFConnection> {
-  const base = sfDomain.startsWith("http") ? sfDomain : `https://${sfDomain}`;
+  const base = normalizeSalesforceDomain(sfDomain);
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     code,

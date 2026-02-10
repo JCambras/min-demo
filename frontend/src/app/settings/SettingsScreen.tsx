@@ -34,6 +34,7 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
     setLoading(false);
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
   const handleConnect = async () => {

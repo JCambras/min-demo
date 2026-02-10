@@ -465,6 +465,7 @@ export function ComplianceScreen({ onExit }: { onExit: () => void }) {
   const passCount = state.checks.filter(c => c.status === "pass").length;
   const warnCount = state.checks.filter(c => c.status === "warn").length;
   const failCount = state.checks.filter(c => c.status === "fail").length;
+  const nextReviewDue = "90 days";
   const categories = [...new Set(state.checks.map(c => c.category))];
 
   const goBack = () => {
@@ -647,7 +648,7 @@ export function ComplianceScreen({ onExit }: { onExit: () => void }) {
                     </div>
                     <div className="flex justify-between py-2">
                       <span className="text-slate-500">Next review due</span>
-                      <span className="font-medium text-slate-900">{new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toLocaleDateString()}</span>
+                      <span className="font-medium text-slate-900">{nextReviewDue}</span>
                     </div>
                   </div>
                   <div className="mt-4 pt-4 border-t border-slate-100 text-center">
