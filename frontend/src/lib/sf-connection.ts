@@ -37,6 +37,53 @@ export interface SFConnectionStatus {
   source?: "oauth" | "env";
 }
 
+const SF_ALLOWED_HOSTS = ["login.salesforce.com", "test.salesforce.com"];
+
+export function normalizeSalesforceDomain(input: string): string {
+  const trimmed = (input || "").trim();
+  const candidate = trimmed.startsWith("http://") || trimmed.startsWith("https://")
+    ? trimmed
+    : `https://${trimmed}`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error("Invalid Salesforce domain");
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new Error("Salesforce domain must use HTTPS");
+  }
+
+  if (parsed.pathname !== "/" || parsed.search || parsed.hash || parsed.username || parsed.password) {
+    throw new Error("Salesforce domain must be a bare host");
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const allowed = SF_ALLOWED_HOSTS.includes(host) || host.endsWith(".salesforce.com") || host.endsWith(".my.salesforce.com");
+  if (!allowed) {
+    throw new Error("Salesforce domain is not allowed");
+  }
+
+  return `https://${host}`;
+}
+
+// ─── URL Safety ─────────────────────────────────────────────────────────────
+// Validates that a URL returned by Salesforce points to a legitimate SF host.
+// Prevents SSRF if token response contains a tampered `id` field.
+
+function isSafeSalesforceUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.toLowerCase();
+    return SF_ALLOWED_HOSTS.includes(host) || host.endsWith(".salesforce.com") || host.endsWith(".force.com");
+  } catch {
+    return false;
+  }
+}
+
 // ─── Encryption ──────────────────────────────────────────────────────────────
 
 function deriveKey(secret: string): Buffer {
@@ -106,8 +153,13 @@ export async function getAccessToken(): Promise<{ accessToken: string; instanceU
         try {
           return await refreshAccessToken(stored);
         } catch {
-          // Refresh failed — fall through to env
+          // Refresh failed — clear stale cookie so user re-authenticates
+          // instead of silently falling through to a different org's env creds.
+          await clearConnection();
         }
+      } else {
+        // No refresh token and access token expired — clear it
+        await clearConnection();
       }
     } else {
       return { accessToken: stored.accessToken, instanceUrl: stored.instanceUrl };
@@ -177,23 +229,23 @@ async function refreshAccessToken(conn: SFConnection): Promise<{ accessToken: st
 
 // ─── OAuth URL Builder ───────────────────────────────────────────────────────
 
-export function buildAuthUrl(sfDomain: string): string {
+export function buildAuthUrl(sfDomain: string, state: string): string {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: OAUTH_CLIENT_ID,
     redirect_uri: OAUTH_REDIRECT_URI,
     scope: "api refresh_token",
     prompt: "consent",
+    state,
   });
-  // Normalize domain — user might enter "myorg.my.salesforce.com" or "https://myorg.my.salesforce.com"
-  const base = sfDomain.startsWith("http") ? sfDomain : `https://${sfDomain}`;
+  const base = normalizeSalesforceDomain(sfDomain);
   return `${base}/services/oauth2/authorize?${params.toString()}`;
 }
 
 // ─── OAuth Token Exchange ────────────────────────────────────────────────────
 
 export async function exchangeCodeForTokens(code: string, sfDomain: string): Promise<SFConnection> {
-  const base = sfDomain.startsWith("http") ? sfDomain : `https://${sfDomain}`;
+  const base = normalizeSalesforceDomain(sfDomain);
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -213,14 +265,18 @@ export async function exchangeCodeForTokens(code: string, sfDomain: string): Pro
     throw new Error(data.error_description || "Token exchange failed");
   }
 
-  // Get user info for display
+  // Get user info for display — only fetch if the URL is a legitimate SF host.
+  // The `id` field in the token response is typically https://login.salesforce.com/id/orgId/userId
+  // but we validate it to prevent SSRF if the response is tampered with.
   let userName = "";
   let orgId = "";
   try {
-    const idRes = await fetch(data.id, { headers: { Authorization: `Bearer ${data.access_token}` } });
-    const idData = await idRes.json();
-    userName = idData.display_name || idData.username || "";
-    orgId = idData.organization_id || "";
+    if (data.id && typeof data.id === "string" && isSafeSalesforceUrl(data.id)) {
+      const idRes = await fetch(data.id, { headers: { Authorization: `Bearer ${data.access_token}` } });
+      const idData = await idRes.json();
+      userName = idData.display_name || idData.username || "";
+      orgId = idData.organization_id || "";
+    }
   } catch { /* non-critical */ }
 
   const conn: SFConnection = {
