@@ -13,17 +13,22 @@ import { isClientValid, missingFields, fmtDollar, docsFor, isValidEmail } from "
 import { INTENT_CHIPS, INDIV_TYPES, JOINT_TYPES, BROKERAGES, RELATIONSHIPS, STEP_LABELS } from "@/lib/constants";
 import { emptyClient } from "@/lib/types";
 
-export function FlowScreen({ onExit, initialClient }: {
+import type { Screen, WorkflowContext } from "@/lib/types";
+
+export function FlowScreen({ onExit, initialClient, onNavigate }: {
   onExit: () => void;
   initialClient?: { p1: import("@/lib/types").ClientInfo; p2: import("@/lib/types").ClientInfo; hasP2: boolean };
+  onNavigate?: (screen: Screen, ctx?: WorkflowContext) => void;
 }) {
   const flow = useFlowState(initialClient);
-  const { state, dispatch: d, p1Name, p2Name, fam, jLabel, progressPct, curFund, hasAcct, acctsFor, totalDocs, estMinutes, genStepLabels, householdUrl, goBack, nextFund, nextP1, nextP2, nextJoint, executeGen } = flow;
+  const { state, dispatch: d, p1Name, p2Name, fam, jLabel, progressPct, curFund, hasAcct, acctsFor, totalDocs, estMinutes, genStepLabels, householdUrl, householdId, primaryContactId, goBack, nextFund, nextP1, nextP2, nextJoint, executeGen } = flow;
 
   const combinedResults = state.sfSearchResults;
 
   const handleBack = () => {
     if (state.step === "context") { d({ type: "RESET" }); onExit(); }
+    else if (state.step === "complete") { d({ type: "RESET" }); onExit(); }
+    else if (state.step === "generating") { /* don't interrupt generation */ }
     else goBack();
   };
 
@@ -432,10 +437,17 @@ export function FlowScreen({ onExit, initialClient }: {
                     <p className="text-[10px] text-slate-300 text-center mt-2">Auto-refreshing every 10 seconds</p>
                   </div>
                 )}
-                <div className="flex gap-3 justify-center">
-                  {householdUrl && <a href={householdUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors">View in Salesforce <ExternalLink size={16} /></a>}
-                  <button onClick={() => { d({ type: "RESET" }); }} className="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors">Start New Opening</button>
-                  <button onClick={() => { d({ type: "RESET" }); onExit(); }} className="px-6 py-3 rounded-xl border border-slate-200 text-slate-400 font-medium hover:bg-slate-50 transition-colors">Home</button>
+                <div className="flex flex-wrap gap-3 justify-center">
+                  {onNavigate && householdId && (
+                    <>
+                      <button onClick={() => onNavigate("compliance", { householdId, familyName: fam, primaryContactId })} className="px-5 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors text-sm">Run Compliance Review</button>
+                      <button onClick={() => onNavigate("meeting", { householdId, familyName: fam, primaryContactId })} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">Meeting Logs</button>
+                      <button onClick={() => onNavigate("briefing", { householdId, familyName: fam, primaryContactId })} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">View Briefing</button>
+                    </>
+                  )}
+                  {householdUrl && <a href={householdUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">Salesforce <ExternalLink size={14} /></a>}
+                  <button onClick={() => { d({ type: "RESET" }); }} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-500 font-medium hover:bg-slate-50 transition-colors text-sm">New Opening</button>
+                  <button onClick={() => { d({ type: "RESET" }); onExit(); }} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-400 font-medium hover:bg-slate-50 transition-colors text-sm">Home</button>
                 </div>
               </div>
             )}

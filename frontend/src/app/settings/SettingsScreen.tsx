@@ -22,6 +22,8 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
   const [error, setError] = useState("");
   const [testResult, setTestResult] = useState<"pass" | "fail" | null>(null);
   const [testing, setTesting] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -205,6 +207,47 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
                 </div>
               )}
             </div>
+
+            {/* Demo Data Section */}
+            {status?.connected && (
+              <div className="mt-10 animate-fade-in">
+                <h2 className="text-2xl font-light text-slate-900 mb-2">Demo Data</h2>
+                <p className="text-slate-400 mb-6">Populate your Salesforce org with advisor assignments and planning goals for demo purposes.</p>
+
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-700 mb-1">Seed Demo Data</p>
+                    <p className="text-xs text-slate-400">Distributes existing households across demo advisors (Jon Cambras, Marcus Rivera, Diane Rivera) and creates planning goals for each household. Safe to run multiple times — skips already-configured households.</p>
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      setSeeding(true);
+                      setSeedResult(null);
+                      try {
+                        const res = await fetch("/api/salesforce/seed", { method: "POST" });
+                        const data = await res.json();
+                        setSeedResult({ success: data.success, message: data.message || data.error || "Done" });
+                      } catch (err) {
+                        setSeedResult({ success: false, message: err instanceof Error ? err.message : "Seed failed" });
+                      }
+                      setSeeding(false);
+                    }}
+                    disabled={seeding}
+                    className="w-full py-3 rounded-2xl bg-slate-900 text-white font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {seeding ? <><Loader2 size={16} className="animate-spin" /> Seeding...</> : "Seed Demo Data"}
+                  </button>
+
+                  {seedResult && (
+                    <div className={`p-4 rounded-xl text-sm ${seedResult.success ? "bg-green-50 border border-green-200 text-green-700" : "bg-red-50 border border-red-200 text-red-700"}`}>
+                      {seedResult.success ? <Check size={14} className="inline mr-1.5" /> : <AlertTriangle size={14} className="inline mr-1.5" />}
+                      {seedResult.message}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
           </div>
         </div>

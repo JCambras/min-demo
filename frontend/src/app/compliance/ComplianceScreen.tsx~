@@ -1,6 +1,6 @@
 "use client";
 import { useReducer, useEffect, useCallback, useRef } from "react";
-import { Search, Loader2, Check, X, AlertTriangle, ExternalLink, Shield, ChevronDown, ChevronUp, Download, MessageSquare } from "lucide-react";
+import { Search, Loader2, Check, X, AlertTriangle, ExternalLink, Shield, ChevronDown, ChevronUp, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
@@ -314,11 +314,9 @@ const STEP_LABELS: Record<string, string> = {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName }: { onExit: () => void; initialContext?: WorkflowContext | null; onNavigate?: (screen: Screen, ctx?: WorkflowContext) => void; firmName?: string }) {
+export function ComplianceScreen({ onExit, initialContext, onNavigate }: { onExit: () => void; initialContext?: WorkflowContext | null; onNavigate?: (screen: Screen, ctx?: WorkflowContext) => void }) {
   const [state, d] = useReducer(reducer, initialState);
   const householdRef = useRef<SFHousehold | null>(null);
-  const contactsRef = useRef<SFContact[]>([]);
-  const tasksRef = useRef<SFTask[]>([]);
   const stepsOrder = ["cc-search", "cc-scanning", "cc-results", "cc-recording", "cc-complete"];
   const progressPct = (stepsOrder.indexOf(state.step) + 1) / stepsOrder.length * 100;
   const familyName = state.selectedHousehold?.name?.replace(" Household", "") || "Client";
@@ -329,9 +327,11 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
 
   // Auto-select household from workflow context
   useEffect(() => {
-    if (initialContext && state.step === "cc-search" && !state.selectedHousehold) {
+    if (initialContext && state.step === "cc-search") {
       const hh = { id: initialContext.householdId, name: `${initialContext.familyName} Household`, description: "", createdDate: "", contactNames: "" };
-      runScan(hh);
+      householdRef.current = hh as unknown as SFHousehold;
+      d({ type: "SET_SELECTED", value: hh });
+      d({ type: "SET_STEP", step: "cc-scanning" });
     }
   }, [initialContext, state.step]);
 
@@ -370,8 +370,6 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
           const res = await callSF("getHouseholdDetail", { householdId: household.id });
           if (!res.success) throw new Error("Failed to load household");
           householdRef.current = res.household;
-          contactsRef.current = res.contacts || [];
-          tasksRef.current = res.tasks || [];
           d({ type: "SET_HOUSEHOLD_DATA", contacts: res.contacts, tasks: res.tasks, url: res.householdUrl });
           addEv(`Loaded ${household.name}`, res.householdUrl);
           addEv(`${res.contacts.length} contacts, ${res.tasks.length} task records`);
@@ -397,7 +395,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
         label: "Checking regulatory compliance",
         fn: async () => {
           if (!householdRef.current) throw new Error("No household data");
-          const checks = runComplianceChecks(householdRef.current, contactsRef.current, tasksRef.current);
+          const checks = runComplianceChecks(householdRef.current, state.contacts.length > 0 ? state.contacts : [], state.tasks.length > 0 ? state.tasks : []);
           d({ type: "SET_CHECKS", value: checks });
           const passed = checks.filter(c => c.status === "pass").length;
           const warned = checks.filter(c => c.status === "warn").length;
@@ -458,7 +456,6 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
           checks: state.checks.map(c => ({ label: c.label, category: c.category, regulation: c.regulation, status: c.status, detail: c.detail })),
           reviewDate,
           nextReviewDate,
-          firmName: firmName || undefined,
         }),
       });
       const data = await res.json();
@@ -491,7 +488,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
   return (
     <div className="flex h-screen bg-[#fafafa]">
       <div className="w-full lg:w-[70%] flex flex-col">
-        <FlowHeader title="Compliance Reviews" familyName={state.selectedHousehold ? familyName : undefined} stepLabel={STEP_LABELS[state.step] || ""} progressPct={progressPct} onBack={goBack} onShowPane={() => d({ type: "SET_SHOW_RIGHT_PANE", value: true })} hasIndicator={state.evidence.length > 0} />
+        <FlowHeader title="Compliance Check" familyName={state.selectedHousehold ? familyName : undefined} stepLabel={STEP_LABELS[state.step] || ""} progressPct={progressPct} onBack={goBack} onShowPane={() => d({ type: "SET_SHOW_RIGHT_PANE", value: true })} hasIndicator={state.evidence.length > 0} />
 
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 pt-4 pb-16">
           <div className="max-w-xl w-full mx-auto">
@@ -526,7 +523,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
             )}
 
             {state.step === "cc-scanning" && (
-              <div className="animate-fade-in" data-tour="compliance-progress">
+              <div className="animate-fade-in">
                 <h2 className="text-3xl font-light text-slate-900 mb-2">Scanning {familyName}...</h2>
                 <p className="text-slate-400 mb-8">Checking Salesforce records against SEC, FINRA, and DOL requirements.</p>
                 <ProgressSteps steps={SCAN_STEPS} currentStep={state.scanStep} />
@@ -624,7 +621,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                   <Shield size={36} strokeWidth={2} />
                 </div>
                 <h2 className="text-3xl font-light text-slate-900 mb-3">Review Recorded</h2>
-                <p className="text-lg text-slate-400 mb-1">{familyName} Household — {state.checks.length} compliance reviews</p>
+                <p className="text-lg text-slate-400 mb-1">{familyName} Household — {state.checks.length} compliance checks</p>
                 <p className="text-base text-slate-400 mb-6">
                   {failCount === 0 ? "All checks passed. Audit-ready." : `${failCount} item${failCount > 1 ? "s" : ""} flagged for follow-up.`}
                 </p>
@@ -670,47 +667,11 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                   </div>
                 </div>
 
-                {/* Next Best Action */}
-                {onNavigate && state.selectedHousehold && (() => {
-                  // Check meeting recency — suggest meeting if no recent meetings
-                  const meetingTasks = state.tasks.filter(t => t.Subject?.toUpperCase().includes("MEETING NOTE"));
-                  const now = Date.now();
-                  const recentMeeting = meetingTasks.find(t => (now - new Date(t.CreatedDate).getTime()) < 60 * 86400000);
-                  const hasFlags = state.checks.some(c => c.status === "warn" || c.status === "fail");
-
-                  if (!recentMeeting) {
-                    return (
-                      <div className="bg-amber-50 border border-amber-200/60 rounded-2xl p-4 flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5"><MessageSquare size={16} className="text-amber-600" /></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-amber-900">No meeting logged in 60+ days</p>
-                          <p className="text-xs text-amber-700/70 mt-0.5">Schedule a check-in with {familyName} to review {hasFlags ? "the flagged compliance items" : "their financial plan progress"}.</p>
-                          <button onClick={() => onNavigate!("meeting", { householdId: state.selectedHousehold!.id, familyName })} className="mt-2 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors">Log Meeting →</button>
-                        </div>
-                      </div>
-                    );
-                  }
-                  if (hasFlags) {
-                    return (
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5"><Shield size={16} className="text-slate-500" /></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-slate-700">Review flagged items with {familyName}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Open the family overview to see full context before addressing compliance gaps.</p>
-                          <button onClick={() => onNavigate!("family" as Screen, { householdId: state.selectedHousehold!.id, familyName })} className="mt-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">View Family →</button>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-
-                <div className="flex flex-wrap gap-3 justify-center" data-tour="compliance-actions">
+                <div className="flex flex-wrap gap-3 justify-center">
                   <button onClick={downloadPDF} className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors text-sm"><Download size={16} /> Download Report</button>
                   {onNavigate && state.selectedHousehold && (
                     <>
-                      <button onClick={() => onNavigate("family" as Screen, { householdId: state.selectedHousehold!.id, familyName })} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">View Family</button>
-                      <button onClick={() => onNavigate("meeting", { householdId: state.selectedHousehold!.id, familyName })} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">Meeting Logs</button>
+                      <button onClick={() => onNavigate("meeting", { householdId: state.selectedHousehold!.id, familyName })} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">Log Meeting</button>
                       <button onClick={() => onNavigate("briefing", { householdId: state.selectedHousehold!.id, familyName })} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">View Briefing</button>
                     </>
                   )}

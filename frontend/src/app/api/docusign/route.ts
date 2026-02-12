@@ -403,8 +403,8 @@ export async function POST(request: Request) {
     }
 
     if (action === "test") {
-      const token = await getToken();
-      return NextResponse.json({ success: true, message: "DocuSign connected!", tokenLength: token.length });
+      await getToken();
+      return NextResponse.json({ success: true, message: "DocuSign connected!" });
     }
 
     return NextResponse.json({ success: false, error: "Unknown action" }, { status: 400 });
@@ -416,7 +416,7 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    const token = await getToken();
+    await getToken();
     return NextResponse.json({ success: true, message: "DocuSign JWT auth working!" });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Failed" }, { status: 500 });

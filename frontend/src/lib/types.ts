@@ -1,6 +1,31 @@
 // ─── Core Types ──────────────────────────────────────────────────────────────
 
-export type Screen = "home" | "flow" | "onboard" | "compliance" | "settings" | "briefing";
+export type Screen = "home" | "flow" | "onboard" | "compliance" | "settings" | "briefing" | "meeting" | "query" | "dashboard" | "family" | "taskManager" | "planning";
+
+/**
+ * Exhaustiveness check for switch statements on union types.
+ * If a new variant is added to a union (e.g. Screen) and not handled,
+ * TypeScript will produce a compile error at the assertNever call.
+ *
+ * Usage:
+ *   switch (screen) {
+ *     case "home": ...
+ *     case "flow": ...
+ *     default: assertNever(screen);
+ *   }
+ */
+export function assertNever(value: never, message?: string): never {
+  throw new Error(message || `Unexpected value: ${value}`);
+}
+
+/** Context passed between workflows to skip redundant household search */
+export interface WorkflowContext {
+  householdId: string;
+  familyName: string;
+  primaryContactId?: string;
+}
+
+export type UserRole = "advisor" | "operations" | "principal";
 
 export type FlowStep =
   | "context" | "client-type" | "search-existing"

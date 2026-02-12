@@ -507,12 +507,15 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
   // Expose SF record URLs as derived values instead of raw ref (#15)
   const householdUrl = sfRef.current.householdUrl || "";
 
+  const householdId = sfRef.current.householdId || "";
+  const primaryContactId = sfRef.current.primaryContactId || "";
+
   return {
     state, dispatch: d,
     // Derived
     p1Name, p2Name, fam, jLabel, progressPct, curFund,
     hasAcct, acctsFor, totalDocs, estMinutes, genStepLabels,
-    householdUrl,
+    householdUrl, householdId, primaryContactId,
     // Actions
     goBack, nextFund, nextP1, nextP2, nextJoint, executeGen, addEv,
   };

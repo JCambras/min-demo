@@ -112,3 +112,52 @@ export function docsFor(a: AccountRequest, setupACH: boolean): string[] {
 export function timestamp(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
+
+// ─── Date Formatting ────────────────────────────────────────────────────────
+//
+// All date display in the UI should go through these functions.
+// They accept ISO strings or Date objects and produce consistent US English output.
+// This eliminates locale-dependent formatting bugs (e.g. "2/14/2026" in US vs "14/2/2026" in EU).
+
+const DATE_OPTS: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
+const DATETIME_OPTS: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" };
+const TIME_OPTS: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit" };
+
+/**
+ * Format a date for display: "Feb 14, 2026"
+ * Accepts ISO string, Date, or undefined (returns fallback).
+ */
+export function formatDate(input: string | Date | undefined | null, fallback = ""): string {
+  if (!input) return fallback;
+  const d = typeof input === "string" ? new Date(input) : input;
+  if (isNaN(d.getTime())) return fallback;
+  return d.toLocaleDateString("en-US", DATE_OPTS);
+}
+
+/**
+ * Format a date+time for display: "Feb 14, 2026, 3:45 PM"
+ */
+export function formatDateTime(input: string | Date | undefined | null, fallback = ""): string {
+  if (!input) return fallback;
+  const d = typeof input === "string" ? new Date(input) : input;
+  if (isNaN(d.getTime())) return fallback;
+  return d.toLocaleDateString("en-US", DATETIME_OPTS);
+}
+
+/**
+ * Format time only: "3:45 PM"
+ */
+export function formatTime(input: string | Date | undefined | null, fallback = ""): string {
+  if (!input) return fallback;
+  const d = typeof input === "string" ? new Date(input) : input;
+  if (isNaN(d.getTime())) return fallback;
+  return d.toLocaleTimeString("en-US", TIME_OPTS);
+}
+
+/**
+ * Return an ISO date string (YYYY-MM-DD) for Salesforce ActivityDate fields.
+ */
+export function toISODate(input?: string | Date): string {
+  const d = input ? (typeof input === "string" ? new Date(input) : input) : new Date();
+  return d.toISOString().split("T")[0];
+}

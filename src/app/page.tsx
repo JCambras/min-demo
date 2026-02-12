@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { User, Wrench, Crown, Database, ChevronDown, CheckCircle, Shield, Lock, Eye, Server } from "lucide-react";
+import { User, Wrench, Crown, Database, ChevronDown, CheckCircle } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
 import { HomeScreen, DEMO_ADVISORS, ROLES } from "./home/HomeScreen";
 import { FlowScreen } from "./flow/FlowScreen";
@@ -40,7 +40,7 @@ function NamePicker({ advisorName, onSelect, onContinue, onBack, role }: { advis
       <p className="text-sm text-slate-500 text-center mb-6">Select your name</p>
       <div className="relative">
         <button onClick={() => setOpen(!open)} className="w-full h-14 text-lg rounded-xl border border-slate-200 bg-white px-5 text-slate-800 text-center flex items-center justify-between hover:border-slate-400 transition-colors">
-          <span className={advisorName ? "text-slate-800" : "text-slate-300"}>{advisorName || (role === "principal" ? "Choose principal..." : role === "operations" ? "Choose operator..." : "Choose advisor...")}</span>
+          <span className={advisorName ? "text-slate-800" : "text-slate-300"}>{advisorName || "Choose advisor..."}</span>
           <ChevronDown size={18} className="text-slate-400" />
         </button>
         {open && (<div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-10">
@@ -59,7 +59,6 @@ function NamePicker({ advisorName, onSelect, onContinue, onBack, role }: { advis
 export default function Home() {
   const { state, dispatch, goTo, goBack, goHome, loadStats, showToast } = useAppState();
   const { setupStep, role, advisorName, screen, wfCtx, handoff, sfConnected, toast, tourActive } = state;
-  const [showSecurity, setShowSecurity] = useState(false);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SETUP SCREENS
@@ -95,58 +94,6 @@ export default function Home() {
           {c.live ? (sfConnected && c.id === "salesforce" ? <span className="text-xs px-2.5 py-1 rounded-full bg-green-100 text-green-600 font-medium">Connected</span> : null) : <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-400 font-medium">Coming Soon</span>}
         </button>))}
       </div>
-
-      {/* Security Trust Badge */}
-      <button onClick={() => setShowSecurity(!showSecurity)} className="mx-auto mt-6 flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-colors">
-        <Shield size={14} className="text-emerald-600" />
-        <span className="text-xs font-medium">SOC 2 Type II · AES-256 Encryption · SEC-Ready</span>
-        <ChevronDown size={12} className={`text-emerald-500 transition-transform ${showSecurity ? "rotate-180" : ""}`} />
-      </button>
-
-      {/* Security Details Panel */}
-      {showSecurity && (
-        <div className="mt-4 bg-white border border-slate-200 rounded-2xl p-6 animate-fade-in">
-          <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-4">Security & Compliance</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><Lock size={16} /></div>
-              <div>
-                <p className="text-sm font-medium text-slate-700">AES-256-GCM Encryption</p>
-                <p className="text-xs text-slate-400 mt-0.5">All credentials encrypted at rest with authenticated encryption. Keys derived via scrypt.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><Shield size={16} /></div>
-              <div>
-                <p className="text-sm font-medium text-slate-700">Your Data Stays in Salesforce</p>
-                <p className="text-xs text-slate-400 mt-0.5">Min reads and writes directly to your SF org. No client data is stored on Min servers.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><Eye size={16} /></div>
-              <div>
-                <p className="text-sm font-medium text-slate-700">CSRF & Origin Protection</p>
-                <p className="text-xs text-slate-400 mt-0.5">All API mutations require cryptographic CSRF tokens. Cross-origin requests are blocked.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><Server size={16} /></div>
-              <div>
-                <p className="text-sm font-medium text-slate-700">OAuth 2.0 + Refresh Tokens</p>
-                <p className="text-xs text-slate-400 mt-0.5">Industry-standard Salesforce OAuth. Tokens stored in httpOnly encrypted cookies. Auto-refresh with race-condition protection.</p>
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <div className="flex flex-wrap gap-2">
-              {["SOQL Injection Prevention", "Input Validation on All Endpoints", "Timing-Safe Token Comparison", "httpOnly / SameSite Cookies", "Security Headers (X-Frame, CSP)", "Structured Error Handling"].map(tag => (
-                <span key={tag} className="text-[10px] px-2 py-1 rounded-full bg-slate-50 border border-slate-100 text-slate-500 font-medium">{tag}</span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       <button onClick={() => dispatch({ type: "SET_SETUP_STEP", step: DEMO_ADVISORS.length === 1 ? "role" : "name" })} className="block mx-auto mt-6 text-sm text-slate-400 hover:text-slate-600 transition-colors">← Back</button>
       <p className="text-xs text-slate-300 text-center mt-6">Powered by Impacting Advisors</p>
     </div></div></div>
@@ -176,7 +123,7 @@ export default function Home() {
     case "briefing": return wrap(<BriefingScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Briefing");
     case "meeting": return wrap(<MeetingScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Meeting");
     case "query": return wrap(<QueryScreen onExit={goHome} initialQuery="" />, "Query", false);
-    case "dashboard": return wrap(<DashboardScreen onExit={goHome} onNavigate={goTo} firmName={FIRM_NAME} role={role} advisorName={advisorName} />, "Dashboard");
+    case "dashboard": return wrap(<DashboardScreen onExit={goHome} onNavigate={goTo} firmName={FIRM_NAME} />, "Dashboard");
     case "planning": return wrap(<PlanningScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Planning");
     case "family": return wfCtx ? wrap(<FamilyScreen onExit={goBack} context={wfCtx} onNavigate={goTo} />, "Family overview") : null;
     case "taskManager": return <TaskManager stats={state.stats} onBack={goHome} goTo={goTo} showToast={showToast} />;

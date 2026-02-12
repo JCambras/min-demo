@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
 import { custodian } from "@/lib/custodian";
+import type { Screen, WorkflowContext } from "@/lib/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -203,9 +204,17 @@ function reducer(s: State, a: Action): State {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function BriefingScreen({ onExit }: { onExit: () => void }) {
+export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit: () => void; initialContext?: WorkflowContext | null; onNavigate?: (screen: Screen, ctx?: WorkflowContext) => void }) {
   const [s, d] = useReducer(reducer, init);
   const familyName = s.selected?.name?.replace(" Household", "") || "Client";
+
+  // Auto-load from workflow context
+  useEffect(() => {
+    if (initialContext && s.step === "search") {
+      const hh: HHResult = { id: initialContext.householdId, name: `${initialContext.familyName} Household`, description: "", createdDate: "", contactNames: "" };
+      loadBriefing(hh);
+    }
+  }, [initialContext]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced search
   useEffect(() => {
@@ -241,7 +250,8 @@ export function BriefingScreen({ onExit }: { onExit: () => void }) {
 
   const goBack = () => {
     if (s.step === "search") { d({ type: "RESET" }); onExit(); }
-    else d({ type: "RESET" });
+    else if (s.step === "briefing") d({ type: "SET_STEP", step: "search" });
+    else { d({ type: "RESET" }); onExit(); }
   };
 
   const stepLabels: Record<string, string> = { search: "Search", loading: "Loading", briefing: "Briefing" };
@@ -292,14 +302,73 @@ export function BriefingScreen({ onExit }: { onExit: () => void }) {
             )}
 
             {s.step === "briefing" && s.intel && (
-              <div className="animate-fade-in space-y-5">
-                {/* Narrative Summary */}
+              <div className="animate-fade-in space-y-5" data-tour="briefing-summary">
+                {/* Summary Header */}
+                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                  <div className="px-6 pt-6 pb-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h2 className="text-2xl font-light text-slate-900">{s.intel.householdName.replace(" Household", "")}</h2>
+                        <p className="text-sm text-slate-400 mt-1">Client since {s.intel.onboardedDate} · {s.intel.daysSinceOnboard} day{s.intel.daysSinceOnboard !== 1 ? "s" : ""}</p>
+                      </div>
+                      {s.householdUrl && <a href={s.householdUrl} target="_blank" rel="noopener noreferrer" className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-all inline-flex items-center gap-1.5">Salesforce <ExternalLink size={11} /></a>}
+                    </div>
+                  </div>
+                  {/* At-a-glance stats */}
+                  <div className="grid grid-cols-4 border-t border-slate-100">
+                    <div className="px-4 py-3 text-center border-r border-slate-100">
+                      <p className="text-xl font-light text-slate-900">{s.intel.contacts.length}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">Contacts</p>
+                    </div>
+                    <div className="px-4 py-3 text-center border-r border-slate-100">
+                      <p className="text-xl font-light text-slate-900">{s.intel.accountsOpened.length}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">Accounts</p>
+                    </div>
+                    <div className="px-4 py-3 text-center border-r border-slate-100">
+                      <p className={`text-xl font-light ${s.intel.openItems.length > 0 ? "text-amber-600" : "text-green-600"}`}>{s.intel.openItems.length}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">Open Items</p>
+                    </div>
+                    <div className="px-4 py-3 text-center">
+                      <p className={`text-xl font-light ${s.intel.hasComplianceReview ? "text-green-600" : "text-amber-600"}`}>{s.intel.hasComplianceReview ? "✓" : "—"}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">Compliance</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Key Highlights */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-6">
-                  <p className="text-xs uppercase tracking-wider text-slate-400 mb-3">Summary</p>
-                  <p className="text-base text-slate-700 leading-relaxed">{s.narrative}</p>
-                  <div className="flex items-center gap-4 mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
-                    <span>Last activity: {s.intel.lastActivity}</span>
-                    <span>{s.intel.completedTasks} of {s.intel.totalTasks} tasks completed</span>
+                  <p className="text-xs uppercase tracking-wider text-slate-400 mb-4">Key Highlights</p>
+                  <div className="space-y-3">
+                    {s.intel.accountsOpened.length > 0 && (
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5"><FileText size={12} className="text-blue-500" /></div>
+                        <div><p className="text-sm text-slate-700">{s.intel.accountsOpened.length} account{s.intel.accountsOpened.length > 1 ? "s" : ""} opened</p><p className="text-xs text-slate-400">{s.intel.accountsOpened.map(a => a.type).join(", ")}</p></div>
+                      </div>
+                    )}
+                    {s.intel.docuSignStatus.length > 0 && (() => {
+                      const pending = s.intel.docuSignStatus.filter(d => d.status === "Pending").length;
+                      return (
+                        <div className="flex items-start gap-3">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${pending > 0 ? "bg-amber-50" : "bg-green-50"}`}><FileText size={12} className={pending > 0 ? "text-amber-500" : "text-green-500"} /></div>
+                          <div><p className="text-sm text-slate-700">{s.intel.docuSignStatus.length} DocuSign envelope{s.intel.docuSignStatus.length > 1 ? "s" : ""}</p><p className="text-xs text-slate-400">{pending > 0 ? `${pending} awaiting signature` : "All sent"}</p></div>
+                        </div>
+                      );
+                    })()}
+                    {s.intel.hasComplianceReview ? (
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-green-50 flex items-center justify-center flex-shrink-0 mt-0.5"><Shield size={12} className="text-green-500" /></div>
+                        <div><p className="text-sm text-slate-700">Compliance review on file</p><p className="text-xs text-slate-400">Last: {s.intel.complianceReviews[s.intel.complianceReviews.length-1]?.result} on {s.intel.complianceReviews[s.intel.complianceReviews.length-1]?.date}</p></div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5"><Shield size={12} className="text-amber-500" /></div>
+                        <div><p className="text-sm text-amber-700">No compliance review on file</p><p className="text-xs text-slate-400">Recommend running a review</p></div>
+                      </div>
+                    )}
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center flex-shrink-0 mt-0.5"><Clock size={12} className="text-slate-400" /></div>
+                      <div><p className="text-sm text-slate-700">Last activity: {s.intel.lastActivity}</p><p className="text-xs text-slate-400">{s.intel.completedTasks} of {s.intel.totalTasks} tasks completed</p></div>
+                    </div>
                   </div>
                 </div>
 
@@ -350,7 +419,7 @@ export function BriefingScreen({ onExit }: { onExit: () => void }) {
                     {s.intel.complianceReviews.length === 0 ? (
                       <div>
                         <p className="text-sm text-amber-600">No review on file</p>
-                        <p className="text-xs text-slate-400 mt-1">Run a compliance check →</p>
+                        <p className="text-xs text-slate-400 mt-1">Run a compliance review →</p>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -437,8 +506,15 @@ export function BriefingScreen({ onExit }: { onExit: () => void }) {
 
                 {/* Actions */}
                 <div className="flex flex-wrap gap-3">
-                  {s.householdUrl && <a href={s.householdUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors">View in Salesforce <ExternalLink size={14} /></a>}
-                  <button onClick={() => { d({ type: "RESET" }); }} className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Search Another</button>
+                  {onNavigate && s.selected && (
+                    <>
+                      <button onClick={() => onNavigate("family" as Screen, { householdId: s.selected!.id, familyName })} className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors">View Family</button>
+                      <button onClick={() => onNavigate("meeting", { householdId: s.selected!.id, familyName })} className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Log Meeting</button>
+                      <button onClick={() => onNavigate("compliance", { householdId: s.selected!.id, familyName })} className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Run Compliance Review</button>
+                    </>
+                  )}
+                  {s.householdUrl && <a href={s.householdUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Salesforce <ExternalLink size={14} /></a>}
+                  <button onClick={() => { d({ type: "RESET" }); }} className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-sm font-medium hover:bg-slate-50 transition-colors">Search Another</button>
                   <button onClick={() => { d({ type: "RESET" }); onExit(); }} className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-400 text-sm font-medium hover:bg-slate-50 transition-colors">Home</button>
                 </div>
               </div>

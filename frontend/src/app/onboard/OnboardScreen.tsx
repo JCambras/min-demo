@@ -10,7 +10,7 @@ import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
 import { isClientValid, missingFields, timestamp } from "@/lib/format";
 import { OB_GEN_STEPS, OB_STEP_LABELS, OB_STEPS_ORDER } from "@/lib/constants";
-import type { OnboardStep, ClientInfo, SFEvidence, SFRefs } from "@/lib/types";
+import type { OnboardStep, ClientInfo, SFEvidence, SFRefs, Screen, WorkflowContext } from "@/lib/types";
 import { emptyClient } from "@/lib/types";
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -22,6 +22,7 @@ interface ObState {
   showP1SSN: boolean;
   showP2SSN: boolean;
   hasP2: boolean;
+  assignedAdvisor: string;
   isProcessing: boolean;
   evidence: SFEvidence[];
   genStep: number;
@@ -36,6 +37,7 @@ const initialState: ObState = {
   showP1SSN: false,
   showP2SSN: false,
   hasP2: false,
+  assignedAdvisor: "",
   isProcessing: false,
   evidence: [],
   genStep: 0,
@@ -51,6 +53,7 @@ type ObAction =
   | { type: "SET_SHOW_P1_SSN"; value: boolean }
   | { type: "SET_SHOW_P2_SSN"; value: boolean }
   | { type: "SET_HAS_P2"; value: boolean }
+  | { type: "SET_ASSIGNED_ADVISOR"; value: string }
   | { type: "SET_IS_PROCESSING"; value: boolean }
   | { type: "SET_GEN_STEP"; value: number }
   | { type: "SET_LAST_ERROR"; value: string }
@@ -66,6 +69,7 @@ function reducer(state: ObState, action: ObAction): ObState {
     case "SET_SHOW_P1_SSN": return { ...state, showP1SSN: action.value };
     case "SET_SHOW_P2_SSN": return { ...state, showP2SSN: action.value };
     case "SET_HAS_P2": return { ...state, hasP2: action.value };
+    case "SET_ASSIGNED_ADVISOR": return { ...state, assignedAdvisor: action.value };
     case "SET_IS_PROCESSING": return { ...state, isProcessing: action.value };
     case "SET_GEN_STEP": return { ...state, genStep: action.value };
     case "SET_LAST_ERROR": return { ...state, lastError: action.value };
@@ -77,11 +81,13 @@ function reducer(state: ObState, action: ObAction): ObState {
 
 // ─── Screen Component ────────────────────────────────────────────────────────
 
-export function OnboardScreen({ onExit, onOpenAccounts }: {
+export function OnboardScreen({ onExit, onOpenAccounts, onNavigate, defaultAdvisor }: {
   onExit: () => void;
   onOpenAccounts: (p1: ClientInfo, p2: ClientInfo, hasP2: boolean) => void;
+  onNavigate?: (screen: Screen, ctx?: WorkflowContext) => void;
+  defaultAdvisor?: string;
 }) {
-  const [state, d] = useReducer(reducer, initialState);
+  const [state, d] = useReducer(reducer, { ...initialState, assignedAdvisor: defaultAdvisor || "" });
   const sfRef = useRef<SFRefs>({});
   const obStepLabelsRef = useRef<string[]>(OB_GEN_STEPS);
 
@@ -98,6 +104,8 @@ export function OnboardScreen({ onExit, onOpenAccounts }: {
     const m: Partial<Record<OnboardStep, OnboardStep>> = { "ob-p2": "ob-p1", "ob-review": state.hasP2 ? "ob-p2" : "ob-p1" };
     if (m[state.step]) d({ type: "SET_STEP", step: m[state.step]! });
     else if (state.step === "ob-p1") { d({ type: "RESET" }); onExit(); }
+    else if (state.step === "ob-complete") { d({ type: "RESET" }); onExit(); }
+    else { d({ type: "RESET" }); onExit(); }
   };
 
   const executeOnboard = async () => {
@@ -111,7 +119,7 @@ export function OnboardScreen({ onExit, onOpenAccounts }: {
         fn: async () => {
           const members = [{ firstName: state.p1.firstName, lastName: state.p1.lastName, email: state.p1.email, phone: state.p1.phone }];
           if (state.hasP2 && state.p2.firstName) members.push({ firstName: state.p2.firstName, lastName: state.p2.lastName, email: state.p2.email, phone: state.p2.phone });
-          const r = await callSF("confirmIntent", { familyName: fam, force: true, accounts: [], members });
+          const r = await callSF("confirmIntent", { familyName: fam, force: true, accounts: [], members, assignedAdvisor: state.assignedAdvisor });
           if (!r.success) throw new Error(r.error || "Failed to create records");
           sfRef.current = { householdId: r.household.id, householdUrl: r.household.url, contacts: r.contacts, primaryContactId: r.contacts[0]?.id };
           addEv(`${fam} Household created`, r.household.url);
@@ -133,10 +141,10 @@ export function OnboardScreen({ onExit, onOpenAccounts }: {
         },
       },
       {
-        label: "Running compliance check",
+        label: "Running compliance review",
         fn: async () => {
           const r = await callSF("recordCompleteness", { householdId: sfRef.current.householdId, familyName: fam, checks: ["Identity verified", "Gov ID on file", "Trusted contact designated", "Financial profile complete", "Suitability confirmed"] });
-          if (r.success) addEv("Compliance check passed", r.task.url);
+          if (r.success) addEv("Compliance review passed", r.task.url);
         },
       },
     ];
@@ -221,6 +229,19 @@ export function OnboardScreen({ onExit, onOpenAccounts }: {
                   {state.hasP2 && p2Name && (
                     <ClientReviewCard client={state.p2} label="Second Client" onClick={() => d({ type: "SET_STEP", step: "ob-p2" })} />
                   )}
+                  {/* Assigned Advisor */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-3">Assigned Advisor</p>
+                    <select
+                      value={state.assignedAdvisor}
+                      onChange={e => d({ type: "SET_ASSIGNED_ADVISOR", value: e.target.value })}
+                      className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent appearance-none cursor-pointer"
+                      style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
+                    >
+                      <option value="">Select an advisor...</option>
+                      <option value="Jon Cambras">Jon Cambras</option>
+                    </select>
+                  </div>
                   <div className="bg-white border border-slate-200 rounded-2xl p-5">
                     <p className="text-xs uppercase tracking-wider text-slate-400 mb-2">What will be created</p>
                     <div className="space-y-1.5 text-sm text-slate-600">
@@ -228,7 +249,8 @@ export function OnboardScreen({ onExit, onOpenAccounts }: {
                       <p>· {p1Name} Contact record</p>
                       {state.hasP2 && p2Name && <p>· {p2Name} Contact record</p>}
                       <p>· KYC & suitability profile</p>
-                      <p>· Compliance check task</p>
+                      <p>· Compliance review task</p>
+                      {state.assignedAdvisor && <p>· Assigned to {state.assignedAdvisor}</p>}
                     </div>
                   </div>
                 </div>
@@ -249,11 +271,14 @@ export function OnboardScreen({ onExit, onOpenAccounts }: {
                 <div className="w-20 h-20 rounded-full bg-green-500 text-white flex items-center justify-center mx-auto mb-6"><Check size={36} strokeWidth={2} /></div>
                 <h2 className="text-3xl font-light text-slate-900 mb-3">{fam} household created.</h2>
                 <p className="text-lg text-slate-400 mb-1">{state.hasP2 ? "2 contacts" : "1 contact"} added to Salesforce.</p>
-                <p className="text-base text-slate-400 mb-8">KYC, suitability, and compliance checks recorded.</p>
-                <div className="flex gap-3 justify-center">
-                  {sfRef.current.householdUrl && <a href={sfRef.current.householdUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors">View in Salesforce <ExternalLink size={16} /></a>}
-                  <button onClick={() => onOpenAccounts(state.p1, state.p2, state.hasP2)} className="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors">Open Accounts →</button>
-                  <button onClick={() => { d({ type: "RESET" }); onExit(); }} className="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors">Done</button>
+                <p className="text-base text-slate-400 mb-8">KYC, suitability, and compliance reviews recorded.</p>
+                <div className="flex flex-wrap gap-3 justify-center">
+                  <button onClick={() => onOpenAccounts(state.p1, state.p2, state.hasP2)} className="px-5 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors text-sm">Open Accounts →</button>
+                  {onNavigate && sfRef.current.householdId && (
+                    <button onClick={() => onNavigate("compliance", { householdId: sfRef.current.householdId!, familyName: fam })} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">Run Compliance Review</button>
+                  )}
+                  {sfRef.current.householdUrl && <a href={sfRef.current.householdUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">Salesforce <ExternalLink size={14} /></a>}
+                  <button onClick={() => { d({ type: "RESET" }); onExit(); }} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-400 font-medium hover:bg-slate-50 transition-colors text-sm">Home</button>
                 </div>
               </div>
             )}

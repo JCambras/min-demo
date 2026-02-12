@@ -86,7 +86,7 @@ export const OB_GEN_STEPS = [
   "Creating household record",
   "Creating contact records",
   "Recording KYC & suitability",
-  "Running compliance check",
+  "Running compliance review",
   "Done",
 ];
 
