@@ -11,7 +11,7 @@
 
 import { NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/sf-connection";
-import { SFValidationError, SFQueryError, SFMutationError } from "@/lib/sf-client";
+import { SFValidationError, SFQueryError, SFMutationError, SFTimeoutError } from "@/lib/sf-client";
 import type { SFContext } from "@/lib/sf-client";
 import { shouldAudit, writeAuditLog } from "@/lib/audit";
 
@@ -86,6 +86,14 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { success: false, error: { code: error.code, message: error.message }, requestId },
         { status: 400 }
+      );
+    }
+
+    if (error instanceof SFTimeoutError) {
+      console.error(`[SF Timeout] requestId=${requestId}: ${error.message}`);
+      return NextResponse.json(
+        { success: false, error: { code: error.code, message: error.message }, requestId },
+        { status: 504 }
       );
     }
 

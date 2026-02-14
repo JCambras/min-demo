@@ -10,6 +10,9 @@
 // 4. Salesforce ID validation prevents injection via record IDs
 
 const SF_API_VERSION = "v59.0";
+const SF_FETCH_TIMEOUT_MS = 30_000;  // 30s timeout for all SF API calls
+const SF_MAX_RETRIES = 2;            // Max retries for transient failures
+const SF_RETRY_BASE_MS = 500;        // Base delay for exponential backoff
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -86,6 +89,70 @@ export class SFMutationError extends Error {
   }
 }
 
+export class SFTimeoutError extends Error {
+  readonly code = "SF_TIMEOUT" as const;
+  constructor(url: string, timeoutMs: number) {
+    super(`Salesforce request timed out after ${timeoutMs}ms: ${url.split("?")[0]}`);
+    this.name = "SFTimeoutError";
+  }
+}
+
+// ─── Fetch with Timeout + Retry ─────────────────────────────────────────────
+// All SF API calls go through this wrapper. Retries on transient errors
+// (429 Too Many Requests, 503 Service Unavailable, network failures).
+
+function isRetryable(status: number): boolean {
+  return status === 429 || status === 503;
+}
+
+async function sfFetch(url: string, init?: RequestInit): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= SF_MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = SF_RETRY_BASE_MS * Math.pow(2, attempt - 1); // 500ms, 1000ms
+      await new Promise(r => setTimeout(r, delay));
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SF_FETCH_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      // Retry on transient HTTP errors (429, 503)
+      if (isRetryable(response.status) && attempt < SF_MAX_RETRIES) {
+        lastError = new Error(`SF returned ${response.status}`);
+        continue;
+      }
+
+      return response;
+    } catch (err) {
+      clearTimeout(timeoutId);
+
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new SFTimeoutError(url, SF_FETCH_TIMEOUT_MS);
+      }
+
+      // Retry network errors
+      if (attempt < SF_MAX_RETRIES) {
+        lastError = err instanceof Error ? err : new Error("Network error");
+        continue;
+      }
+
+      throw err;
+    }
+  }
+
+  // Should not reach here, but safety net
+  throw lastError || new Error("SF fetch failed after retries");
+}
+
 // ─── Error Extraction ───────────────────────────────────────────────────────
 // Salesforce returns errors in inconsistent shapes:
 //   Query errors:  [{ message: "...", errorCode: "..." }]
@@ -110,7 +177,7 @@ function extractSFError(result: unknown, fallback: string): string {
  * The SOQL string should already have user inputs sanitized via sanitizeSOQL().
  */
 export async function query(ctx: SFContext, soql: string): Promise<Record<string, unknown>[]> {
-  const response = await fetch(
+  const response = await sfFetch(
     `${ctx.instanceUrl}/services/data/${SF_API_VERSION}/query?q=${encodeURIComponent(soql)}`,
     { headers: { Authorization: `Bearer ${ctx.accessToken}` } }
   );
@@ -138,7 +205,7 @@ export interface PaginatedResult {
 }
 
 export async function queryPaginated(ctx: SFContext, soql: string): Promise<PaginatedResult> {
-  const response = await fetch(
+  const response = await sfFetch(
     `${ctx.instanceUrl}/services/data/${SF_API_VERSION}/query?q=${encodeURIComponent(soql)}`,
     { headers: { Authorization: `Bearer ${ctx.accessToken}` } }
   );
@@ -176,7 +243,7 @@ export async function create(
     headers["Sforce-Duplicate-Rule-Header"] = "allowSave=true";
   }
 
-  const response = await fetch(
+  const response = await sfFetch(
     `${ctx.instanceUrl}/services/data/${SF_API_VERSION}/sobjects/${objectType}`,
     { method: "POST", headers, body: JSON.stringify(data) }
   );
@@ -209,7 +276,7 @@ export async function update(
 ): Promise<SFRecord> {
   requireSalesforceId(recordId, `${objectType} ID`);
 
-  const response = await fetch(
+  const response = await sfFetch(
     `${ctx.instanceUrl}/services/data/${SF_API_VERSION}/sobjects/${objectType}/${recordId}`,
     {
       method: "PATCH",
@@ -318,7 +385,7 @@ export async function createTasksBatch(ctx: SFContext, inputs: TaskInput[]): Pro
   }));
 
   try {
-    const response = await fetch(
+    const response = await sfFetch(
       `${ctx.instanceUrl}/services/data/${SF_API_VERSION}/composite`,
       {
         method: "POST",

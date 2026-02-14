@@ -60,6 +60,17 @@ async function getCsrfToken(forceRefresh = false): Promise<string> {
   return csrfPromise;
 }
 
+// ─── Retry & Timeout Configuration ──────────────────────────────────────────
+
+const CLIENT_TIMEOUT_MS = 35_000;  // 35s (slightly longer than server's 30s)
+const CLIENT_MAX_RETRIES = 2;      // Max retries for transient failures
+const CLIENT_RETRY_BASE_MS = 600;  // Base delay for exponential backoff
+
+/** HTTP status codes that indicate transient server issues */
+function isTransientStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
+}
+
 // ─── API Call ───────────────────────────────────────────────────────────────
 
 /**
@@ -69,27 +80,46 @@ async function getCsrfToken(forceRefresh = false): Promise<string> {
  * - On success: { success: true, ...data }
  * - On failure: { success: false, error: "human-readable string", errorCode: "MACHINE_CODE" }
  *
- * The `error` field is always a string (even though the server may return a structured object),
- * so existing code that reads `res.error` continues to work.
+ * Includes:
+ * - 35s timeout with AbortController
+ * - Exponential backoff retry for transient errors (502, 503, 504, network)
+ * - CSRF token refresh on 403
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function callSF(action: SFAction, data: Record<string, any>): Promise<SFResponse> {
-  return _callSF(action, data, false);
+  return _callSF(action, data, 0);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function _callSF(action: SFAction, data: Record<string, any>, isRetry: boolean): Promise<SFResponse> {
+async function _callSF(action: SFAction, data: Record<string, any>, attempt: number): Promise<SFResponse> {
   try {
     const token = await getCsrfToken();
 
-    const res = await fetch("/api/salesforce", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { "x-csrf-token": token } : {}),
-      },
-      body: JSON.stringify({ action, data }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
+
+    let res: Response;
+    try {
+      res = await fetch("/api/salesforce", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "x-csrf-token": token } : {}),
+        },
+        body: JSON.stringify({ action, data }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    // Retry on transient server errors
+    if (isTransientStatus(res.status) && attempt < CLIENT_MAX_RETRIES) {
+      const delay = CLIENT_RETRY_BASE_MS * Math.pow(2, attempt);
+      log.warn("callSF", `${action} returned ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1})`);
+      await new Promise(r => setTimeout(r, delay));
+      return _callSF(action, data, attempt + 1);
+    }
 
     const text = await res.text();
 
@@ -106,10 +136,10 @@ async function _callSF(action: SFAction, data: Record<string, any>, isRetry: boo
     }
 
     // CSRF failure — refresh token and retry once
-    if (res.status === 403 && parsed.errorCode === "CSRF_ERROR" && !isRetry) {
+    if (res.status === 403 && parsed.errorCode === "CSRF_ERROR" && attempt === 0) {
       log.info("callSF", "CSRF token expired, refreshing and retrying");
       await getCsrfToken(true);
-      return _callSF(action, data, true);
+      return _callSF(action, data, 1);
     }
 
     const normalized = normalizeResponse(parsed);
@@ -122,8 +152,26 @@ async function _callSF(action: SFAction, data: Record<string, any>, isRetry: boo
     return normalized;
 
   } catch (err) {
+    // Timeout (AbortError)
+    if (err instanceof DOMException && err.name === "AbortError") {
+      log.error("callSF", `${action} timed out after ${CLIENT_TIMEOUT_MS}ms`);
+      return {
+        success: false,
+        error: "Request timed out. Please try again.",
+        errorCode: "TIMEOUT",
+      };
+    }
+
+    // Network error — retry with backoff
+    if (attempt < CLIENT_MAX_RETRIES) {
+      const delay = CLIENT_RETRY_BASE_MS * Math.pow(2, attempt);
+      log.warn("callSF", `Network error for ${action}, retrying in ${delay}ms (attempt ${attempt + 1})`);
+      await new Promise(r => setTimeout(r, delay));
+      return _callSF(action, data, attempt + 1);
+    }
+
     const message = err instanceof Error ? err.message : "Network error";
-    log.error("callSF", `Network error for ${action}`, { error: message });
+    log.error("callSF", `Network error for ${action} after ${attempt + 1} attempts`, { error: message });
     return {
       success: false,
       error: message,
