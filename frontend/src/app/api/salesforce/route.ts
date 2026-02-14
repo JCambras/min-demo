@@ -14,6 +14,7 @@ import { getAccessToken } from "@/lib/sf-connection";
 import { SFValidationError, SFQueryError, SFMutationError, SFTimeoutError } from "@/lib/sf-client";
 import type { SFContext } from "@/lib/sf-client";
 import { shouldAudit, writeAuditLog } from "@/lib/audit";
+import { getCRMAdapter } from "@/lib/crm/factory";
 
 import { householdHandlers } from "./handlers/households";
 import { taskHandlers } from "./handlers/tasks";
@@ -54,6 +55,17 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { success: false, error: { code: "UNKNOWN_ACTION", message: `Unknown action: ${action}` }, requestId },
         { status: 400 }
+      );
+    }
+
+    // Adapter gate: when a non-Salesforce adapter is configured, future
+    // adapters will dispatch through the CRMPort interface here.
+    // For now, no non-SF adapters exist so this branch is dead code.
+    const adapter = getCRMAdapter();
+    if (adapter.providerId !== "salesforce") {
+      return NextResponse.json(
+        { success: false, error: { code: "UNSUPPORTED_PROVIDER", message: `Provider ${adapter.providerId} not yet routed` }, requestId },
+        { status: 501 }
       );
     }
 
