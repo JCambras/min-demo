@@ -374,16 +374,19 @@ export function usePracticeData() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await callSF("queryTasks", { limit: 200 });
+        // Fire both queries in parallel — FSC may 404 (not installed) and that's fine
+        const [res, fscRes] = await Promise.all([
+          callSF("queryTasks", { limit: 200 }),
+          callSF("queryFinancialAccounts", {}).catch(() => null),
+        ]);
         if (res.success) {
           const households = res.households as SFHousehold[];
           const firmOverrides = parseFirmConfig(households);
           const practiceData = buildPracticeData(res.tasks as SFTask[], households, res.instanceUrl as string, firmOverrides);
 
-          // Try to get real AUM from FSC FinancialAccounts
-          try {
-            const fscRes = await callSF("queryFinancialAccounts", {});
-            if (fscRes.success && fscRes.fscAvailable) {
+          // Apply real AUM from FSC FinancialAccounts if available
+          {
+            if (fscRes?.success && fscRes.fscAvailable) {
               practiceData.fscAvailable = true;
               practiceData.realAum = fscRes.totalAum as number;
               practiceData.aumByHousehold = (fscRes.aumByHousehold as Record<string, number>) || {};
@@ -422,8 +425,6 @@ export function usePracticeData() {
                 practiceData.revenue.revenuePerAdvisor.sort((a, b) => b.annualFee - a.annualFee);
               }
             }
-          } catch {
-            // FSC query failed — continue with assumption-based data
           }
 
           setData(practiceData);
