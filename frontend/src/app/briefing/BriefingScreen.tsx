@@ -24,7 +24,7 @@ interface ClientIntel {
   fundingMethods: { type: string; detail: string }[];
   docuSignStatus: { name: string; status: string; date: string }[];
   complianceReviews: { result: string; date: string }[];
-  openItems: { subject: string; priority: string; dueDate: string }[];
+  openItems: { id: string; subject: string; priority: string; dueDate: string }[];
   completedTasks: number;
   totalTasks: number;
   description: string;
@@ -86,7 +86,7 @@ function buildIntel(
   // Open items (not completed, not "informational")
   const openItems = tasks
     .filter(t => t.Status !== "Completed" && t.Priority)
-    .map(t => ({ subject: t.Subject, priority: t.Priority, dueDate: t.ActivityDate ? new Date(t.ActivityDate).toLocaleDateString() : "" }));
+    .map(t => ({ id: t.Id, subject: t.Subject, priority: t.Priority, dueDate: t.ActivityDate ? new Date(t.ActivityDate).toLocaleDateString() : "" }));
 
   // Flags
   const allText = tasks.map(t => `${t.Subject} ${t.Description}`).join(" ").toLowerCase();
@@ -484,13 +484,14 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
                     </p>
                     <div className="space-y-2">
                       {s.intel.openItems.map((item, i) => (
-                        <div key={i} className="flex items-center justify-between py-1.5">
-                          <p className="text-sm text-amber-900">{item.subject}</p>
+                        <a key={i} href={`${s.householdUrl.replace(/\/[^/]+$/, "")}/${item.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between py-1.5 group cursor-pointer hover:bg-amber-100/50 -mx-2 px-2 rounded-lg transition-colors">
+                          <p className="text-sm text-amber-900 group-hover:underline">{item.subject}</p>
                           <div className="flex items-center gap-2">
                             {item.dueDate && <span className="text-xs text-amber-600">Due {item.dueDate}</span>}
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${item.priority === "High" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>{item.priority}</span>
+                            <ExternalLink size={12} className="text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
-                        </div>
+                        </a>
                       ))}
                     </div>
                   </div>
