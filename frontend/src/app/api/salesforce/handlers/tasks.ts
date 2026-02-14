@@ -6,15 +6,17 @@ import { NextResponse } from "next/server";
 import { query, update, createTask } from "@/lib/sf-client";
 import type { SFContext } from "@/lib/sf-client";
 import { validate } from "@/lib/sf-validation";
+import { orgQuery } from "@/lib/org-query";
 
 type Handler = (data: unknown, ctx: SFContext) => Promise<NextResponse>;
 
 export const taskHandlers: Record<string, Handler> = {
   queryTasks: async (raw, ctx) => {
     const data = validate.queryTasks(raw);
+    const householdSoql = orgQuery.listHouseholds("Id, Name, CreatedDate, Description", data.limit);
     const [tasks, households] = await Promise.all([
       query(ctx, `SELECT Id, Subject, Status, Priority, Description, CreatedDate, ActivityDate, What.Name, What.Id FROM Task WHERE What.Type = 'Account' ORDER BY CreatedDate DESC LIMIT ${data.limit}`),
-      query(ctx, `SELECT Id, Name, CreatedDate, Description FROM Account WHERE Type = 'Household' ORDER BY CreatedDate DESC LIMIT ${data.limit}`),
+      query(ctx, householdSoql),
     ]);
     return NextResponse.json({ success: true, tasks, households, instanceUrl: ctx.instanceUrl });
   },
