@@ -59,8 +59,12 @@ import { complianceHandlers, meetingHandlers } from "@/app/api/salesforce/handle
 import { query, update, createTask, createTasksBatch } from "@/lib/sf-client";
 import { fireWorkflowTrigger } from "@/lib/workflows";
 import { validate } from "@/lib/sf-validation";
+import { SalesforceAdapter } from "@/lib/crm/adapters/salesforce";
+import type { CRMContext } from "@/lib/crm/port";
 
 const mockCtx = { accessToken: "mock-token", instanceUrl: "https://test.salesforce.com" };
+const adapter = new SalesforceAdapter();
+const crmCtx: CRMContext = { auth: mockCtx, instanceUrl: "https://test.salesforce.com" };
 const VALID_HH_ID = "0011234567890ABCDE";
 const VALID_CONTACT_ID = "0031234567890ABCDE";
 
@@ -85,21 +89,22 @@ describe("onboardingHandlers", () => {
     };
 
     it("queries existing description and appends funding note", async () => {
-      (query as ReturnType<typeof vi.fn>).mockResolvedValue([
-        { Description: "Existing notes here" },
-      ]);
+      (query as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce([{ Id: VALID_HH_ID, Name: "Smith Household", Description: "Existing notes here" }])
+        .mockResolvedValueOnce([])  // contacts
+        .mockResolvedValueOnce([]); // tasks
       (update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: VALID_HH_ID, url: `https://test.salesforce.com/${VALID_HH_ID}` });
       (createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "00T0000000TASK01", url: "https://test.salesforce.com/00T0000000TASK01" });
 
-      const response = await onboardingHandlers.recordFunding(validInput, mockCtx);
+      const response = await onboardingHandlers.recordFunding(validInput, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
       expect(body.task).toBeDefined();
       expect(body.householdUrl).toContain(VALID_HH_ID);
 
-      // Should query existing description
-      expect(query).toHaveBeenCalledOnce();
+      // Should query existing description (adapter's getHouseholdDetail makes 3 query calls)
+      expect(query).toHaveBeenCalled();
 
       // Should update with concatenated description
       const updateCall = (update as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -113,11 +118,14 @@ describe("onboardingHandlers", () => {
     });
 
     it("handles empty existing description", async () => {
-      (query as ReturnType<typeof vi.fn>).mockResolvedValue([{}]);
+      (query as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce([{ Id: VALID_HH_ID, Name: "Smith Household" }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
       (update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: VALID_HH_ID, url: "" });
       (createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "00T0000000TASK01", url: "" });
 
-      await onboardingHandlers.recordFunding(validInput, mockCtx);
+      await onboardingHandlers.recordFunding(validInput, adapter, crmCtx);
 
       const newDesc = (update as ReturnType<typeof vi.fn>).mock.calls[0][3].Description as string;
       // Should not contain separator when no existing description
@@ -126,11 +134,14 @@ describe("onboardingHandlers", () => {
     });
 
     it("creates task with funding summary in subject", async () => {
-      (query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (query as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce([])  // household
+        .mockResolvedValueOnce([])  // contacts
+        .mockResolvedValueOnce([]); // tasks
       (update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: VALID_HH_ID, url: "" });
       (createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "00T0000000TASK01", url: "" });
 
-      await onboardingHandlers.recordFunding(validInput, mockCtx);
+      await onboardingHandlers.recordFunding(validInput, adapter, crmCtx);
 
       expect(createTask).toHaveBeenCalledWith(mockCtx, expect.objectContaining({
         subject: expect.stringContaining("Funding configured — Smith (2 accounts)"),
@@ -140,13 +151,13 @@ describe("onboardingHandlers", () => {
 
     it("rejects missing householdId", async () => {
       await expect(
-        onboardingHandlers.recordFunding({ familyName: "Smith", fundingDetails: [], pteRequired: false }, mockCtx)
+        onboardingHandlers.recordFunding({ familyName: "Smith", fundingDetails: [], pteRequired: false }, adapter, crmCtx)
       ).rejects.toThrow("Invalid Salesforce ID");
     });
 
     it("rejects missing fundingDetails", async () => {
       await expect(
-        onboardingHandlers.recordFunding({ householdId: VALID_HH_ID, familyName: "Smith", pteRequired: false }, mockCtx)
+        onboardingHandlers.recordFunding({ householdId: VALID_HH_ID, familyName: "Smith", pteRequired: false }, adapter, crmCtx)
       ).rejects.toThrow("Missing required array: fundingDetails");
     });
   });
@@ -162,7 +173,7 @@ describe("onboardingHandlers", () => {
         bankName: "Chase",
         lastFour: "4567",
         routingLastFour: "1234",
-      }, mockCtx);
+      }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -179,7 +190,7 @@ describe("onboardingHandlers", () => {
 
     it("rejects missing bankName", async () => {
       await expect(
-        onboardingHandlers.recordMoneyLink({ householdId: VALID_HH_ID, lastFour: "1234", routingLastFour: "5678" }, mockCtx)
+        onboardingHandlers.recordMoneyLink({ householdId: VALID_HH_ID, lastFour: "1234", routingLastFour: "5678" }, adapter, crmCtx)
       ).rejects.toThrow("Missing required field: bankName");
     });
   });
@@ -197,7 +208,7 @@ describe("onboardingHandlers", () => {
           { account: "IRA", beneficiary: "Jane Johnson (Spouse, 100%)" },
           { account: "Roth IRA", beneficiary: "Kids Trust (50%), Jane Johnson (50%)" },
         ],
-      }, mockCtx);
+      }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -213,7 +224,7 @@ describe("onboardingHandlers", () => {
 
     it("rejects missing designations array", async () => {
       await expect(
-        onboardingHandlers.recordBeneficiaries({ householdId: VALID_HH_ID, familyName: "Smith" }, mockCtx)
+        onboardingHandlers.recordBeneficiaries({ householdId: VALID_HH_ID, familyName: "Smith" }, adapter, crmCtx)
       ).rejects.toThrow("Missing required array: designations");
     });
   });
@@ -228,7 +239,7 @@ describe("onboardingHandlers", () => {
         householdId: VALID_HH_ID,
         familyName: "Williams",
         checks: ["KYC verified", "Risk profile complete", "Suitability confirmed"],
-      }, mockCtx);
+      }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -248,7 +259,7 @@ describe("onboardingHandlers", () => {
           householdId: VALID_HH_ID,
           familyName: "Smith",
           checks: [123],
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("Each check must be a string");
     });
   });
@@ -271,7 +282,7 @@ describe("onboardingHandlers", () => {
           { name: "New Account Application", documents: ["IRA App", "W-9"] },
           { name: "Transfer Form", documents: ["ACAT Form"] },
         ],
-      }, mockCtx);
+      }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -288,7 +299,7 @@ describe("onboardingHandlers", () => {
 
     it("rejects missing envelopes", async () => {
       await expect(
-        onboardingHandlers.recordPaperwork({ householdId: VALID_HH_ID }, mockCtx)
+        onboardingHandlers.recordPaperwork({ householdId: VALID_HH_ID }, adapter, crmCtx)
       ).rejects.toThrow("Missing required array: envelopes");
     });
 
@@ -297,7 +308,7 @@ describe("onboardingHandlers", () => {
         onboardingHandlers.recordPaperwork({
           householdId: VALID_HH_ID,
           envelopes: [{ name: "App", documents: [123] }],
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("Each document must be a string");
     });
   });
@@ -316,7 +327,7 @@ describe("onboardingHandlers", () => {
           { envelope: "IRA Application", recipients: "John Davis, Jane Davis" },
           { envelope: "Joint Account", recipients: "John Davis, Jane Davis" },
         ],
-      }, mockCtx);
+      }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -335,7 +346,7 @@ describe("onboardingHandlers", () => {
         onboardingHandlers.recordDocusignConfig({
           householdId: VALID_HH_ID,
           familyName: "Smith",
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("Missing required array: config");
     });
   });
@@ -361,7 +372,7 @@ describe("onboardingHandlers", () => {
         errors: [],
       });
 
-      const response = await onboardingHandlers.sendDocusign(validInput, mockCtx);
+      const response = await onboardingHandlers.sendDocusign(validInput, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -388,7 +399,7 @@ describe("onboardingHandlers", () => {
     it("fires docusign_sent workflow trigger", async () => {
       (createTasksBatch as ReturnType<typeof vi.fn>).mockResolvedValue({ records: [{ id: "00T1", url: "" }], errors: [] });
 
-      await onboardingHandlers.sendDocusign(validInput, mockCtx);
+      await onboardingHandlers.sendDocusign(validInput, adapter, crmCtx);
 
       expect(fireWorkflowTrigger).toHaveBeenCalledWith(
         mockCtx,
@@ -404,7 +415,7 @@ describe("onboardingHandlers", () => {
       const response = await onboardingHandlers.sendDocusign({
         householdId: VALID_HH_ID,
         envelopes: [{ name: "App", signers: ["John"], emailSubject: "Sign" }],
-      }, mockCtx);
+      }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -414,7 +425,7 @@ describe("onboardingHandlers", () => {
 
     it("rejects missing envelopes", async () => {
       await expect(
-        onboardingHandlers.sendDocusign({ householdId: VALID_HH_ID }, mockCtx)
+        onboardingHandlers.sendDocusign({ householdId: VALID_HH_ID }, adapter, crmCtx)
       ).rejects.toThrow("Missing required array: envelopes");
     });
 
@@ -423,7 +434,7 @@ describe("onboardingHandlers", () => {
         onboardingHandlers.sendDocusign({
           householdId: VALID_HH_ID,
           envelopes: [{ name: "App", signers: [123], emailSubject: "Sign" }],
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("Each signer must be a string");
     });
   });
@@ -453,7 +464,7 @@ describe("complianceHandlers", () => {
     it("creates PASSED task with Normal priority", async () => {
       (createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "00T0000000COMP01", url: "" });
 
-      const response = await complianceHandlers.recordComplianceReview(passedInput, mockCtx);
+      const response = await complianceHandlers.recordComplianceReview(passedInput, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -482,7 +493,7 @@ describe("complianceHandlers", () => {
           { label: "KYC Status", status: "fail", detail: "Expired ID" },
           { label: "AML Screen", status: "warn", detail: "Name match requires review" },
         ],
-      }, mockCtx);
+      }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -500,7 +511,7 @@ describe("complianceHandlers", () => {
     it("fires compliance_reviewed workflow trigger", async () => {
       (createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "00T1", url: "" });
 
-      await complianceHandlers.recordComplianceReview(passedInput, mockCtx);
+      await complianceHandlers.recordComplianceReview(passedInput, adapter, crmCtx);
 
       expect(fireWorkflowTrigger).toHaveBeenCalledWith(
         mockCtx,
@@ -518,7 +529,7 @@ describe("complianceHandlers", () => {
         familyName: "Taylor",
         passed: true,
         checks: [{ label: "KYC", status: "pass", detail: "OK" }],
-      }, mockCtx);
+      }, adapter, crmCtx);
 
       const desc = (createTask as ReturnType<typeof vi.fn>).mock.calls[0][1].description;
       expect(desc).toContain("Reviewed by: Advisor");
@@ -531,7 +542,7 @@ describe("complianceHandlers", () => {
           householdId: VALID_HH_ID,
           familyName: "Smith",
           checks: [],
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("Missing required boolean: passed");
     });
 
@@ -541,7 +552,7 @@ describe("complianceHandlers", () => {
           householdId: VALID_HH_ID,
           familyName: "Smith",
           passed: true,
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("Missing required array: checks");
     });
   });
@@ -572,7 +583,7 @@ describe("meetingHandlers", () => {
       (createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "00T0000000MEET01", url: "" });
       (createTasksBatch as ReturnType<typeof vi.fn>).mockResolvedValue({ records: [], errors: [] });
 
-      const response = await meetingHandlers.recordMeetingNote(fullInput, mockCtx);
+      const response = await meetingHandlers.recordMeetingNote(fullInput, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -606,7 +617,7 @@ describe("meetingHandlers", () => {
         errors: [],
       });
 
-      const response = await meetingHandlers.recordMeetingNote(fullInput, mockCtx);
+      const response = await meetingHandlers.recordMeetingNote(fullInput, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.followUpTasks).toHaveLength(2);
@@ -635,7 +646,7 @@ describe("meetingHandlers", () => {
         householdId: VALID_HH_ID,
         familyName: "Lee",
         notes: "Quick check-in, no action items.",
-      }, mockCtx);
+      }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -657,7 +668,7 @@ describe("meetingHandlers", () => {
         householdId: VALID_HH_ID,
         familyName: "Park",
         notes: "General discussion",
-      }, mockCtx);
+      }, adapter, crmCtx);
 
       expect(createTask).toHaveBeenCalledWith(mockCtx, expect.objectContaining({
         subject: "MEETING NOTE — Park",  // no meetingType suffix
@@ -674,7 +685,7 @@ describe("meetingHandlers", () => {
         meetingHandlers.recordMeetingNote({
           householdId: VALID_HH_ID,
           familyName: "Smith",
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("Missing required field: notes");
     });
 
@@ -683,7 +694,7 @@ describe("meetingHandlers", () => {
         meetingHandlers.recordMeetingNote({
           householdId: VALID_HH_ID,
           notes: "Some notes",
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("Missing required field: familyName");
     });
 
@@ -694,7 +705,7 @@ describe("meetingHandlers", () => {
           familyName: "Smith",
           notes: "Notes here",
           followUps: [123],
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("Each follow-up must be a string");
     });
   });

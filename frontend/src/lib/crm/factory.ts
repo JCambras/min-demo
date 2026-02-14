@@ -50,7 +50,7 @@ export async function getCRMContext(): Promise<CRMContext> {
 
   if (adapter.providerId === "salesforce") {
     const sfAuth = await getAccessToken();
-    return { auth: sfAuth };
+    return { auth: sfAuth, instanceUrl: sfAuth.instanceUrl };
   }
 
   // Future: each provider resolves its own auth

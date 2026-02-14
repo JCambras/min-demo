@@ -64,8 +64,12 @@ import { query, create, createContactsBatch } from "@/lib/sf-client";
 import { SFQueryError } from "@/lib/sf-client";
 import { fireWorkflowTrigger } from "@/lib/workflows";
 import { validate } from "@/lib/sf-validation";
+import { SalesforceAdapter } from "@/lib/crm/adapters/salesforce";
+import type { CRMContext } from "@/lib/crm/port";
 
 const mockCtx = { accessToken: "mock-token", instanceUrl: "https://test.salesforce.com" };
+const adapter = new SalesforceAdapter();
+const crmCtx: CRMContext = { auth: mockCtx, instanceUrl: "https://test.salesforce.com" };
 const VALID_HH_ID = "0011234567890ABCDE";
 const VALID_CONTACT_ID = "0031234567890ABCDE";
 
@@ -93,7 +97,7 @@ describe("financialAccountHandlers", () => {
         .mockResolvedValueOnce({ id: "a0B0000000FA01", url: "https://test.salesforce.com/a0B0000000FA01" })
         .mockResolvedValueOnce({ id: "a0B0000000FA02", url: "https://test.salesforce.com/a0B0000000FA02" });
 
-      const response = await financialAccountHandlers.createFinancialAccounts(validInput, mockCtx);
+      const response = await financialAccountHandlers.createFinancialAccounts(validInput, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -110,7 +114,7 @@ describe("financialAccountHandlers", () => {
       await financialAccountHandlers.createFinancialAccounts({
         householdId: VALID_HH_ID,
         accounts: [{ type: "IRA", owner: "John" }],
-      }, mockCtx);
+      }, adapter, crmCtx);
 
       const createCall = (create as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(createCall[1]).toBe("FinServ__FinancialAccount__c");
@@ -127,7 +131,7 @@ describe("financialAccountHandlers", () => {
       await financialAccountHandlers.createFinancialAccounts({
         householdId: VALID_HH_ID,
         accounts: [{ type: "Individual", owner: "John", amount: "$1,250,000" }],
-      }, mockCtx);
+      }, adapter, crmCtx);
 
       const fields = (create as ReturnType<typeof vi.fn>).mock.calls[0][2];
       expect(fields.FinServ__Balance__c).toBe(1250000);
@@ -136,7 +140,7 @@ describe("financialAccountHandlers", () => {
     it("degrades gracefully when FSC is not installed (INVALID_TYPE)", async () => {
       (create as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("INVALID_TYPE: sObject type 'FinServ__FinancialAccount__c' is not supported"));
 
-      const response = await financialAccountHandlers.createFinancialAccounts(validInput, mockCtx);
+      const response = await financialAccountHandlers.createFinancialAccounts(validInput, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -160,7 +164,7 @@ describe("financialAccountHandlers", () => {
           { type: "Roth IRA", owner: "Jane" },
           { type: "Individual", owner: "John" },
         ],
-      }, mockCtx);
+      }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -174,7 +178,7 @@ describe("financialAccountHandlers", () => {
       await financialAccountHandlers.createFinancialAccounts({
         householdId: VALID_HH_ID,
         accounts: [{ type: "Custom Weird Type", owner: "John" }],
-      }, mockCtx);
+      }, adapter, crmCtx);
 
       const fields = (create as ReturnType<typeof vi.fn>).mock.calls[0][2];
       expect(fields.FinServ__FinancialAccountType__c).toBe("Brokerage");
@@ -186,7 +190,7 @@ describe("financialAccountHandlers", () => {
         financialAccountHandlers.createFinancialAccounts({
           householdId: VALID_HH_ID,
           accounts: [],
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("accounts array must not be empty");
     });
 
@@ -196,7 +200,7 @@ describe("financialAccountHandlers", () => {
         financialAccountHandlers.createFinancialAccounts({
           householdId: VALID_HH_ID,
           accounts: tooMany,
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("accounts array exceeds maximum of 20");
     });
 
@@ -205,7 +209,7 @@ describe("financialAccountHandlers", () => {
         financialAccountHandlers.createFinancialAccounts({
           householdId: "bad-id",
           accounts: [{ type: "IRA", owner: "John" }],
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("Invalid Salesforce ID");
     });
   });
@@ -221,7 +225,7 @@ describe("financialAccountHandlers", () => {
       ];
       (query as ReturnType<typeof vi.fn>).mockResolvedValue(mockAccounts);
 
-      const response = await financialAccountHandlers.queryFinancialAccounts({}, mockCtx);
+      const response = await financialAccountHandlers.queryFinancialAccounts({}, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -238,7 +242,7 @@ describe("financialAccountHandlers", () => {
 
       await financialAccountHandlers.queryFinancialAccounts({
         householdIds: [VALID_HH_ID],
-      }, mockCtx);
+      }, adapter, crmCtx);
 
       const soql = (query as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
       expect(soql).toContain("WHERE FinServ__Household__c IN");
@@ -248,7 +252,7 @@ describe("financialAccountHandlers", () => {
     it("omits WHERE clause when no householdIds", async () => {
       (query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-      await financialAccountHandlers.queryFinancialAccounts({}, mockCtx);
+      await financialAccountHandlers.queryFinancialAccounts({}, adapter, crmCtx);
 
       const soql = (query as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
       expect(soql).not.toContain("WHERE");
@@ -260,7 +264,7 @@ describe("financialAccountHandlers", () => {
         new SFQueryError("sObject type 'FinServ__FinancialAccount__c' is not supported", 400)
       );
 
-      const response = await financialAccountHandlers.queryFinancialAccounts({}, mockCtx);
+      const response = await financialAccountHandlers.queryFinancialAccounts({}, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -275,7 +279,7 @@ describe("financialAccountHandlers", () => {
       );
 
       await expect(
-        financialAccountHandlers.queryFinancialAccounts({}, mockCtx)
+        financialAccountHandlers.queryFinancialAccounts({}, adapter, crmCtx)
       ).rejects.toThrow("Unexpected error");
     });
 
@@ -285,7 +289,7 @@ describe("financialAccountHandlers", () => {
         { Id: "a0B2", FinServ__Balance__c: 0, FinServ__Household__c: "001A" },
       ]);
 
-      const response = await financialAccountHandlers.queryFinancialAccounts({}, mockCtx);
+      const response = await financialAccountHandlers.queryFinancialAccounts({}, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.totalAum).toBe(0);
@@ -296,7 +300,7 @@ describe("financialAccountHandlers", () => {
       await expect(
         financialAccountHandlers.queryFinancialAccounts({
           householdIds: ["bad!"],
-        }, mockCtx)
+        }, adapter, crmCtx)
       ).rejects.toThrow("not a valid Salesforce ID");
     });
   });
@@ -338,7 +342,7 @@ describe("householdHandlers.confirmIntent", () => {
       errors: [],
     });
 
-    const response = await householdHandlers.confirmIntent(validInput, mockCtx);
+    const response = await householdHandlers.confirmIntent(validInput, adapter, crmCtx);
     const body = await response.json();
 
     expect(body.success).toBe(true);
@@ -370,7 +374,7 @@ describe("householdHandlers.confirmIntent", () => {
       { Id: "001EXISTING", Name: "Thompson Household" },
     ]);
 
-    const response = await householdHandlers.confirmIntent(validInput, mockCtx);
+    const response = await householdHandlers.confirmIntent(validInput, adapter, crmCtx);
     const body = await response.json();
 
     expect(body.success).toBe(false);
@@ -391,7 +395,7 @@ describe("householdHandlers.confirmIntent", () => {
     (create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: VALID_HH_ID, url: "" });
     (createContactsBatch as ReturnType<typeof vi.fn>).mockResolvedValue({ records: [], errors: [] });
 
-    const response = await householdHandlers.confirmIntent({ ...validInput, force: true }, mockCtx);
+    const response = await householdHandlers.confirmIntent({ ...validInput, force: true }, adapter, crmCtx);
     const body = await response.json();
 
     expect(body.success).toBe(true);
@@ -407,7 +411,7 @@ describe("householdHandlers.confirmIntent", () => {
     await householdHandlers.confirmIntent({
       ...validInput,
       assignedAdvisor: "Marcus Rivera",
-    }, mockCtx);
+    }, adapter, crmCtx);
 
     const desc = (create as ReturnType<typeof vi.fn>).mock.calls[0][2].Description as string;
     expect(desc).toContain("Assigned Advisor: Marcus Rivera");
@@ -418,7 +422,7 @@ describe("householdHandlers.confirmIntent", () => {
     (create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: VALID_HH_ID, url: "" });
     (createContactsBatch as ReturnType<typeof vi.fn>).mockResolvedValue({ records: [], errors: [] });
 
-    await householdHandlers.confirmIntent(validInput, mockCtx);
+    await householdHandlers.confirmIntent(validInput, adapter, crmCtx);
 
     const desc = (create as ReturnType<typeof vi.fn>).mock.calls[0][2].Description as string;
     expect(desc).toContain("IRA (John Thompson)");
@@ -438,7 +442,7 @@ describe("householdHandlers.confirmIntent", () => {
       errors: [],
     });
 
-    const response = await householdHandlers.confirmIntent(validInput, mockCtx);
+    const response = await householdHandlers.confirmIntent(validInput, adapter, crmCtx);
     const body = await response.json();
 
     expect(body.relationship).toBeDefined();
@@ -464,7 +468,7 @@ describe("householdHandlers.confirmIntent", () => {
       errors: [],
     });
 
-    const response = await householdHandlers.confirmIntent(validInput, mockCtx);
+    const response = await householdHandlers.confirmIntent(validInput, adapter, crmCtx);
     const body = await response.json();
 
     // Should still succeed — FSC is optional
@@ -484,7 +488,7 @@ describe("householdHandlers.confirmIntent", () => {
       familyName: "Solo",
       accounts: [{ type: "IRA", owner: "John" }],
       members: [{ firstName: "John", lastName: "Solo", email: "j@e.com", phone: "555" }],
-    }, mockCtx);
+    }, adapter, crmCtx);
 
     // create should only be called once (household), not twice (no relationship)
     expect(create).toHaveBeenCalledOnce();
@@ -495,7 +499,7 @@ describe("householdHandlers.confirmIntent", () => {
       householdHandlers.confirmIntent({
         accounts: [{ type: "IRA", owner: "John" }],
         members: [{ firstName: "John", lastName: "Smith", email: "j@e.com", phone: "555" }],
-      }, mockCtx)
+      }, adapter, crmCtx)
     ).rejects.toThrow("Missing required field: familyName");
   });
 
@@ -504,7 +508,7 @@ describe("householdHandlers.confirmIntent", () => {
       householdHandlers.confirmIntent({
         familyName: "Smith",
         members: [{ firstName: "John", lastName: "Smith", email: "j@e.com", phone: "555" }],
-      }, mockCtx)
+      }, adapter, crmCtx)
     ).rejects.toThrow("Missing required array: accounts");
   });
 
@@ -513,7 +517,7 @@ describe("householdHandlers.confirmIntent", () => {
       householdHandlers.confirmIntent({
         familyName: "Smith",
         accounts: [{ type: "IRA", owner: "John" }],
-      }, mockCtx)
+      }, adapter, crmCtx)
     ).rejects.toThrow("Missing required array: members");
   });
 
@@ -523,7 +527,7 @@ describe("householdHandlers.confirmIntent", () => {
         familyName: "Smith",
         accounts: [{ type: "IRA", owner: "John" }],
         members: [{ firstName: "John" }], // missing lastName, email, phone
-      }, mockCtx)
+      }, adapter, crmCtx)
     ).rejects.toThrow("Missing required field: lastName");
   });
 });

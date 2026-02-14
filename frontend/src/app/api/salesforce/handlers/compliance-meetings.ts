@@ -1,17 +1,17 @@
 // ─── Compliance & Meeting Domain Handlers ────────────────────────────────────
 
 import { NextResponse } from "next/server";
-import { createTask, createTasksBatch } from "@/lib/sf-client";
-import type { SFContext, TaskInput } from "@/lib/sf-client";
+import type { CRMPort, CRMContext } from "@/lib/crm/port";
+import type { SFContext } from "@/lib/sf-client";
 import { validate } from "@/lib/sf-validation";
 import { fireWorkflowTrigger } from "@/lib/workflows";
 
-type Handler = (data: unknown, ctx: SFContext) => Promise<NextResponse>;
+type Handler = (data: unknown, adapter: CRMPort, ctx: CRMContext) => Promise<NextResponse>;
 
 export const complianceHandlers: Record<string, Handler> = {
-  recordComplianceReview: async (raw, ctx) => {
+  recordComplianceReview: async (raw, adapter, ctx) => {
     const data = validate.recordComplianceReview(raw);
-    const task = await createTask(ctx, {
+    const task = await adapter.createTask(ctx, {
       subject: `COMPLIANCE REVIEW ${data.passed ? "PASSED" : "FLAGGED"} — ${data.familyName}`,
       householdId: data.householdId,
       priority: data.passed ? "Normal" : "High",
@@ -20,22 +20,22 @@ export const complianceHandlers: Record<string, Handler> = {
         data.checks.map(c => `${c.status === "pass" ? "✓" : c.status === "warn" ? "⚠" : "✗"} ${c.label}: ${c.detail}`).join("\n") +
         `\n\nReviewed by: ${data.reviewerName || "Advisor"}\nNext review due: ${data.nextReviewDate || "90 days"}`,
     });
-    await fireWorkflowTrigger(ctx, "compliance_reviewed", data.householdId, `${data.familyName} Household`);
+    await fireWorkflowTrigger(ctx.auth as SFContext, "compliance_reviewed", data.householdId, `${data.familyName} Household`);
     return NextResponse.json({ success: true, task });
   },
 };
 
 export const meetingHandlers: Record<string, Handler> = {
-  recordMeetingNote: async (raw, ctx) => {
+  recordMeetingNote: async (raw, adapter, ctx) => {
     const data = validate.recordMeetingNote(raw);
     const followUpBlock = data.followUps.length > 0
       ? `\n\nFOLLOW-UP ITEMS:\n${data.followUps.map((f, i) => `${i + 1}. ${f}`).join("\n")}`
       : "";
-    const task = await createTask(ctx, {
+    const task = await adapter.createTask(ctx, {
       subject: `MEETING NOTE — ${data.familyName}${data.meetingType ? ` (${data.meetingType})` : ""}`,
       householdId: data.householdId,
       contactId: data.contactId,
-      activityDate: data.meetingDate || new Date().toISOString().split("T")[0],
+      dueDate: data.meetingDate || new Date().toISOString().split("T")[0],
       description:
         `Meeting: ${data.meetingType || "General"}\n` +
         `Date: ${data.meetingDate || new Date().toISOString().split("T")[0]}\n` +
@@ -48,15 +48,15 @@ export const meetingHandlers: Record<string, Handler> = {
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + (data.followUpDays || 7));
     const dueDateStr = dueDate.toISOString().split("T")[0];
-    const followUpInputs: TaskInput[] = data.followUps.map(followUp => ({
+    const followUpInputs = data.followUps.map(followUp => ({
       subject: `FOLLOW-UP: ${followUp}`,
       householdId: data.householdId,
       contactId: data.contactId,
-      status: "Not Started" as const,
-      activityDate: dueDateStr,
+      status: "Not Started",
+      dueDate: dueDateStr,
       description: `Follow-up from meeting on ${data.meetingDate || new Date().toISOString().split("T")[0]}\n\nOriginal note: ${followUp}\n\nCreated by Min at ${new Date().toISOString()}`,
     }));
-    const { records: followUpTasks } = await createTasksBatch(ctx, followUpInputs);
+    const { records: followUpTasks } = await adapter.createTasksBatch(ctx, followUpInputs);
     return NextResponse.json({ success: true, task, followUpTasks, followUpCount: followUpTasks.length });
   },
 };

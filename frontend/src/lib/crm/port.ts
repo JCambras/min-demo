@@ -25,6 +25,7 @@ import type {
 
 export interface CRMContext {
   auth: unknown;
+  instanceUrl: string;
 }
 
 // ─── CRMPort ────────────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ export interface CRMPort {
     ctx: CRMContext,
     limit: number,
     offset: number,
-  ): Promise<{ tasks: CRMTask[]; households: CRMHousehold[]; hasMore: boolean }>;
+  ): Promise<{ tasks: CRMTask[]; households: CRMHousehold[]; tasksHasMore: boolean; householdsHasMore: boolean }>;
 
   createTask(
     ctx: CRMContext,
@@ -117,7 +118,7 @@ export interface CRMPort {
   createFinancialAccounts?(
     ctx: CRMContext,
     inputs: CRMFinancialAccountInput[],
-  ): Promise<{ accounts: CRMRecord[]; fscAvailable: boolean }>;
+  ): Promise<{ accounts: { id: string; url: string; accountType: string }[]; fscAvailable: boolean }>;
 
   queryFinancialAccounts?(
     ctx: CRMContext,

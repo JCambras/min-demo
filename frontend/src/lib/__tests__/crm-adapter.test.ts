@@ -58,7 +58,7 @@ import type { CRMContext } from "@/lib/crm/port";
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const mockSfCtx = { accessToken: "mock-token", instanceUrl: "https://test.salesforce.com" };
-const crmCtx: CRMContext = { auth: mockSfCtx };
+const crmCtx: CRMContext = { auth: mockSfCtx, instanceUrl: "https://test.salesforce.com" };
 const VALID_HH_ID = "0011234567890ABCDE";
 const VALID_CONTACT_ID = "0031234567890ABCDE";
 const VALID_TASK_ID = "00T1234567890ABCDE";
@@ -295,7 +295,8 @@ describe("SalesforceAdapter", () => {
       expect(result.tasks[0].subject).toBe("Call client");
       expect(result.tasks[0].householdName).toBe("Doe HH");
       expect(result.households).toHaveLength(1);
-      expect(result.hasMore).toBe(false);
+      expect(result.tasksHasMore).toBe(false);
+      expect(result.householdsHasMore).toBe(false);
     });
   });
 
@@ -551,9 +552,10 @@ describe("CRM Factory", () => {
     expect(() => getCRMAdapter()).toThrow("Unknown CRM provider: unknown_crm");
   });
 
-  it("getCRMContext resolves SF auth", async () => {
+  it("getCRMContext resolves SF auth with instanceUrl", async () => {
     const ctx = await getCRMContext();
     expect(ctx.auth).toEqual(mockSfCtx);
+    expect(ctx.instanceUrl).toBe("https://test.salesforce.com");
   });
 
   it("_resetAdapterCache allows re-resolution", () => {

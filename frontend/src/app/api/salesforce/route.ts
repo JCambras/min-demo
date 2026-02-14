@@ -14,7 +14,9 @@ import { getAccessToken } from "@/lib/sf-connection";
 import { SFValidationError, SFQueryError, SFMutationError, SFTimeoutError } from "@/lib/sf-client";
 import type { SFContext } from "@/lib/sf-client";
 import { shouldAudit, writeAuditLog } from "@/lib/audit";
-import { getCRMAdapter } from "@/lib/crm/factory";
+import { getCRMAdapter, getCRMContext } from "@/lib/crm/factory";
+import type { CRMPort } from "@/lib/crm/port";
+import type { CRMContext } from "@/lib/crm/port";
 
 import { householdHandlers } from "./handlers/households";
 import { taskHandlers } from "./handlers/tasks";
@@ -28,7 +30,7 @@ import { ensureMappingLoaded } from "@/lib/org-query";
 // The client-side callSF() still POSTs to /api/salesforce with { action, data }
 // — zero client changes required.
 
-type Handler = (data: unknown, ctx: SFContext) => Promise<NextResponse>;
+type Handler = (data: unknown, adapter: CRMPort, ctx: CRMContext) => Promise<NextResponse>;
 
 const handlers: Record<string, Handler> = {
   ...householdHandlers,
@@ -58,30 +60,21 @@ export async function POST(request: Request) {
       );
     }
 
-    // Adapter gate: when a non-Salesforce adapter is configured, future
-    // adapters will dispatch through the CRMPort interface here.
-    // For now, no non-SF adapters exist so this branch is dead code.
     const adapter = getCRMAdapter();
-    if (adapter.providerId !== "salesforce") {
-      return NextResponse.json(
-        { success: false, error: { code: "UNSUPPORTED_PROVIDER", message: `Provider ${adapter.providerId} not yet routed` }, requestId },
-        { status: 501 }
-      );
-    }
-
-    const ctx = await getAccessToken();
+    const crmCtx = await getCRMContext();
+    const sfAuth = crmCtx.auth as SFContext;
 
     // Restore OrgMapping from cookie if server restarted
     await ensureMappingLoaded();
 
     const start = Date.now();
-    const response = await handlers[action](data, ctx);
+    const response = await handlers[action](data, adapter, crmCtx);
     const durationMs = Date.now() - start;
 
     // Audit: log every mutation action (fire-and-forget)
     if (shouldAudit(action)) {
       const resBody = await response.clone().json();
-      writeAuditLog(ctx, action, data, resBody.success ? "success" : "error", undefined, durationMs, requestId);
+      writeAuditLog(sfAuth, action, data, resBody.success ? "success" : "error", undefined, durationMs, requestId);
     }
 
     // Inject requestId into response
@@ -89,7 +82,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ...resBody, requestId }, { status: response.status });
 
   } catch (error) {
-    // Attempt to get ctx for audit logging (may fail if auth is the error)
+    // Attempt to get sfAuth for audit logging (may fail if auth is the error)
     let auditCtx: SFContext | null = null;
     try { auditCtx = await getAccessToken(); } catch { /* auth failed — can't audit to SF */ }
 

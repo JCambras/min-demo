@@ -64,8 +64,12 @@ import { taskHandlers } from "@/app/api/salesforce/handlers/tasks";
 import { householdHandlers } from "@/app/api/salesforce/handlers/households";
 import { query, update, createTask } from "@/lib/sf-client";
 import { validate } from "@/lib/sf-validation";
+import { SalesforceAdapter } from "@/lib/crm/adapters/salesforce";
+import type { CRMContext } from "@/lib/crm/port";
 
 const mockCtx = { accessToken: "mock-token", instanceUrl: "https://test.salesforce.com" };
+const adapter = new SalesforceAdapter();
+const crmCtx: CRMContext = { auth: mockCtx, instanceUrl: "https://test.salesforce.com" };
 
 // ═════════════════════════════════════════════════════════════════════════════
 // TASK HANDLERS
@@ -87,7 +91,7 @@ describe("taskHandlers", () => {
         .mockResolvedValueOnce(mockTasks)      // tasks query
         .mockResolvedValueOnce(mockHouseholds); // households query
 
-      const response = await taskHandlers.queryTasks({ limit: 200 }, mockCtx);
+      const response = await taskHandlers.queryTasks({ limit: 200 }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -112,7 +116,7 @@ describe("taskHandlers", () => {
         .mockResolvedValueOnce(threeTasks)
         .mockResolvedValueOnce(threeHouseholds);
 
-      const response = await taskHandlers.queryTasks({ limit: 2 }, mockCtx);
+      const response = await taskHandlers.queryTasks({ limit: 2 }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.tasks).toHaveLength(2);
@@ -124,7 +128,7 @@ describe("taskHandlers", () => {
     it("includes OFFSET in SOQL when offset > 0", async () => {
       (query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-      await taskHandlers.queryTasks({ limit: 50, offset: 100 }, mockCtx);
+      await taskHandlers.queryTasks({ limit: 50, offset: 100 }, adapter, crmCtx);
 
       const calls = (query as ReturnType<typeof vi.fn>).mock.calls;
       const taskSoql = calls[0][1] as string;
@@ -137,7 +141,7 @@ describe("taskHandlers", () => {
     it("omits OFFSET when offset is 0", async () => {
       (query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-      await taskHandlers.queryTasks({ limit: 50 }, mockCtx);
+      await taskHandlers.queryTasks({ limit: 50 }, adapter, crmCtx);
 
       const taskSoql = (query as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
       expect(taskSoql).not.toContain("OFFSET");
@@ -146,7 +150,7 @@ describe("taskHandlers", () => {
     it("includes Owner.Name in household SOQL for advisor resolution", async () => {
       (query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-      await taskHandlers.queryTasks({ limit: 10 }, mockCtx);
+      await taskHandlers.queryTasks({ limit: 10 }, adapter, crmCtx);
 
       const hhSoql = (query as ReturnType<typeof vi.fn>).mock.calls[1][1] as string;
       expect(hhSoql).toContain("Owner.Name");
@@ -160,7 +164,7 @@ describe("taskHandlers", () => {
         url: "https://test.salesforce.com/00T1234567890ABCDE",
       });
 
-      const response = await taskHandlers.completeTask({ taskId: "00T1234567890ABCDE" }, mockCtx);
+      const response = await taskHandlers.completeTask({ taskId: "00T1234567890ABCDE" }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -170,7 +174,7 @@ describe("taskHandlers", () => {
 
     it("rejects invalid Salesforce ID", async () => {
       await expect(
-        taskHandlers.completeTask({ taskId: "not-valid!" }, mockCtx)
+        taskHandlers.completeTask({ taskId: "not-valid!" }, adapter, crmCtx)
       ).rejects.toThrow("Invalid Salesforce ID");
     });
   });
@@ -184,7 +188,7 @@ describe("taskHandlers", () => {
 
       const response = await taskHandlers.createTask(
         { householdId: "0011234567890ABCDE", subject: "Follow up", status: "Not Started", priority: "High" },
-        mockCtx,
+        adapter, crmCtx,
       );
       const body = await response.json();
 
@@ -200,7 +204,7 @@ describe("taskHandlers", () => {
 
     it("rejects missing subject", async () => {
       await expect(
-        taskHandlers.createTask({ householdId: "0011234567890ABCDE" }, mockCtx)
+        taskHandlers.createTask({ householdId: "0011234567890ABCDE" }, adapter, crmCtx)
       ).rejects.toThrow("Missing required field: subject");
     });
   });
@@ -220,7 +224,7 @@ describe("householdHandlers", () => {
       ];
       (query as ReturnType<typeof vi.fn>).mockResolvedValue(mockResults);
 
-      const response = await householdHandlers.searchHouseholds({ query: "Smith" }, mockCtx);
+      const response = await householdHandlers.searchHouseholds({ query: "Smith" }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -238,7 +242,7 @@ describe("householdHandlers", () => {
       }));
       (query as ReturnType<typeof vi.fn>).mockResolvedValue(elevenResults);
 
-      const response = await householdHandlers.searchHouseholds({ query: "HH" }, mockCtx);
+      const response = await householdHandlers.searchHouseholds({ query: "HH" }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.households).toHaveLength(10);
@@ -250,7 +254,7 @@ describe("householdHandlers", () => {
 
       const response = await householdHandlers.searchHouseholds(
         { query: "Smith", limit: 5, offset: 20 },
-        mockCtx,
+        adapter, crmCtx,
       );
       const body = await response.json();
 
@@ -270,7 +274,7 @@ describe("householdHandlers", () => {
       ];
       (query as ReturnType<typeof vi.fn>).mockResolvedValue(mockContacts);
 
-      const response = await householdHandlers.searchContacts({ query: "Smith" }, mockCtx);
+      const response = await householdHandlers.searchContacts({ query: "Smith" }, adapter, crmCtx);
       const body = await response.json();
 
       expect(body.success).toBe(true);
@@ -280,7 +284,7 @@ describe("householdHandlers", () => {
     it("includes search term in SOQL LIKE clause", async () => {
       (query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-      await householdHandlers.searchContacts({ query: "Jones" }, mockCtx);
+      await householdHandlers.searchContacts({ query: "Jones" }, adapter, crmCtx);
 
       const soql = (query as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
       expect(soql).toContain("Jones");
@@ -297,7 +301,7 @@ describe("householdHandlers", () => {
 
       const response = await householdHandlers.getHouseholdDetail(
         { householdId: "0011234567890ABCDE" },
-        mockCtx,
+        adapter, crmCtx,
       );
       const body = await response.json();
 
@@ -316,7 +320,7 @@ describe("householdHandlers", () => {
 
       const response = await householdHandlers.getHouseholdDetail(
         { householdId: "0011234567890ABCDE" },
-        mockCtx,
+        adapter, crmCtx,
       );
       const body = await response.json();
 
@@ -326,7 +330,7 @@ describe("householdHandlers", () => {
 
     it("rejects invalid household ID", async () => {
       await expect(
-        householdHandlers.getHouseholdDetail({ householdId: "bad-id" }, mockCtx)
+        householdHandlers.getHouseholdDetail({ householdId: "bad-id" }, adapter, crmCtx)
       ).rejects.toThrow("Invalid Salesforce ID");
     });
   });

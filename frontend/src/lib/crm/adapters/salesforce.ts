@@ -281,7 +281,7 @@ export class SalesforceAdapter implements CRMPort {
     ctx: CRMContext,
     limit: number,
     offset: number,
-  ): Promise<{ tasks: CRMTask[]; households: CRMHousehold[]; hasMore: boolean }> {
+  ): Promise<{ tasks: CRMTask[]; households: CRMHousehold[]; tasksHasMore: boolean; householdsHasMore: boolean }> {
     try {
       const fetchLimit = limit + 1;
       const offsetClause = offset ? ` OFFSET ${offset}` : "";
@@ -303,7 +303,8 @@ export class SalesforceAdapter implements CRMPort {
       return {
         tasks: (tasksHasMore ? taskRecords.slice(0, limit) : taskRecords).map(mapTask),
         households: (hhHasMore ? hhRecords.slice(0, limit) : hhRecords).map(mapHousehold),
-        hasMore: tasksHasMore || hhHasMore,
+        tasksHasMore,
+        householdsHasMore: hhHasMore,
       };
     } catch (err) {
       wrapError(err);
@@ -386,8 +387,8 @@ export class SalesforceAdapter implements CRMPort {
   async createFinancialAccounts(
     ctx: CRMContext,
     inputs: CRMFinancialAccountInput[],
-  ): Promise<{ accounts: CRMRecord[]; fscAvailable: boolean }> {
-    const accounts: CRMRecord[] = [];
+  ): Promise<{ accounts: { id: string; url: string; accountType: string }[]; fscAvailable: boolean }> {
+    const accounts: { id: string; url: string; accountType: string }[] = [];
     let fscAvailable = true;
 
     for (const acct of inputs) {
@@ -404,7 +405,7 @@ export class SalesforceAdapter implements CRMPort {
           FinServ__Status__c: "New",
           FinServ__OpenDate__c: new Date().toISOString().split("T")[0],
         });
-        accounts.push({ id: record.id, url: record.url });
+        accounts.push({ id: record.id, url: record.url, accountType: acct.accountType });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "";
         if (msg.includes("INVALID_TYPE") || msg.includes("NOT_FOUND") || msg.includes("sObject type")) {
