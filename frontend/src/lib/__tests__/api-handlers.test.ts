@@ -454,6 +454,45 @@ describe("POST Dispatcher", () => {
     expect(response.status).toBe(400);
     expect(body.error.code).toBe("VALIDATION_ERROR");
   });
+
+  // ─── Request Tracing (Item 9) ─────────────────────────────────────────
+  it("includes requestId in successful responses", async () => {
+    (query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const response = await POST(makeRequest({ action: "queryTasks", data: { limit: 10 } }));
+    const body = await response.json();
+
+    expect(body.requestId).toBeDefined();
+    expect(body.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  it("includes requestId in error responses", async () => {
+    const response = await POST(makeRequest({ action: "nonExistentAction", data: {} }));
+    const body = await response.json();
+
+    expect(body.requestId).toBeDefined();
+    expect(typeof body.requestId).toBe("string");
+    expect(body.requestId.length).toBe(36); // UUID length
+  });
+
+  it("includes requestId in validation error responses", async () => {
+    const response = await POST(makeRequest({ action: "completeTask", data: { taskId: "bad!" } }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.requestId).toBeDefined();
+  });
+
+  it("generates unique requestId per request", async () => {
+    (query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const response1 = await POST(makeRequest({ action: "queryTasks", data: {} }));
+    const response2 = await POST(makeRequest({ action: "queryTasks", data: {} }));
+    const body1 = await response1.json();
+    const body2 = await response2.json();
+
+    expect(body1.requestId).not.toBe(body2.requestId);
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

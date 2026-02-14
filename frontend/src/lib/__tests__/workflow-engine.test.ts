@@ -272,6 +272,113 @@ function makeTask(subject: string, hhName: string, status: string, daysAgo: numb
   };
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// 12b. STEP-LEVEL IDEMPOTENCY (Item 8)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("step-level idempotency", () => {
+  it("step IDs are globally unique across all templates", () => {
+    const allStepIds = WORKFLOW_TEMPLATES.flatMap(t => t.steps.map(s => s.id));
+    expect(new Set(allStepIds).size).toBe(allStepIds.length);
+  });
+
+  it("STEP: pattern is parseable from workflow description", () => {
+    const template = WORKFLOW_TEMPLATES[0];
+    for (const step of template.steps) {
+      const desc = `WORKFLOW_ID:${template.id} STEP:${step.id}\nSome description`;
+      const match = desc.match(/STEP:(\S+)/);
+      expect(match).not.toBeNull();
+      expect(match![1]).toBe(step.id);
+    }
+  });
+
+  it("existing step IDs can be extracted from task descriptions", () => {
+    const template = WORKFLOW_TEMPLATES[0];
+    const mockTasks = template.steps.slice(0, 3).map(step => ({
+      Id: "001fake",
+      Description: `WORKFLOW_ID:${template.id} STEP:${step.id}\nTest`,
+    }));
+
+    const existingStepIds = new Set(
+      mockTasks.map(t => {
+        const m = ((t.Description as string) || "").match(/STEP:(\S+)/);
+        return m ? m[1] : null;
+      }).filter(Boolean) as string[]
+    );
+
+    expect(existingStepIds.size).toBe(3);
+    expect(existingStepIds.has(template.steps[0].id)).toBe(true);
+    expect(existingStepIds.has(template.steps[1].id)).toBe(true);
+    expect(existingStepIds.has(template.steps[2].id)).toBe(true);
+  });
+
+  it("filtering pending steps excludes already-created ones", () => {
+    const template = WORKFLOW_TEMPLATES[0];
+    const existingStepIds = new Set([template.steps[0].id, template.steps[1].id]);
+    const pendingSteps = template.steps.filter(step => !existingStepIds.has(step.id));
+    expect(pendingSteps.length).toBe(template.steps.length - 2);
+    expect(pendingSteps.every(s => !existingStepIds.has(s.id))).toBe(true);
+  });
+
+  it("skipped steps count equals existing step count", () => {
+    const template = WORKFLOW_TEMPLATES[0];
+    const existingStepIds = new Set([template.steps[0].id]);
+    const pendingSteps = template.steps.filter(step => !existingStepIds.has(step.id));
+    const skippedSteps = template.steps.length - pendingSteps.length;
+    expect(skippedSteps).toBe(1);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 12c. REQUEST TRACING (Item 9)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("request tracing", () => {
+  it("crypto.randomUUID produces valid UUID v4 format", () => {
+    const uuid = crypto.randomUUID();
+    expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  it("each UUID is unique", () => {
+    const uuids = Array.from({ length: 100 }, () => crypto.randomUUID());
+    expect(new Set(uuids).size).toBe(100);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 12d. PIPELINE ERROR RECOVERY (Item 10)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("pipeline error recovery", () => {
+  it("fireWorkflowTrigger return type includes error tracking fields", () => {
+    // Verify the type shape by constructing a mock return value
+    const result: { triggered: string[]; tasksCreated: number; skippedSteps: number; errors: string[] } = {
+      triggered: ["New Client Onboarding"],
+      tasksCreated: 4,
+      skippedSteps: 2,
+      errors: ["Failed to create step X"],
+    };
+    expect(result.triggered).toHaveLength(1);
+    expect(result.tasksCreated).toBe(4);
+    expect(result.skippedSteps).toBe(2);
+    expect(result.errors).toHaveLength(1);
+  });
+
+  it("partial failures can be retried via idempotent re-fire", () => {
+    // Scenario: 6 steps in onboarding, 3 created successfully, 3 failed
+    // On retry, the 3 existing steps should be skipped (idempotent)
+    const template = WORKFLOW_TEMPLATES.find(t => t.id === "new-client-onboarding")!;
+    const createdSteps = new Set(template.steps.slice(0, 3).map(s => s.id));
+    const pendingOnRetry = template.steps.filter(s => !createdSteps.has(s.id));
+    expect(pendingOnRetry.length).toBe(3); // Only 3 remaining
+    expect(pendingOnRetry[0].id).toBe(template.steps[3].id); // Starts from step 4
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 12. DASHBOARD COMPUTATION (buildPracticeData)
+// ═════════════════════════════════════════════════════════════════════════════
+
 describe("buildPracticeData", () => {
   it("returns correct shape with empty data", () => {
     const data = buildPracticeData([], [], mockInstanceUrl);

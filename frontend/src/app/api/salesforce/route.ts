@@ -43,6 +43,7 @@ const handlers: Record<string, Handler> = {
 export async function POST(request: Request) {
   let action: string | undefined;
   let data: unknown;
+  const requestId = crypto.randomUUID();
 
   try {
     const body = await request.json();
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
 
     if (typeof action !== "string" || !handlers[action]) {
       return NextResponse.json(
-        { success: false, error: { code: "UNKNOWN_ACTION", message: `Unknown action: ${action}` } },
+        { success: false, error: { code: "UNKNOWN_ACTION", message: `Unknown action: ${action}` }, requestId },
         { status: 400 }
       );
     }
@@ -68,10 +69,12 @@ export async function POST(request: Request) {
     // Audit: log every mutation action (fire-and-forget)
     if (shouldAudit(action)) {
       const resBody = await response.clone().json();
-      writeAuditLog(ctx, action, data, resBody.success ? "success" : "error", undefined, durationMs);
+      writeAuditLog(ctx, action, data, resBody.success ? "success" : "error", undefined, durationMs, requestId);
     }
 
-    return response;
+    // Inject requestId into response
+    const resBody = await response.json();
+    return NextResponse.json({ ...resBody, requestId }, { status: response.status });
 
   } catch (error) {
     // Attempt to get ctx for audit logging (may fail if auth is the error)
@@ -79,32 +82,32 @@ export async function POST(request: Request) {
     try { auditCtx = await getAccessToken(); } catch { /* auth failed — can't audit to SF */ }
 
     if (error instanceof SFValidationError) {
-      if (auditCtx && action && shouldAudit(action)) writeAuditLog(auditCtx, action, data, "error", error.message);
+      if (auditCtx && action && shouldAudit(action)) writeAuditLog(auditCtx, action, data, "error", error.message, undefined, requestId);
       return NextResponse.json(
-        { success: false, error: { code: error.code, message: error.message } },
+        { success: false, error: { code: error.code, message: error.message }, requestId },
         { status: 400 }
       );
     }
 
     if (error instanceof SFQueryError) {
-      console.error(`[SF Query Error] status=${error.status}: ${error.message}`);
+      console.error(`[SF Query Error] requestId=${requestId} status=${error.status}: ${error.message}`);
       return NextResponse.json(
-        { success: false, error: { code: error.code, message: error.message } },
+        { success: false, error: { code: error.code, message: error.message }, requestId },
         { status: 502 }
       );
     }
 
     if (error instanceof SFMutationError) {
-      console.error(`[SF Mutation Error] object=${error.objectType} status=${error.status}: ${error.message}`);
+      console.error(`[SF Mutation Error] requestId=${requestId} object=${error.objectType} status=${error.status}: ${error.message}`);
       return NextResponse.json(
-        { success: false, error: { code: error.code, message: error.message } },
+        { success: false, error: { code: error.code, message: error.message }, requestId },
         { status: 502 }
       );
     }
 
-    console.error("[Salesforce Error]", error);
+    console.error(`[Salesforce Error] requestId=${requestId}`, error);
     return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: error instanceof Error ? error.message : "Failed to connect to Salesforce" } },
+      { success: false, error: { code: "INTERNAL_ERROR", message: error instanceof Error ? error.message : "Failed to connect to Salesforce" }, requestId },
       { status: 500 }
     );
   }

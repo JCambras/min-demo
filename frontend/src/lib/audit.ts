@@ -25,6 +25,7 @@ export interface AuditEntry {
   result: "success" | "error";
   detail?: string;          // human-readable summary
   durationMs?: number;      // how long the action took
+  requestId?: string;       // unique request trace ID
 }
 
 // Actions that are read-only — no audit record needed
@@ -84,6 +85,7 @@ async function writeAuditRecord(ctx: SFContext, entry: AuditEntry, payload: Reco
     `MIN AUDIT LOG`,
     `Action: ${entry.action}`,
     `Result: ${entry.result}`,
+    entry.requestId ? `RequestId: ${entry.requestId}` : null,
     entry.actor ? `Actor: ${entry.actor}` : null,
     entry.detail ? `Detail: ${entry.detail}` : null,
     entry.durationMs ? `Duration: ${entry.durationMs}ms` : null,
@@ -121,6 +123,7 @@ export async function writeAuditLog(
   result: "success" | "error",
   detail?: string,
   durationMs?: number,
+  requestId?: string,
 ): Promise<void> {
   if (!shouldAudit(action)) return;
 
@@ -130,6 +133,7 @@ export async function writeAuditLog(
       result,
       detail,
       durationMs,
+      requestId,
       householdId: extractHouseholdId(data),
     }, (data as Record<string, unknown>) || {});
   } catch (err) {

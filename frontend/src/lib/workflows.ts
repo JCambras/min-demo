@@ -191,9 +191,11 @@ export async function fireWorkflowTrigger(
   householdId: string,
   householdName: string,
   options?: { subjectContains?: string }
-): Promise<{ triggered: string[]; tasksCreated: number }> {
+): Promise<{ triggered: string[]; tasksCreated: number; skippedSteps: number; errors: string[] }> {
   const triggered: string[] = [];
   let tasksCreated = 0;
+  let skippedSteps = 0;
+  const errors: string[] = [];
 
   // Find matching templates
   const matches = WORKFLOW_TEMPLATES.filter(t =>
@@ -203,17 +205,29 @@ export async function fireWorkflowTrigger(
   );
 
   for (const template of matches) {
-    // Check if this workflow is already running for this household
+    // Query existing workflow tasks for this template + household (step-level dedup)
     const existing = await query(ctx,
-      `SELECT Id FROM Task WHERE WhatId = '${sanitizeSOQL(householdId)}' AND Subject LIKE '${WORKFLOW_PREFIX}%' AND Description LIKE 'WORKFLOW_ID:${sanitizeSOQL(template.id)}%' LIMIT 1`
+      `SELECT Id, Description FROM Task WHERE WhatId = '${sanitizeSOQL(householdId)}' AND Subject LIKE '${WORKFLOW_PREFIX}%' AND Description LIKE 'WORKFLOW_ID:${sanitizeSOQL(template.id)}%' LIMIT 50`
     );
 
-    // Don't double-fire: if any workflow task exists for this template + household, skip
+    // Extract step IDs already created
+    const existingStepIds = new Set(
+      existing.map(t => {
+        const m = ((t.Description as string) || "").match(/STEP:(\S+)/);
+        return m ? m[1] : null;
+      }).filter(Boolean) as string[]
+    );
+
+    // Don't double-fire: if ALL steps already exist for this template, skip entirely
     // Unless it's the document expiration workflow, which should always check
-    if (existing.length > 0 && template.id !== "document-expiration") continue;
+    if (existing.length > 0 && existingStepIds.size >= template.steps.length && template.id !== "document-expiration") continue;
+
+    // Filter out steps that already have tasks (step-level idempotency)
+    const pendingSteps = template.steps.filter(step => !existingStepIds.has(step.id));
+    skippedSteps += template.steps.length - pendingSteps.length;
 
     // Create immediate tasks (delayDays === 0)
-    const immediateTasks: TaskInput[] = template.steps
+    const immediateTasks: TaskInput[] = pendingSteps
       .filter(step => step.delayDays === 0)
       .map(step => ({
         subject: `${step.taskSubject} — ${householdName}`,
@@ -224,7 +238,7 @@ export async function fireWorkflowTrigger(
       }));
 
     // Create scheduled tasks (delayDays > 0) with future due dates
-    const scheduledTasks: TaskInput[] = template.steps
+    const scheduledTasks: TaskInput[] = pendingSteps
       .filter(step => step.delayDays > 0)
       .map(step => {
         const dueDate = new Date();
@@ -241,13 +255,14 @@ export async function fireWorkflowTrigger(
 
     const allTasks = [...immediateTasks, ...scheduledTasks];
     if (allTasks.length > 0) {
-      const { records } = await createTasksBatch(ctx, allTasks);
+      const { records, errors: batchErrors } = await createTasksBatch(ctx, allTasks);
       tasksCreated += records.length;
+      errors.push(...batchErrors);
       triggered.push(template.name);
     }
   }
 
-  return { triggered, tasksCreated };
+  return { triggered, tasksCreated, skippedSteps, errors };
 }
 
 /**
