@@ -193,7 +193,7 @@ export default function Home() {
     case "planning": return wrap(<PlanningScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Planning");
     case "workflows": return wrap(<WorkflowScreen onExit={goHome} onNavigate={goTo} />, "Workflows");
     case "family": return wfCtx ? wrap(<FamilyScreen onExit={goBack} context={wfCtx} onNavigate={goTo} />, "Family overview") : null;
-    case "taskManager": return <TaskManager stats={state.stats} onBack={goHome} goTo={goTo} showToast={showToast} />;
+    case "taskManager": return wrap(<TaskManager stats={state.stats} onBack={goHome} goTo={goTo} showToast={showToast} />, "Task manager");
     case "settings": return <ErrorBoundary fallbackLabel="Settings error."><SettingsScreen onExit={goHome} /></ErrorBoundary>;
     case "home": break; // falls through to HomeScreen render below
     default: assertNever(screen, `Unhandled screen: ${screen}`);

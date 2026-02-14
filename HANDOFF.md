@@ -88,10 +88,10 @@ The demo shows an advisor onboarding a new client family — Min creates real Sa
 
 ### .env.local Contents
 ```
-SALESFORCE_CLIENT_ID=3MVG9dAEux2v1sLt4rZO1QO_PUW8YzhAOhVVuME1iTZiYfOmJ7QuPHKVIvZmKGyQZl3qkRuRPeK18QssTEShO
-SALESFORCE_CLIENT_SECRET=31A33B5F91D277327675E87D7D005D1995FA5DF1085CB83A36FD35D444BA1752
-SALESFORCE_USERNAME=jcambras.6e4c16baf114@agentforce.com
-SALESFORCE_PASSWORD=Hhc2ef4mVAoi5WOnbt0bxTFrQ2hqQgSd
+SALESFORCE_CLIENT_ID=your_connected_app_client_id
+SALESFORCE_CLIENT_SECRET=your_connected_app_client_secret
+SALESFORCE_USERNAME=your_salesforce_username
+SALESFORCE_PASSWORD=your_salesforce_password
 ```
 
 ---
