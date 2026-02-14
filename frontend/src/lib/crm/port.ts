@@ -62,6 +62,12 @@ export interface CRMPort {
     offset: number,
   ): Promise<{ households: CRMHousehold[]; hasMore: boolean }>;
 
+  /** Fetch a single household by ID (lightweight, no contacts/tasks). */
+  getHousehold(
+    ctx: CRMContext,
+    id: string,
+  ): Promise<CRMHousehold | null>;
+
   getHouseholdDetail(
     ctx: CRMContext,
     id: string,

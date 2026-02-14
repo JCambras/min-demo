@@ -19,8 +19,8 @@ export const onboardingHandlers: Record<string, Handler> = {
       data.fundingDetails.map(f => `• ${f.account}: ${f.detail}`).join("\n") +
       `\n\nPTE Required: ${data.pteRequired ? "YES — auto-generated" : "No"}`;
 
-    const detail = await adapter.getHouseholdDetail(ctx, data.householdId);
-    const prevDesc = (detail.household?.description) || "";
+    const household = await adapter.getHousehold(ctx, data.householdId);
+    const prevDesc = household?.description || "";
     const fullDesc = prevDesc ? `${prevDesc}\n\n───────────────────\n\n${note}` : note;
     await adapter.updateHousehold(ctx, data.householdId, { Description: fullDesc });
 

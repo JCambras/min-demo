@@ -26,12 +26,21 @@ export const financialAccountHandlers: Record<string, Handler> = {
   createFinancialAccounts: async (raw, adapter, ctx) => {
     const data = validate.createFinancialAccounts(raw);
 
-    const result = await adapter.createFinancialAccounts!(ctx,
+    if (!adapter.createFinancialAccounts) {
+      return NextResponse.json({
+        success: true,
+        financialAccounts: [],
+        fscAvailable: false,
+        count: 0,
+      });
+    }
+
+    const result = await adapter.createFinancialAccounts(ctx,
       data.accounts.map(acct => ({
         name: `${acct.owner} — ${acct.type}`,
         accountType: acct.type,
         owner: acct.owner,
-        amount: acct.amount ? parseFloat(acct.amount.replace(/[,$]/g, "")) : 0,
+        amount: acct.amount,
         householdId: data.householdId,
         primaryContactId: data.primaryContactId,
       }))
@@ -54,7 +63,18 @@ export const financialAccountHandlers: Record<string, Handler> = {
   queryFinancialAccounts: async (raw, adapter, ctx) => {
     const data = validate.queryFinancialAccounts(raw);
 
-    const result = await adapter.queryFinancialAccounts!(ctx, data.householdIds);
+    if (!adapter.queryFinancialAccounts) {
+      return NextResponse.json({
+        success: true,
+        fscAvailable: false,
+        accounts: [],
+        totalAum: 0,
+        aumByHousehold: {},
+        count: 0,
+      });
+    }
+
+    const result = await adapter.queryFinancialAccounts(ctx, data.householdIds);
 
     return NextResponse.json({
       success: true,

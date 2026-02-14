@@ -71,6 +71,15 @@ function wrapError(err: unknown): never {
   throw err;
 }
 
+/** Normalize currency strings ("$1,250,000") or numbers to numeric values. */
+function parseCurrencyAmount(raw?: string | number): number {
+  if (raw == null) return 0;
+  if (typeof raw === "number") return raw;
+  const cleaned = raw.replace(/[,$\s]/g, "");
+  const parsed = parseFloat(cleaned);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 // ─── Mapping Functions ──────────────────────────────────────────────────────
 
 function mapContact(raw: Record<string, unknown>): CRMContact {
@@ -207,6 +216,19 @@ export class SalesforceAdapter implements CRMPort {
         households: slice.map(mapHousehold),
         hasMore,
       };
+    } catch (err) {
+      wrapError(err);
+    }
+  }
+
+  async getHousehold(ctx: CRMContext, id: string): Promise<CRMHousehold | null> {
+    try {
+      const safeId = sanitizeSOQL(id);
+      const obj = orgQuery.householdObject();
+      const records = await query(sfCtx(ctx),
+        `SELECT Id, Name, Description, CreatedDate FROM ${obj} WHERE Id = '${safeId}' LIMIT 1`
+      );
+      return records[0] ? mapHousehold(records[0]) : null;
     } catch (err) {
       wrapError(err);
     }
@@ -401,7 +423,7 @@ export class SalesforceAdapter implements CRMPort {
           FinServ__TaxStatus__c: mapping.taxStatus,
           FinServ__Household__c: acct.householdId,
           FinServ__PrimaryOwner__c: acct.primaryContactId || undefined,
-          FinServ__Balance__c: acct.amount || undefined,
+          FinServ__Balance__c: parseCurrencyAmount(acct.amount) || undefined,
           FinServ__Status__c: "New",
           FinServ__OpenDate__c: new Date().toISOString().split("T")[0],
         });

@@ -98,7 +98,7 @@ export interface CRMFinancialAccountInput {
   name: string;
   accountType: string;
   owner: string;
-  amount?: number;
+  amount?: string | number;
   householdId: string;
   primaryContactId?: string;
 }

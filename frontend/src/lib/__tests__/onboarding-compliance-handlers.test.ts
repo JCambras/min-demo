@@ -90,9 +90,7 @@ describe("onboardingHandlers", () => {
 
     it("queries existing description and appends funding note", async () => {
       (query as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce([{ Id: VALID_HH_ID, Name: "Smith Household", Description: "Existing notes here" }])
-        .mockResolvedValueOnce([])  // contacts
-        .mockResolvedValueOnce([]); // tasks
+        .mockResolvedValueOnce([{ Id: VALID_HH_ID, Name: "Smith Household", Description: "Existing notes here" }]);
       (update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: VALID_HH_ID, url: `https://test.salesforce.com/${VALID_HH_ID}` });
       (createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "00T0000000TASK01", url: "https://test.salesforce.com/00T0000000TASK01" });
 
@@ -103,8 +101,8 @@ describe("onboardingHandlers", () => {
       expect(body.task).toBeDefined();
       expect(body.householdUrl).toContain(VALID_HH_ID);
 
-      // Should query existing description (adapter's getHouseholdDetail makes 3 query calls)
-      expect(query).toHaveBeenCalled();
+      // Should query existing description (adapter's getHousehold makes 1 query call)
+      expect(query).toHaveBeenCalledOnce();
 
       // Should update with concatenated description
       const updateCall = (update as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -119,9 +117,7 @@ describe("onboardingHandlers", () => {
 
     it("handles empty existing description", async () => {
       (query as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce([{ Id: VALID_HH_ID, Name: "Smith Household" }])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
+        .mockResolvedValueOnce([{ Id: VALID_HH_ID, Name: "Smith Household" }]);
       (update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: VALID_HH_ID, url: "" });
       (createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "00T0000000TASK01", url: "" });
 
@@ -135,9 +131,7 @@ describe("onboardingHandlers", () => {
 
     it("creates task with funding summary in subject", async () => {
       (query as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce([])  // household
-        .mockResolvedValueOnce([])  // contacts
-        .mockResolvedValueOnce([]); // tasks
+        .mockResolvedValueOnce([]);
       (update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: VALID_HH_ID, url: "" });
       (createTask as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "00T0000000TASK01", url: "" });
 
