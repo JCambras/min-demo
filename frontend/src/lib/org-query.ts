@@ -4,26 +4,23 @@
 // that works for THIS org's configuration. If no mapping exists, falls back
 // to the hardcoded demo patterns (Type = 'Household').
 //
-// This is the bridge between Schema Discovery and the query engine.
-// Handlers call orgQuery.householdFilter() instead of hardcoding WHERE clauses.
-//
-// Usage:
-//   import { orgQuery } from "@/lib/org-query";
-//   const filter = orgQuery.householdFilter();
-//   // → "RecordType.DeveloperName = 'IndustriesHousehold'" (FSC org)
-//   // → "Type = 'Household'" (standard org)
-//   // → "" (fallback, all accounts)
+// Persistence: OrgMapping is stored in an encrypted httpOnly cookie
+// (min_org_mapping) so it survives server restarts. On first query after
+// restart, the mapping is restored from the cookie automatically.
 
 import type { OrgMapping } from "./schema-discovery";
 
-// ─── In-Memory Mapping Store ────────────────────────────────────────────────
-// Set by the discovery endpoint after classification.
-// In production: encrypted cookie or database per-tenant.
+// ─── In-Memory Mapping Cache ────────────────────────────────────────────────
+// Hot cache for the current process. Backed by encrypted cookie.
 
 let cachedMapping: OrgMapping | null = null;
 
 export function setOrgMapping(mapping: OrgMapping): void {
   cachedMapping = mapping;
+  // Persist to cookie (fire-and-forget, called from server context)
+  persistMapping(mapping).catch(err =>
+    console.error("[org-query] Failed to persist mapping:", err)
+  );
 }
 
 export function getOrgMapping(): OrgMapping | null {
@@ -32,6 +29,81 @@ export function getOrgMapping(): OrgMapping | null {
 
 export function clearOrgMapping(): void {
   cachedMapping = null;
+  clearPersistedMapping().catch(() => {});
+}
+
+/**
+ * Restore mapping from cookie into memory. Called by handlers on first request
+ * after server restart. No-op if mapping is already in memory.
+ */
+export async function ensureMappingLoaded(): Promise<void> {
+  if (cachedMapping) return;
+  try {
+    const restored = await restoreMapping();
+    if (restored) {
+      cachedMapping = restored;
+      console.log("[org-query] Restored OrgMapping from cookie (org:", restored.orgId, "confidence:", restored.confidence, ")");
+    }
+  } catch {
+    // Cookie missing or corrupted — no mapping, use defaults
+  }
+}
+
+// ─── Cookie Persistence ─────────────────────────────────────────────────────
+// Uses dynamic import to avoid pulling Node crypto into client bundles.
+
+const MAPPING_COOKIE_NAME = "min_org_mapping";
+
+async function persistMapping(mapping: OrgMapping): Promise<void> {
+  // Lazy import — only runs on server
+  const { cookies } = await import("next/headers");
+  const crypto = await import("crypto");
+
+  const key = deriveKey(crypto);
+  const json = JSON.stringify(mapping);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(json, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const value = `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
+
+  const cookieStore = await cookies();
+  cookieStore.set(MAPPING_COOKIE_NAME, value, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 90 * 24 * 60 * 60, // 90 days — mapping is stable
+    path: "/",
+  });
+}
+
+async function restoreMapping(): Promise<OrgMapping | null> {
+  const { cookies } = await import("next/headers");
+  const crypto = await import("crypto");
+
+  const cookieStore = await cookies();
+  const cookie = cookieStore.get(MAPPING_COOKIE_NAME);
+  if (!cookie?.value) return null;
+
+  const [ivHex, tagHex, encHex] = cookie.value.split(":");
+  const key = deriveKey(crypto);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+  decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+  const json = decipher.update(Buffer.from(encHex, "hex"), undefined, "utf8") + decipher.final("utf8");
+  return JSON.parse(json) as OrgMapping;
+}
+
+async function clearPersistedMapping(): Promise<void> {
+  try {
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    cookieStore.delete(MAPPING_COOKIE_NAME);
+  } catch { /* not in server context */ }
+}
+
+function deriveKey(crypto: typeof import("crypto")): Buffer {
+  const secret = process.env.SF_COOKIE_SECRET || "min-demo-dev-key-change-in-prod!!";
+  return crypto.scryptSync(secret, "min-mapping-salt", 32);
 }
 
 // ─── Default Mapping (Demo Fallback) ────────────────────────────────────────

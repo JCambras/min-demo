@@ -20,6 +20,7 @@ import { taskHandlers } from "./handlers/tasks";
 import { onboardingHandlers } from "./handlers/onboarding";
 import { complianceHandlers, meetingHandlers } from "./handlers/compliance-meetings";
 import { financialAccountHandlers } from "./handlers/financial-accounts";
+import { ensureMappingLoaded } from "@/lib/org-query";
 
 // ─── Merged Handler Map ──────────────────────────────────────────────────────
 // Single lookup table assembled from domain modules.
@@ -56,6 +57,10 @@ export async function POST(request: Request) {
     }
 
     const ctx = await getAccessToken();
+
+    // Restore OrgMapping from cookie if server restarted
+    await ensureMappingLoaded();
+
     const start = Date.now();
     const response = await handlers[action](data, ctx);
     const durationMs = Date.now() - start;
