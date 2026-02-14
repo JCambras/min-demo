@@ -1,6 +1,6 @@
 "use client";
 import { useReducer, useEffect, useRef } from "react";
-import { Search, Loader2, Plus, Trash2, Check, ExternalLink, ChevronRight, Calendar, Clock, Users, MessageSquare } from "lucide-react";
+import { Search, Loader2, Plus, Trash2, Check, ExternalLink, ChevronRight, Calendar, Clock, Users, MessageSquare, Shield } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn, FieldLabel, SelectField } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
@@ -359,6 +359,17 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
                     </a>
                   ))}
                 </div>
+                {/* Next Best Action */}
+                {onNavigate && s.selectedHousehold && (
+                  <div className="max-w-sm mx-auto mt-8 mb-2 bg-emerald-50 border border-emerald-200/60 rounded-2xl p-4 flex items-start gap-3 text-left">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0"><Shield size={16} className="text-emerald-600" /></div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-emerald-900">Run compliance review</p>
+                      <p className="text-xs text-emerald-700/70 mt-0.5">Good time to verify compliance while the meeting details are fresh.</p>
+                      <button onClick={() => onNavigate!("compliance", { householdId: s.selectedHousehold!.id, familyName })} className="text-xs font-medium text-emerald-700 mt-2 hover:text-emerald-900 transition-colors">Run Compliance Review →</button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-3 justify-center mt-8">
                   {onNavigate && s.selectedHousehold && (
                     <>

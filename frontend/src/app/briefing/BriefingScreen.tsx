@@ -295,9 +295,38 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
             )}
 
             {s.step === "loading" && (
-              <div className="animate-fade-in text-center pt-16">
-                <Loader2 size={40} className="animate-spin text-slate-400 mx-auto mb-4" />
-                <p className="text-slate-400">Building briefing for {familyName}...</p>
+              <div className="animate-fade-in space-y-5">
+                {/* Header skeleton */}
+                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                  <div className="px-6 pt-6 pb-4">
+                    <div className="h-6 w-48 bg-slate-100 rounded animate-pulse mb-2" />
+                    <div className="h-3 w-32 bg-slate-100 rounded animate-pulse" />
+                  </div>
+                  <div className="grid grid-cols-4 border-t border-slate-100">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="px-4 py-3 text-center border-r border-slate-100 last:border-0">
+                        <div className="h-6 w-8 bg-slate-100 rounded animate-pulse mx-auto mb-1" />
+                        <div className="h-2 w-12 bg-slate-50 rounded animate-pulse mx-auto" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Narrative skeleton */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-2">
+                  <div className="h-3 w-full bg-slate-100 rounded animate-pulse" />
+                  <div className="h-3 w-5/6 bg-slate-100 rounded animate-pulse" />
+                  <div className="h-3 w-4/6 bg-slate-100 rounded animate-pulse" />
+                </div>
+                {/* Section skeletons */}
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
+                    <div className="h-3 w-24 bg-slate-100 rounded animate-pulse" />
+                    <div className="space-y-2">
+                      <div className="h-8 bg-slate-50 rounded-xl animate-pulse" />
+                      <div className="h-8 bg-slate-50 rounded-xl animate-pulse" />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 

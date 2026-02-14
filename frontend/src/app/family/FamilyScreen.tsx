@@ -339,6 +339,37 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
             })}
           </div>
 
+          {/* Next Best Action */}
+          {(() => {
+            if (!hasComplianceReview && daysSinceOnboard !== null && daysSinceOnboard >= 1) {
+              return (
+                <div className="mb-6 bg-emerald-50 border border-emerald-200/60 rounded-2xl p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0"><Shield size={16} className="text-emerald-600" /></div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-emerald-900">Run first compliance review</p>
+                    <p className="text-xs text-emerald-700/70 mt-0.5">No compliance review on file yet. Running one now documents your fiduciary due diligence.</p>
+                    <button onClick={() => onNavigate("compliance", context)} className="text-xs font-medium text-emerald-700 mt-2 hover:text-emerald-900 transition-colors">Run Compliance Review →</button>
+                  </div>
+                </div>
+              );
+            }
+            const now = Date.now();
+            const recentMeeting = meetingNotes.find(t => (now - new Date(t.CreatedDate).getTime()) < 60 * 86400000);
+            if (!recentMeeting && daysSinceOnboard !== null && daysSinceOnboard >= 7) {
+              return (
+                <div className="mb-6 bg-amber-50 border border-amber-200/60 rounded-2xl p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0"><MessageSquare size={16} className="text-amber-600" /></div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-900">No meeting logged in 60+ days</p>
+                    <p className="text-xs text-amber-700/70 mt-0.5">Schedule a check-in to keep the relationship strong and document your advisory touchpoints.</p>
+                    <button onClick={() => onNavigate("meeting", context)} className="text-xs font-medium text-amber-700 mt-2 hover:text-amber-900 transition-colors">Log Meeting →</button>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
           {/* Completed Tasks */}
           {completedTasks.length > 0 && (
             <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
