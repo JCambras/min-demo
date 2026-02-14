@@ -87,6 +87,7 @@ function makeBundle(overrides?: Partial<OrgMetadataBundle>): OrgMetadataBundle {
     apiCallsMade: 8,
     durationMs: 3200,
     errors: [],
+    accountTypeValues: [],
     ...overrides,
   };
 }
@@ -193,6 +194,43 @@ describe("Pattern 2: Account Type Picklist", () => {
 
   it("has good confidence (>= 0.80)", () => {
     expect(mapping.household.confidence).toBeGreaterThanOrEqual(0.80);
+  });
+});
+
+// ─── Pattern 2b: Data-Level Type Detection (unrestricted picklist) ──────────
+// This is the exact scenario in the demo org: Type = 'Household' exists in data
+// but isn't defined as a picklist value in the schema.
+
+describe("Pattern 2b: Data-Level Type Detection", () => {
+  const bundle = makeBundle({
+    accountTypeValues: [
+      { value: "Household", count: 22 },
+      { value: "Business", count: 8 },
+      { value: "Trust", count: 5 },
+    ],
+  });
+
+  const mapping = classifyOrgHeuristic(bundle);
+
+  it("detects Account as household object", () => {
+    expect(mapping.household.object).toBe("Account");
+  });
+
+  it("uses Type = Household from data", () => {
+    expect(mapping.household.filterField).toBe("Type");
+    expect(mapping.household.filterValue).toBe("Household");
+  });
+
+  it("has high confidence (>= 0.85)", () => {
+    expect(mapping.household.confidence).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it("does NOT fall through to the 40% fallback", () => {
+    expect(mapping.household.confidence).not.toBe(0.40);
+  });
+
+  it("has no 'no household pattern' warning", () => {
+    expect(mapping.warnings.some(w => /no household/i.test(w))).toBe(false);
   });
 });
 

@@ -74,6 +74,7 @@ export async function POST() {
       _debug: {
         recordTypeInfos: bundle.accountDescribe?.recordTypeInfos.filter(rt => rt.active),
         fscObjects: bundle.fscObjectsFound,
+        accountTypeValues: bundle.accountTypeValues,
         candidateObjects: bundle.candidateCustomObjects.map(o => ({
           name: o.name,
           label: o.label,

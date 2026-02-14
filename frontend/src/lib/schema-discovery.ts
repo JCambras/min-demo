@@ -120,6 +120,9 @@ export interface OrgMetadataBundle {
     recentTasks: number;
   };
 
+  // Actual Type values found in Account data (for orgs with unrestricted picklists)
+  accountTypeValues: { value: string; count: number }[];
+
   // Discovery metadata
   apiCallsMade: number;
   durationMs: number;
@@ -475,6 +478,25 @@ export async function discoverOrg(ctx: SFContext): Promise<OrgMetadataBundle> {
   const rtCount = (accountDescribe?.recordTypeInfos || []).filter(rt => rt.active && rt.developerName !== "Master").length;
   apiCallsMade += 4 + rtCount;
 
+  // ── Step 5b: Actual Account Type Values ───────────────────────────────────
+  // Salesforce orgs often have unrestricted picklists where values exist in
+  // data but not in the schema. Query actual Type values to catch these.
+  let accountTypeValues: { value: string; count: number }[] = [];
+  try {
+    const typeResults = await sfFetch(ctx,
+      "/query?q=" + encodeURIComponent(
+        "SELECT Type, COUNT(Id) cnt FROM Account WHERE Type != null GROUP BY Type ORDER BY COUNT(Id) DESC LIMIT 20"
+      )
+    );
+    apiCallsMade++;
+    if (typeResults.ok) {
+      const records = (typeResults.data as { records: { Type: string; cnt: number }[] }).records || [];
+      accountTypeValues = records.map(r => ({ value: r.Type, count: r.cnt }));
+    }
+  } catch {
+    errors.push("Failed to query Account Type values");
+  }
+
   // ── Assemble Bundle ───────────────────────────────────────────────────────
   const durationMs = Date.now() - startTime;
 
@@ -503,6 +525,7 @@ export async function discoverOrg(ctx: SFContext): Promise<OrgMetadataBundle> {
     activeTriggers,
     activeValidationRules,
     recordCounts,
+    accountTypeValues,
     apiCallsMade,
     durationMs,
     errors,
@@ -685,6 +708,26 @@ function detectHousehold(
       serviceTierField: findServiceTierField(acct),
       clientStatusField: findStatusField(acct),
       confidence: 0.85,
+    };
+  }
+
+  // Pattern 2b: Account records with Type = 'Household' in actual data
+  // (catches unrestricted picklists where the value exists in data but not in schema)
+  const dataHouseholdType = bundle.accountTypeValues.find(
+    tv => /household/i.test(tv.value)
+  );
+  if (dataHouseholdType && dataHouseholdType.count > 0) {
+    return {
+      object: "Account",
+      recordTypeDeveloperName: null,
+      filterField: "Type",
+      filterValue: dataHouseholdType.value,
+      nameField: "Name",
+      primaryAdvisorField: findAdvisorField(acct),
+      totalAumField: findAumField(acct),
+      serviceTierField: findServiceTierField(acct),
+      clientStatusField: findStatusField(acct),
+      confidence: 0.90,
     };
   }
 
