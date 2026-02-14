@@ -128,6 +128,38 @@ export async function query(ctx: SFContext, soql: string): Promise<Record<string
 }
 
 /**
+ * Execute a SOQL query and return records with pagination metadata.
+ * Used by handlers that need to communicate page boundaries to the client.
+ */
+export interface PaginatedResult {
+  records: Record<string, unknown>[];
+  totalSize: number;
+  done: boolean;
+}
+
+export async function queryPaginated(ctx: SFContext, soql: string): Promise<PaginatedResult> {
+  const response = await fetch(
+    `${ctx.instanceUrl}/services/data/${SF_API_VERSION}/query?q=${encodeURIComponent(soql)}`,
+    { headers: { Authorization: `Bearer ${ctx.accessToken}` } }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new SFQueryError(
+      extractSFError(result, "Query failed"),
+      response.status
+    );
+  }
+
+  return {
+    records: (result.records as Record<string, unknown>[]) || [],
+    totalSize: result.totalSize ?? 0,
+    done: result.done ?? true,
+  };
+}
+
+/**
  * Create a new Salesforce record. Returns { id, url }.
  */
 export async function create(

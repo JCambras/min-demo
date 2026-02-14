@@ -214,21 +214,23 @@ export const orgQuery = {
    * Build a complete SOQL query to list households.
    * Replaces hardcoded queries in handlers.
    */
-  listHouseholds(fields: string, limit: number): string {
+  listHouseholds(fields: string, limit: number, offset?: number): string {
     const obj = orgQuery.householdObject();
     const filter = orgQuery.householdFilterWhere();
-    return `SELECT ${fields} FROM ${obj}${filter} ORDER BY CreatedDate DESC LIMIT ${limit}`;
+    const offsetClause = offset ? ` OFFSET ${offset}` : "";
+    return `SELECT ${fields} FROM ${obj}${filter} ORDER BY CreatedDate DESC LIMIT ${limit}${offsetClause}`;
   },
 
   /**
    * Build a SOQL query to search households by name.
    */
-  searchHouseholds(fields: string, nameQuery: string, limit: number): string {
+  searchHouseholds(fields: string, nameQuery: string, limit: number, offset?: number): string {
     const obj = orgQuery.householdObject();
     const baseFilter = orgQuery.householdFilter();
     const nameClause = `Name LIKE '%${nameQuery}%'`;
     const where = baseFilter ? `WHERE ${baseFilter} AND ${nameClause}` : `WHERE ${nameClause}`;
-    return `SELECT ${fields} FROM ${obj} ${where} ORDER BY CreatedDate DESC LIMIT ${limit}`;
+    const offsetClause = offset ? ` OFFSET ${offset}` : "";
+    return `SELECT ${fields} FROM ${obj} ${where} ORDER BY CreatedDate DESC LIMIT ${limit}${offsetClause}`;
   },
 
   /**

@@ -75,13 +75,18 @@ export const householdHandlers: Record<string, Handler> = {
   searchHouseholds: async (raw, ctx) => {
     const data = validate.searchHouseholds(raw);
     const q = sanitizeSOQL(data.query);
-    const obj = orgQuery.householdObject();
+    const fetchLimit = data.limit + 1;
     const soql = orgQuery.searchHouseholds(
       `Id, Name, Description, CreatedDate, (SELECT FirstName FROM Contacts ORDER BY CreatedDate ASC LIMIT 4)`,
-      q, 10
+      q, fetchLimit, data.offset
     );
-    const households = await query(ctx, soql);
-    return NextResponse.json({ success: true, households });
+    const allHouseholds = await query(ctx, soql);
+    const hasMore = allHouseholds.length > data.limit;
+    return NextResponse.json({
+      success: true,
+      households: hasMore ? allHouseholds.slice(0, data.limit) : allHouseholds,
+      pagination: { offset: data.offset, limit: data.limit, hasMore },
+    });
   },
 
   getHouseholdDetail: async (raw, ctx) => {

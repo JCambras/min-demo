@@ -289,15 +289,15 @@ describe("validate", () => {
 
   describe("queryTasks", () => {
     it("defaults limit to 200", () => {
-      expect(validate.queryTasks({})).toEqual({ limit: 200 });
+      expect(validate.queryTasks({})).toEqual({ limit: 200, offset: 0 });
     });
 
     it("clamps limit to 500 max", () => {
-      expect(validate.queryTasks({ limit: 9999 })).toEqual({ limit: 500 });
+      expect(validate.queryTasks({ limit: 9999 })).toEqual({ limit: 500, offset: 0 });
     });
 
     it("clamps limit to 1 min", () => {
-      expect(validate.queryTasks({ limit: -5 })).toEqual({ limit: 1 });
+      expect(validate.queryTasks({ limit: -5 })).toEqual({ limit: 1, offset: 0 });
     });
   });
 

@@ -120,7 +120,7 @@ export interface SendDocusignInput {
   primaryContactId?: string;
   envelopes: { name: string; signers: string[]; emailSubject: string }[];
 }
-export interface SearchHouseholdsInput { query: string }
+export interface SearchHouseholdsInput { query: string; limit: number; offset: number }
 export interface GetHouseholdDetailInput { householdId: string }
 export interface RecordComplianceReviewInput {
   householdId: string;
@@ -131,7 +131,7 @@ export interface RecordComplianceReviewInput {
   reviewerName?: string;
   nextReviewDate?: string;
 }
-export interface QueryTasksInput { limit?: number }
+export interface QueryTasksInput { limit: number; offset: number }
 export interface RecordMeetingNoteInput {
   householdId: string;
   familyName: string;
@@ -291,7 +291,13 @@ export const validate = {
 
   searchHouseholds(raw: unknown): SearchHouseholdsInput {
     const d = asRecord(raw);
-    return { query: requireString(d, "query", 100) };
+    const limit = optionalNumber(d, "limit", 10);
+    const offset = optionalNumber(d, "offset", 0);
+    return {
+      query: requireString(d, "query", 100),
+      limit: Math.min(Math.max(limit || 10, 1), 50),
+      offset: Math.min(Math.max(offset || 0, 0), 2000),
+    };
   },
 
   getHouseholdDetail(raw: unknown): GetHouseholdDetailInput {
@@ -323,8 +329,11 @@ export const validate = {
   queryTasks(raw: unknown): QueryTasksInput {
     const d = asRecord(raw);
     const limit = optionalNumber(d, "limit", 200);
-    // Clamp limit to prevent abuse
-    return { limit: Math.min(Math.max(limit || 200, 1), 500) };
+    const offset = optionalNumber(d, "offset", 0);
+    return {
+      limit: Math.min(Math.max(limit || 200, 1), 500),
+      offset: Math.min(Math.max(offset || 0, 0), 2000),
+    };
   },
 
   recordMeetingNote(raw: unknown): RecordMeetingNoteInput {

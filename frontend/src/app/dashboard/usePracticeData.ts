@@ -12,6 +12,7 @@ export interface SFTask {
 
 export interface SFHousehold {
   Id: string; Name: string; CreatedDate: string; Description?: string;
+  Owner?: { Name: string };
 }
 
 export interface AdvisorScore {
@@ -138,9 +139,22 @@ function getAdvisor(desc?: string): string {
 function assignDemoAdvisors(households: SFHousehold[]): Map<string, string> {
   const assignments = new Map<string, string>();
   let rrIdx = 0;
+
+  // Detect diverse ownership: if multiple distinct owners exist, this is a real org
+  // with proper advisor assignments. If all records share one owner (demo API user), skip.
+  const owners = new Set(households.map(h => h.Owner?.Name).filter(Boolean));
+  const hasRealOwnership = owners.size > 1;
+
   for (const h of households) {
+    // 1. Real org: use Owner.Name when ownership is diverse (schema-aware advisor field)
+    if (hasRealOwnership && h.Owner?.Name) {
+      assignments.set(h.Name, h.Owner.Name);
+      continue;
+    }
+    // 2. Demo fallback: parse advisor from Description text
     const parsed = getAdvisor(h.Description);
     if (parsed) { assignments.set(h.Name, parsed); }
+    // 3. Round-robin fallback for records with no advisor info
     else { assignments.set(h.Name, KNOWN_ADVISORS[rrIdx % KNOWN_ADVISORS.length]); rrIdx++; }
   }
   return assignments;
