@@ -239,32 +239,32 @@ describe("Pattern 2b: Data-Level Type Detection", () => {
 describe("Pattern 3: Custom Household Object", () => {
   const bundle = makeBundle({
     candidateCustomObjects: [{
-      name: "Client_Group__c",
-      label: "Client Group",
+      name: "Service_Team__c",
+      label: "Service Team",
       fields: [
-        { name: "Name", label: "Group Name", type: "string", referenceTo: [] },
+        { name: "Name", label: "Team Name", type: "string", referenceTo: [] },
         { name: "Primary_RM__c", label: "Primary Relationship Manager", type: "reference", referenceTo: ["User"] },
         { name: "Total_Book__c", label: "Total Book Size", type: "currency", referenceTo: [] },
         { name: "Service_Level__c", label: "Service Level", type: "picklist", referenceTo: [] },
       ],
       childRelationships: [
-        { childSObject: "Contact", field: "Client_Group__c" },
+        { childSObject: "Contact", field: "Service_Team__c" },
       ],
     }],
     allObjects: [
       { name: "Account", label: "Account", custom: false, queryable: true },
       { name: "Contact", label: "Contact", custom: false, queryable: true },
-      { name: "Client_Group__c", label: "Client Group", custom: true, queryable: true },
+      { name: "Service_Team__c", label: "Service Team", custom: true, queryable: true },
     ],
   });
 
-  // Note: Client_Group__c won't match the regex for household keywords
-  // because it doesn't contain "household", "hh_", or "family".
+  // Note: Service_Team__c won't match the regex for household keywords
+  // (household, hh_, family, client_group, relationship_group).
   // This tests the boundary — LLM classification (Phase 2) would catch this.
   const mapping = classifyOrgHeuristic(bundle);
 
   it("falls back when custom object name doesn't match household keywords", () => {
-    // client_group doesn't match the heuristic — this is expected.
+    // service_team doesn't match the heuristic — this is expected.
     // This is exactly the case LLM classification handles better.
     expect(mapping.household.object).toBe("Account");
     expect(mapping.household.confidence).toBeLessThan(0.50);
