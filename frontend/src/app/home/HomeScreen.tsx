@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo } from "lucide-react";
+import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap } from "lucide-react";
 import { DemoMode, TourButton } from "../tour/DemoMode";
 import { callSF } from "@/lib/salesforce";
 import { log } from "@/lib/logger";
@@ -32,6 +32,7 @@ const ALL_ACTIONS: { id: string; label: string; desc: string; Icon: React.Elemen
   { id: "onboard", label: "Onboard New Client", desc: "Client records & setup", Icon: UserPlus, roles: ["operations", "principal"] },
   { id: "open", label: "Open Account", desc: "Paperwork & e-signatures", Icon: Briefcase, roles: ["operations", "principal"] },
   { id: "taskManager", label: "Task Manager", desc: "View, assign & complete tasks", Icon: ListTodo, roles: ["operations", "principal"] },
+  { id: "workflows", label: "Workflow Automation", desc: "Active chains & templates", Icon: Zap, roles: ["operations", "principal"] },
   { id: "dashboard", label: "Full Dashboard", desc: "Detailed practice view", Icon: ChevronRight, roles: ["principal"] },
 ];
 
@@ -104,6 +105,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     else if (id === "onboard") dispatch({ type: "SET_SCREEN", screen: "onboard" });
     else if (id === "dashboard") dispatch({ type: "SET_SCREEN", screen: "dashboard" });
     else if (id === "taskManager") dispatch({ type: "SET_SCREEN", screen: "taskManager" });
+    else if (id === "workflows") dispatch({ type: "SET_SCREEN", screen: "workflows" });
     else goTo(id as Screen);
   };
 

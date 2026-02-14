@@ -13,9 +13,11 @@ import { DashboardScreen } from "./dashboard/DashboardScreen";
 import { FamilyScreen } from "./family/FamilyScreen";
 import { TaskManager } from "./tasks/TaskManager";
 import { PlanningScreen } from "./planning/PlanningScreen";
+import { WorkflowScreen } from "./workflows/WorkflowScreen";
 import { DemoMode } from "./tour/DemoMode";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { useIdleTimeout } from "@/lib/use-idle-timeout";
 import { assertNever } from "@/lib/types";
 import type { UserRole } from "@/lib/types";
 
@@ -60,6 +62,12 @@ export default function Home() {
   const { state, dispatch, goTo, goBack, goHome, loadStats, showToast } = useAppState();
   const { setupStep, role, advisorName, screen, wfCtx, handoff, sfConnected, toast, tourActive } = state;
   const [showSecurity, setShowSecurity] = useState(false);
+
+  // Session timeout: 15 min idle → back to role selection (SEC/FINRA compliance)
+  useIdleTimeout(
+    () => dispatch({ type: "SET_SETUP_STEP", step: "role" }),
+    setupStep === "ready", // Only active after setup is complete
+  );
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SETUP SCREENS
@@ -178,6 +186,7 @@ export default function Home() {
     case "query": return wrap(<QueryScreen onExit={goHome} initialQuery="" />, "Query", false);
     case "dashboard": return wrap(<DashboardScreen onExit={goHome} onNavigate={goTo} firmName={FIRM_NAME} role={role} advisorName={advisorName} />, "Dashboard");
     case "planning": return wrap(<PlanningScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Planning");
+    case "workflows": return wrap(<WorkflowScreen onExit={goHome} onNavigate={goTo} />, "Workflows");
     case "family": return wfCtx ? wrap(<FamilyScreen onExit={goBack} context={wfCtx} onNavigate={goTo} />, "Family overview") : null;
     case "taskManager": return <TaskManager stats={state.stats} onBack={goHome} goTo={goTo} showToast={showToast} />;
     case "settings": return <ErrorBoundary fallbackLabel="Settings error."><SettingsScreen onExit={goHome} /></ErrorBoundary>;

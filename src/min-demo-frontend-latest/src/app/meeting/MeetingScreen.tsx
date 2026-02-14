@@ -1,0 +1,420 @@
+"use client";
+import { useReducer, useEffect, useRef } from "react";
+import { Search, Loader2, Plus, Trash2, Check, ExternalLink, ChevronRight, Calendar, Clock, Users, MessageSquare } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ContinueBtn, FieldLabel, SelectField } from "@/components/shared/FormControls";
+import { FlowHeader } from "@/components/shared/FlowHeader";
+import { ProgressSteps } from "@/components/shared/ProgressSteps";
+import { callSF } from "@/lib/salesforce";
+import type { Screen, WorkflowContext } from "@/lib/types";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface HHResult {
+  id: string;
+  name: string;
+  contactNames: string;
+  createdDate: string;
+  primaryContactId?: string;
+}
+
+// ─── State ───────────────────────────────────────────────────────────────────
+
+type Step = "search" | "compose" | "saving" | "complete";
+
+const MEETING_TYPES = ["Annual Review", "Quarterly Check-in", "Financial Plan Update", "Tax Planning", "Estate Planning", "Insurance Review", "New Money Discussion", "Onboarding Follow-up", "Phone Call", "Other"];
+const DURATIONS = ["15 min", "30 min", "45 min", "60 min", "90 min"];
+
+interface State {
+  step: Step;
+  searchQuery: string;
+  isSearching: boolean;
+  searchResults: HHResult[];
+  selectedHousehold: HHResult | null;
+  meetingType: string;
+  meetingDate: string;
+  duration: string;
+  attendees: string;
+  notes: string;
+  followUps: string[];
+  newFollowUp: string;
+  followUpDays: number;
+  isProcessing: boolean;
+  saveStep: number;
+  evidence: { label: string; url?: string }[];
+  showRightPane: boolean;
+}
+
+const today = new Date().toISOString().split("T")[0];
+
+const init: State = {
+  step: "search", searchQuery: "", isSearching: false, searchResults: [],
+  selectedHousehold: null, meetingType: "", meetingDate: today,
+  duration: "30 min", attendees: "", notes: "", followUps: [],
+  newFollowUp: "", followUpDays: 7, isProcessing: false, saveStep: 0,
+  evidence: [], showRightPane: false,
+};
+
+type Action =
+  | { type: "SET_STEP"; step: Step }
+  | { type: "SET_QUERY"; v: string }
+  | { type: "SET_SEARCHING"; v: boolean }
+  | { type: "SET_RESULTS"; v: HHResult[] }
+  | { type: "SET_HOUSEHOLD"; v: HHResult }
+  | { type: "SET_MEETING_TYPE"; v: string }
+  | { type: "SET_DATE"; v: string }
+  | { type: "SET_DURATION"; v: string }
+  | { type: "SET_ATTENDEES"; v: string }
+  | { type: "SET_NOTES"; v: string }
+  | { type: "ADD_FOLLOW_UP" }
+  | { type: "REMOVE_FOLLOW_UP"; idx: number }
+  | { type: "SET_NEW_FOLLOW_UP"; v: string }
+  | { type: "SET_FOLLOW_UP_DAYS"; v: number }
+  | { type: "SET_PROCESSING"; v: boolean }
+  | { type: "SET_SAVE_STEP"; v: number }
+  | { type: "ADD_EVIDENCE"; ev: { label: string; url?: string } }
+  | { type: "SET_RIGHT_PANE"; v: boolean }
+  | { type: "RESET" };
+
+function reducer(s: State, a: Action): State {
+  switch (a.type) {
+    case "SET_STEP": return { ...s, step: a.step };
+    case "SET_QUERY": return { ...s, searchQuery: a.v };
+    case "SET_SEARCHING": return { ...s, isSearching: a.v };
+    case "SET_RESULTS": return { ...s, searchResults: a.v };
+    case "SET_HOUSEHOLD": return { ...s, selectedHousehold: a.v, step: "compose" };
+    case "SET_MEETING_TYPE": return { ...s, meetingType: a.v };
+    case "SET_DATE": return { ...s, meetingDate: a.v };
+    case "SET_DURATION": return { ...s, duration: a.v };
+    case "SET_ATTENDEES": return { ...s, attendees: a.v };
+    case "SET_NOTES": return { ...s, notes: a.v };
+    case "ADD_FOLLOW_UP": return s.newFollowUp.trim() ? { ...s, followUps: [...s.followUps, s.newFollowUp.trim()], newFollowUp: "" } : s;
+    case "REMOVE_FOLLOW_UP": return { ...s, followUps: s.followUps.filter((_, i) => i !== a.idx) };
+    case "SET_NEW_FOLLOW_UP": return { ...s, newFollowUp: a.v };
+    case "SET_FOLLOW_UP_DAYS": return { ...s, followUpDays: a.v };
+    case "SET_PROCESSING": return { ...s, isProcessing: a.v };
+    case "SET_SAVE_STEP": return { ...s, saveStep: a.v };
+    case "ADD_EVIDENCE": return { ...s, evidence: [...s.evidence, a.ev] };
+    case "SET_RIGHT_PANE": return { ...s, showRightPane: a.v };
+    case "RESET": return { ...init };
+    default: return s;
+  }
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: () => void; initialContext?: WorkflowContext | null; onNavigate?: (screen: Screen, ctx?: WorkflowContext) => void }) {
+  const [s, d] = useReducer(reducer, init);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+  const familyName = s.selectedHousehold?.name?.replace(" Household", "") || "Client";
+
+  // Auto-select household from workflow context
+  useEffect(() => {
+    if (initialContext && s.step === "search") {
+      d({ type: "SET_HOUSEHOLD", v: { id: initialContext.householdId, name: `${initialContext.familyName} Household`, createdDate: "", contactNames: "", primaryContactId: initialContext.primaryContactId } });
+    }
+  }, [initialContext, s.step]);
+
+  // Debounced search
+  useEffect(() => {
+    if (s.searchQuery.length < 2 || s.step !== "search") { d({ type: "SET_RESULTS", v: [] }); return; }
+    d({ type: "SET_SEARCHING", v: true });
+    const t = setTimeout(async () => {
+      try {
+        const res = await callSF("searchHouseholds", { query: s.searchQuery });
+        if (res.success) d({ type: "SET_RESULTS", v: res.households.map((h: { Id: string; Name: string; Description: string; CreatedDate: string; Contacts?: { records: { FirstName: string; Id: string }[] } }) => ({
+          id: h.Id, name: h.Name, createdDate: new Date(h.CreatedDate).toLocaleDateString(),
+          contactNames: h.Contacts?.records?.map(c => c.FirstName).filter(Boolean).join(" & ") || "",
+          primaryContactId: h.Contacts?.records?.[0]?.Id || undefined,
+        })) });
+      } catch { /* swallow */ }
+      d({ type: "SET_SEARCHING", v: false });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [s.searchQuery, s.step]);
+
+  // Auto-focus notes when entering compose
+  useEffect(() => {
+    if (s.step === "compose" && notesRef.current) {
+      setTimeout(() => notesRef.current?.focus(), 300);
+    }
+  }, [s.step]);
+
+  const saveMeeting = async () => {
+    if (!s.selectedHousehold || !s.notes.trim()) return;
+    d({ type: "SET_PROCESSING", v: true });
+    d({ type: "SET_STEP", step: "saving" });
+
+    const steps = [
+      {
+        label: "Saving meeting note",
+        fn: async () => {
+          const res = await callSF("recordMeetingNote", {
+            householdId: s.selectedHousehold!.id,
+            contactId: s.selectedHousehold!.primaryContactId,
+            familyName,
+            meetingType: s.meetingType,
+            meetingDate: s.meetingDate,
+            duration: s.duration,
+            attendees: s.attendees || `Advisor + ${familyName}`,
+            notes: s.notes,
+            followUps: s.followUps,
+            followUpDays: s.followUpDays,
+          });
+          if (res.success) {
+            d({ type: "ADD_EVIDENCE", ev: { label: "Meeting note recorded", url: res.task.url } });
+            if (res.followUpCount > 0) {
+              d({ type: "ADD_EVIDENCE", ev: { label: `${res.followUpCount} follow-up task${res.followUpCount > 1 ? "s" : ""} created` } });
+            }
+          }
+        },
+      },
+    ];
+
+    try {
+      for (const [i, step] of steps.entries()) {
+        d({ type: "SET_SAVE_STEP", v: i + 1 });
+        await step.fn();
+      }
+      d({ type: "SET_SAVE_STEP", v: steps.length + 1 });
+      setTimeout(() => d({ type: "SET_STEP", step: "complete" }), 600);
+    } catch (err) {
+      console.error(err);
+      d({ type: "ADD_EVIDENCE", ev: { label: `Error: ${err instanceof Error ? err.message : "Unknown"}` } });
+      d({ type: "SET_STEP", step: "compose" });
+    } finally {
+      d({ type: "SET_PROCESSING", v: false });
+    }
+  };
+
+  const goBack = () => {
+    if (s.step === "search") { d({ type: "RESET" }); onExit(); }
+    else if (s.step === "compose") d({ type: "SET_STEP", step: "search" });
+    else if (s.step === "complete") { d({ type: "RESET" }); onExit(); }
+    else { d({ type: "RESET" }); onExit(); }
+  };
+
+  const stepLabels: Record<string, string> = { search: "Select Client", compose: "Write Notes", saving: "Saving", complete: "Done" };
+  const pct = s.step === "search" ? 25 : s.step === "compose" ? 50 : s.step === "saving" ? 75 : 100;
+  const canSave = s.notes.trim().length > 0;
+
+  return (
+    <div className="flex h-screen bg-[#fafafa]">
+      <div className="w-full lg:w-[70%] flex flex-col">
+        <FlowHeader title="Meeting Logs" familyName={s.step !== "search" ? familyName : undefined} stepLabel={stepLabels[s.step] || ""} progressPct={pct} onBack={goBack} onShowPane={() => d({ type: "SET_RIGHT_PANE", v: true })} hasIndicator={s.evidence.length > 0} />
+
+        <div className="flex-1 overflow-y-auto px-4 sm:px-8 pt-4 pb-16">
+          <div className="max-w-2xl w-full mx-auto">
+
+            {/* ─── Search ─── */}
+            {s.step === "search" && (
+              <div className="animate-fade-in">
+                <h2 className="text-3xl font-light text-slate-900 mb-2">Meeting Logs</h2>
+                <p className="text-slate-400 mb-8">Which client did you meet with?</p>
+                <div className="relative">
+                  <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Input className="h-14 text-lg rounded-xl pl-11" placeholder="Search households..." value={s.searchQuery} onChange={e => d({ type: "SET_QUERY", v: e.target.value })} autoFocus />
+                  {s.isSearching && <Loader2 size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />}
+                </div>
+                {s.searchQuery.length >= 2 && (
+                  <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                    {s.searchResults.length === 0 ? (
+                      <p className="px-4 py-6 text-sm text-slate-400 text-center">{s.isSearching ? "Searching Salesforce..." : `No households matching \u201c${s.searchQuery}\u201d`}</p>
+                    ) : s.searchResults.map((h, i) => (
+                      <button key={i} onClick={() => d({ type: "SET_HOUSEHOLD", v: h })}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-slate-800">{h.name}</p>
+                          <ChevronRight size={16} className="text-slate-300" />
+                        </div>
+                        <p className="text-sm text-slate-500">{h.contactNames ? `${h.contactNames} · ` : ""}Created {h.createdDate}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ─── Compose ─── */}
+            {s.step === "compose" && (
+              <div className="animate-fade-in space-y-6">
+                <div>
+                  <h2 className="text-3xl font-light text-slate-900 mb-2">{familyName} Meeting</h2>
+                  <p className="text-slate-400">Capture what happened and any follow-ups.</p>
+                </div>
+
+                {/* Meeting metadata — compact row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <FieldLabel label="Meeting type" />
+                    <SelectField value={s.meetingType} onChange={v => d({ type: "SET_MEETING_TYPE", v })} options={MEETING_TYPES} />
+                  </div>
+                  <div>
+                    <FieldLabel label="Date" />
+                    <Input type="date" className="h-11 rounded-xl" value={s.meetingDate} onChange={e => d({ type: "SET_DATE", v: e.target.value })} />
+                  </div>
+                  <div>
+                    <FieldLabel label="Duration" />
+                    <SelectField value={s.duration} onChange={v => d({ type: "SET_DURATION", v })} options={DURATIONS} />
+                  </div>
+                  <div>
+                    <FieldLabel label="Attendees" />
+                    <Input className="h-11 rounded-xl" placeholder={`Advisor + ${familyName}`} value={s.attendees} onChange={e => d({ type: "SET_ATTENDEES", v: e.target.value })} />
+                  </div>
+                </div>
+
+                {/* Notes — the main event */}
+                <div>
+                  <FieldLabel label="Meeting notes" required />
+                  <textarea
+                    ref={notesRef}
+                    className="w-full min-h-[200px] rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent resize-y"
+                    placeholder="What did you discuss? Key decisions, concerns raised, changes to plan..."
+                    value={s.notes}
+                    onChange={e => d({ type: "SET_NOTES", v: e.target.value })}
+                  />
+                  <p className="text-xs text-slate-300 mt-1 text-right">{s.notes.length > 0 ? `${s.notes.split(/\s+/).filter(Boolean).length} words` : ""}</p>
+                </div>
+
+                {/* Follow-ups */}
+                <div>
+                  <FieldLabel label="Follow-up items" />
+                  {s.followUps.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {s.followUps.map((f, i) => (
+                        <div key={i} className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-2.5">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">{i + 1}</span>
+                            <span className="text-sm text-slate-700">{f}</span>
+                          </div>
+                          <button onClick={() => d({ type: "REMOVE_FOLLOW_UP", idx: i })} className="text-slate-300 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Input className="h-11 rounded-xl flex-1" placeholder="Add a follow-up item..." value={s.newFollowUp}
+                      onChange={e => d({ type: "SET_NEW_FOLLOW_UP", v: e.target.value })}
+                      onKeyDown={e => { if (e.key === "Enter" && s.newFollowUp.trim()) { e.preventDefault(); d({ type: "ADD_FOLLOW_UP" }); } }} />
+                    <button onClick={() => d({ type: "ADD_FOLLOW_UP" })} disabled={!s.newFollowUp.trim()}
+                      className="h-11 w-11 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 disabled:opacity-30 transition-colors"><Plus size={18} /></button>
+                  </div>
+                  {s.followUps.length > 0 && (
+                    <div className="mt-3 flex items-center gap-3">
+                      <p className="text-xs text-slate-400">Follow-up due in:</p>
+                      <div className="flex gap-2">
+                        {[3, 7, 14, 30].map(n => (
+                          <button key={n} onClick={() => d({ type: "SET_FOLLOW_UP_DAYS", v: n })}
+                            className={`text-xs px-3 py-1.5 rounded-lg transition-all ${s.followUpDays === n ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                            {n} days
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Preview card */}
+                {s.notes.trim() && (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-3">Salesforce Preview</p>
+                    <p className="text-sm font-medium text-slate-800 mb-1">MEETING NOTE — {familyName}{s.meetingType ? ` (${s.meetingType})` : ""}</p>
+                    <p className="text-xs text-slate-400 mb-2">{s.meetingDate} · {s.duration} · {s.attendees || `Advisor + ${familyName}`}</p>
+                    <p className="text-sm text-slate-600 line-clamp-3">{s.notes}</p>
+                    {s.followUps.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-slate-100">
+                        <p className="text-xs text-slate-400">{s.followUps.length} follow-up task{s.followUps.length > 1 ? "s" : ""} will be created (due in {s.followUpDays} days)</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <ContinueBtn onClick={saveMeeting} disabled={!canSave} processing={s.isProcessing} label="Save to Salesforce" />
+              </div>
+            )}
+
+            {/* ─── Saving ─── */}
+            {s.step === "saving" && (
+              <div className="animate-fade-in pt-8">
+                <h2 className="text-3xl font-light text-slate-900 mb-8">Saving to Salesforce</h2>
+                <ProgressSteps steps={["Saving meeting note", "Done"]} currentStep={s.saveStep} />
+              </div>
+            )}
+
+            {/* ─── Complete ─── */}
+            {s.step === "complete" && (
+              <div className="animate-fade-in text-center pt-12">
+                <div className="w-20 h-20 rounded-full bg-green-100 text-green-600 flex items-center justify-center mx-auto mb-6"><Check size={36} /></div>
+                <h2 className="text-3xl font-light text-slate-900 mb-2">Meeting Logged</h2>
+                <p className="text-slate-400 mb-2">{familyName} · {s.meetingType || "Meeting"} · {s.meetingDate}</p>
+                {s.followUps.length > 0 && (
+                  <p className="text-sm text-blue-600 mb-6">{s.followUps.length} follow-up task{s.followUps.length > 1 ? "s" : ""} created — due in {s.followUpDays} days</p>
+                )}
+                <div className="space-y-2 max-w-sm mx-auto mt-8">
+                  {s.evidence.filter(e => e.url).map((e, i) => (
+                    <a key={i} href={e.url} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center justify-between px-4 py-3 rounded-xl bg-white border border-slate-200 hover:border-slate-400 transition-colors text-sm">
+                      <span className="text-slate-700">{e.label}</span>
+                      <ExternalLink size={14} className="text-slate-400" />
+                    </a>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-3 justify-center mt-8">
+                  {onNavigate && s.selectedHousehold && (
+                    <>
+                      <button onClick={() => onNavigate("family" as Screen, { householdId: s.selectedHousehold!.id, familyName })} className="px-5 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors text-sm">View Family</button>
+                      <button onClick={() => onNavigate("compliance", { householdId: s.selectedHousehold!.id, familyName })} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">Run Compliance Review</button>
+                      <button onClick={() => onNavigate("briefing", { householdId: s.selectedHousehold!.id, familyName })} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">View Briefing</button>
+                    </>
+                  )}
+                  <button onClick={() => d({ type: "RESET" })} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-500 font-medium hover:bg-slate-50 transition-colors text-sm">Log Another</button>
+                  <button onClick={() => { d({ type: "RESET" }); onExit(); }} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-400 font-medium hover:bg-slate-50 transition-colors text-sm">Home</button>
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Right Pane ─── */}
+      <div className={`${s.showRightPane ? "fixed inset-0 z-50 bg-white" : "hidden"} lg:block lg:static lg:w-[30%] border-l border-slate-200 bg-white flex flex-col`}>
+        <div className="px-5 py-5 border-b border-slate-100 flex items-center justify-between">
+          <p className="text-xs uppercase tracking-wider text-slate-400">Activity Log</p>
+          <button onClick={() => d({ type: "SET_RIGHT_PANE", v: false })} className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {s.evidence.length === 0 ? (
+            <p className="text-sm text-slate-300 text-center mt-8">Notes will appear here as you compose</p>
+          ) : (
+            <div className="space-y-2">
+              {s.evidence.map((e, i) => (
+                <div key={i} className="flex items-start gap-2 py-2 border-b border-slate-50 last:border-0">
+                  <Check size={14} className="text-green-500 mt-0.5 flex-shrink-0" />
+                  {e.url ? (
+                    <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">{e.label}</a>
+                  ) : (
+                    <span className="text-sm text-slate-600">{e.label}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Live preview */}
+          {s.step === "compose" && s.notes.trim() && (
+            <div className="mt-6 pt-4 border-t border-slate-100">
+              <p className="text-xs uppercase tracking-wider text-slate-400 mb-2">Preview</p>
+              <div className="space-y-1">
+                {s.meetingType && <div className="flex items-center gap-2 text-xs text-slate-500"><MessageSquare size={11} />{s.meetingType}</div>}
+                <div className="flex items-center gap-2 text-xs text-slate-500"><Calendar size={11} />{s.meetingDate}</div>
+                <div className="flex items-center gap-2 text-xs text-slate-500"><Clock size={11} />{s.duration}</div>
+                <div className="flex items-center gap-2 text-xs text-slate-500"><Users size={11} />{s.attendees || `Advisor + ${familyName}`}</div>
+              </div>
+              <p className="text-xs text-slate-400 mt-3">{s.notes.split(/\s+/).filter(Boolean).length} words · {s.followUps.length} follow-up{s.followUps.length !== 1 ? "s" : ""}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
