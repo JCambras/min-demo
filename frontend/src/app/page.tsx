@@ -63,9 +63,14 @@ export default function Home() {
   const { setupStep, role, advisorName, screen, wfCtx, handoff, sfConnected, toast, tourActive } = state;
   const [showSecurity, setShowSecurity] = useState(false);
 
-  // Session timeout: 15 min idle → back to role selection (SEC/FINRA compliance)
+  // Session timeout: 15 min idle → clear OAuth session + back to role selection (SEC/FINRA compliance)
   useIdleTimeout(
-    () => dispatch({ type: "SET_SETUP_STEP", step: "role" }),
+    () => {
+      // Clear server-side OAuth cookie (fire-and-forget — UI reset doesn't depend on it)
+      fetch("/api/salesforce/connection", { method: "POST" }).catch(() => {});
+      dispatch({ type: "SF_STATUS", connected: false, instance: "" });
+      dispatch({ type: "SET_SETUP_STEP", step: "role" });
+    },
     setupStep === "ready", // Only active after setup is complete
   );
 

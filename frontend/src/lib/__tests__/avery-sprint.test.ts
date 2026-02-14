@@ -297,3 +297,89 @@ describe("financial account type coverage", () => {
     expect(result.accounts[2].amount).toBe("$0");
   });
 });
+
+// ─── Vale v3 Fix #3: Session Logout Endpoint ─────────────────────────────
+// POST /api/salesforce/connection should exist for idle timeout session clearing
+
+describe("Session Logout Endpoint", () => {
+  it("connection route exports POST handler for session logout", async () => {
+    const routeModule = await import("@/app/api/salesforce/connection/route");
+    expect(typeof routeModule.POST).toBe("function");
+  });
+
+  it("connection route exports DELETE handler for full disconnect", async () => {
+    const routeModule = await import("@/app/api/salesforce/connection/route");
+    expect(typeof routeModule.DELETE).toBe("function");
+  });
+
+  it("connection route exports GET handler for status check", async () => {
+    const routeModule = await import("@/app/api/salesforce/connection/route");
+    expect(typeof routeModule.GET).toBe("function");
+  });
+});
+
+// ─── Vale v3 Fix #4: Advisor AUM Uses Real Household Data ────────────────
+
+describe("Advisor AUM Computation", () => {
+  it("real AUM overlay bridges hhName→hhId→AUM per advisor", () => {
+    const hhAdvisorMap = new Map([
+      ["Smith Family", "Jon Cambras"],
+      ["Jones Family", "Jon Cambras"],
+      ["Lee Family", "Marcus Rivera"],
+    ]);
+    const hhNameToId = new Map([
+      ["Smith Family", "001AAA"],
+      ["Jones Family", "001BBB"],
+      ["Lee Family", "001CCC"],
+    ]);
+    const aumByHousehold: Record<string, number> = {
+      "001AAA": 5000000,
+      "001BBB": 3000000,
+      "001CCC": 10000000,
+    };
+
+    const advisorRealAum = new Map<string, number>();
+    for (const [hhName, advName] of hhAdvisorMap) {
+      const hhId = hhNameToId.get(hhName);
+      if (!hhId) continue;
+      const hhAum = aumByHousehold[hhId] || 0;
+      advisorRealAum.set(advName, (advisorRealAum.get(advName) || 0) + hhAum);
+    }
+
+    // Jon manages Smith ($5M) + Jones ($3M) = $8M
+    expect(advisorRealAum.get("Jon Cambras")).toBe(8000000);
+    // Marcus manages Lee ($10M)
+    expect(advisorRealAum.get("Marcus Rivera")).toBe(10000000);
+  });
+
+  it("proportional split gives wrong results (demonstrates the bug)", () => {
+    const totalAum = 18000000;
+    const totalHouseholds = 3;
+
+    // Jon has 2 households, Marcus has 1
+    const jonProportional = totalAum * (2 / totalHouseholds); // $12M
+    const marcusProportional = totalAum * (1 / totalHouseholds); // $6M
+
+    // Reality is Jon = $8M, Marcus = $10M — proportional is wrong
+    expect(jonProportional).toBe(12000000);
+    expect(marcusProportional).toBe(6000000);
+    expect(jonProportional).not.toBe(8000000);
+    expect(marcusProportional).not.toBe(10000000);
+  });
+
+  it("handles households with zero AUM gracefully", () => {
+    const hhAdvisorMap = new Map([["Empty Family", "Jon Cambras"]]);
+    const hhNameToId = new Map([["Empty Family", "001ZZZ"]]);
+    const aumByHousehold: Record<string, number> = {}; // no AUM data
+
+    const advisorRealAum = new Map<string, number>();
+    for (const [hhName, advName] of hhAdvisorMap) {
+      const hhId = hhNameToId.get(hhName);
+      if (!hhId) continue;
+      const hhAum = aumByHousehold[hhId] || 0;
+      advisorRealAum.set(advName, (advisorRealAum.get(advName) || 0) + hhAum);
+    }
+
+    expect(advisorRealAum.get("Jon Cambras")).toBe(0);
+  });
+});

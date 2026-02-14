@@ -28,3 +28,19 @@ export async function DELETE() {
     );
   }
 }
+
+// POST /api/salesforce/connection — session logout (idle timeout)
+// Clears the OAuth cookie without revoking the refresh token,
+// so re-authenticating is fast but the browser session is dead.
+export async function POST() {
+  try {
+    await clearConnection();
+    return NextResponse.json({ success: true, message: "Session cleared" });
+  } catch (error) {
+    console.error("Session logout error:", error);
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "Session logout failed" },
+      { status: 500 }
+    );
+  }
+}

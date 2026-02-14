@@ -95,6 +95,8 @@ export interface PracticeData {
   realAum: number | null;        // null = FSC not available, use assumptions
   aumByHousehold: Record<string, number>;
   financialAccountCount: number;
+  // Internal: household name → advisor name mapping (used for FSC AUM overlay)
+  hhAdvisorMap: Map<string, string>;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -326,6 +328,7 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
     revenue, assumptions,
     openTaskItems, unsignedItems, reviewItems, meetingItems,
     fscAvailable: false, realAum: null, aumByHousehold: {}, financialAccountCount: 0,
+    hhAdvisorMap,
     weeklyComparison: [
       { label: "Tasks Completed", thisWeek: thisWeekCompleted, lastWeek: lastWeekCompleted },
       { label: "Onboarded", thisWeek: thisWeekOnboarded, lastWeek: lastWeekOnboarded },
@@ -393,14 +396,30 @@ export function usePracticeData() {
                 practiceData.revenue.annualFeeIncome = practiceData.realAum * (bps / 10000);
                 practiceData.revenue.monthlyFeeIncome = practiceData.revenue.annualFeeIncome / 12;
 
-                // Recompute per-advisor revenue using real AUM per household
-                for (const advisor of practiceData.revenue.revenuePerAdvisor) {
-                  // Sum real AUM for this advisor's households
-                  // For now, keep proportional split (real AUM × advisor's share)
-                  const advisorShare = advisor.households / (practiceData.totalHouseholds || 1);
-                  advisor.estimatedAum = practiceData.realAum * advisorShare;
-                  advisor.annualFee = advisor.estimatedAum * (bps / 10000);
+                // Build advisor → real AUM using household-level data.
+                // aumByHousehold is keyed by SF Account Id.
+                // hhAdvisorMap is keyed by household Name.
+                // We need Name→Id to bridge them.
+                const hhNameToId = new Map<string, string>();
+                for (const h of households) { hhNameToId.set(h.Name, h.Id); }
+
+                const advisorRealAum = new Map<string, number>();
+                for (const [hhName, advName] of practiceData.hhAdvisorMap) {
+                  const hhId = hhNameToId.get(hhName);
+                  if (!hhId) continue;
+                  const hhAum = practiceData.aumByHousehold[hhId] || 0;
+                  advisorRealAum.set(advName, (advisorRealAum.get(advName) || 0) + hhAum);
                 }
+
+                for (const advisor of practiceData.revenue.revenuePerAdvisor) {
+                  const realAum = advisorRealAum.get(advisor.name);
+                  if (realAum !== undefined) {
+                    advisor.estimatedAum = Math.round(realAum);
+                    advisor.annualFee = Math.round(realAum * (bps / 10000));
+                  }
+                }
+                // Re-sort by actual AUM
+                practiceData.revenue.revenuePerAdvisor.sort((a, b) => b.annualFee - a.annualFee);
               }
             }
           } catch {
