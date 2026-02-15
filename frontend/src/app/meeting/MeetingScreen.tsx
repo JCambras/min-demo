@@ -232,7 +232,11 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
 
   const goBack = () => {
     if (s.step === "search") { d({ type: "RESET" }); onExit(); }
-    else if (s.step === "compose") d({ type: "SET_STEP", step: "search" });
+    else if (s.step === "compose") {
+      // If we arrived with context from another screen, back exits directly
+      if (initialContext) { d({ type: "RESET" }); onExit(); }
+      else d({ type: "SET_STEP", step: "search" });
+    }
     else if (s.step === "complete") { d({ type: "RESET" }); onExit(); }
     else { d({ type: "RESET" }); onExit(); }
   };

@@ -483,7 +483,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
   const goBack = () => {
     if (state.step === "cc-search") { d({ type: "RESET" }); onExit(); }
     else if (state.step === "cc-scanning") { d({ type: "RESET" }); if (initialContext) onExit(); else d({ type: "SET_STEP", step: "cc-search" }); }
-    else if (state.step === "cc-results") d({ type: "SET_STEP", step: "cc-search" });
+    else if (state.step === "cc-results") { if (initialContext) { d({ type: "RESET" }); onExit(); } else d({ type: "SET_STEP", step: "cc-search" }); }
     else if (state.step === "cc-complete") d({ type: "SET_STEP", step: "cc-results" });
     else { d({ type: "RESET" }); onExit(); }
   };

@@ -250,7 +250,10 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
 
   const goBack = () => {
     if (s.step === "search") { d({ type: "RESET" }); onExit(); }
-    else if (s.step === "briefing") d({ type: "SET_STEP", step: "search" });
+    else if (s.step === "briefing") {
+      if (initialContext) { d({ type: "RESET" }); onExit(); }
+      else d({ type: "SET_STEP", step: "search" });
+    }
     else { d({ type: "RESET" }); onExit(); }
   };
 
