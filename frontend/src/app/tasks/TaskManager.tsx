@@ -163,7 +163,7 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
             </button>
           )}
           <a href={t.url} target="_blank" rel="noopener noreferrer" className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <ExternalLink size={12} className="text-slate-300" />
+            <ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" />
           </a>
         </div>
       </div>

@@ -221,7 +221,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                 {item.priority === "High" && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">High</span>}
                 {p.showAction === "compliance" && item.householdId && <button data-tour="run-check-btn" onClick={() => goTo("compliance", { householdId: item.householdId!, familyName: (item.householdName || "").replace(" Household", "") })} className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors whitespace-nowrap">Run Check</button>}
                 {p.showReminder && <button onClick={() => { setReminderSent(prev => { const s = new Set(prev); s.add(item.url); return s; }); showToast("DocuSign reminder sent to signers"); }} disabled={reminderSent.has(item.url)} className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${reminderSent.has(item.url) ? "bg-green-100 text-green-600 cursor-default" : "bg-blue-600 text-white hover:bg-blue-700"}`}>{reminderSent.has(item.url) ? "Sent ✓" : "Send Reminder"}</button>}
-                <a href={item.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} className="text-slate-300" /></a>
+                <a href={item.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>
               </div>
             </div>))}
           </div>);

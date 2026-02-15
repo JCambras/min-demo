@@ -353,7 +353,7 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
                           </div>
 
                           {/* SF link */}
-                          {g.url && <a href={g.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} className="text-slate-300" /></a>}
+                          {g.url && <a href={g.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
                         </div>
                       );
                     })}

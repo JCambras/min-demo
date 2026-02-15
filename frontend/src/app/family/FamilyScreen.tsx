@@ -246,7 +246,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                       </div>
                     </div>
                   </div>
-                  {baseUrl && <a href={`${baseUrl}/${c.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} className="text-slate-300" /></a>}
+                  {baseUrl && <a href={`${baseUrl}/${c.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
                 </div>
               ))}
             </div>
@@ -272,7 +272,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${passed ? "bg-green-100 text-green-600" : "bg-amber-100 text-amber-600"}`}>{passed ? "Passed" : "Flagged"}</span>
-                      {baseUrl && <a href={`${baseUrl}/${t.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} className="text-slate-300" /></a>}
+                      {baseUrl && <a href={`${baseUrl}/${t.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
                     </div>
                   </div>
                 );
@@ -332,7 +332,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                   </div>
                   <div className="flex items-center gap-2 ml-3">
                     {t.Priority === "High" && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">High</span>}
-                    {baseUrl && <a href={`${baseUrl}/${t.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} className="text-slate-300" /></a>}
+                    {baseUrl && <a href={`${baseUrl}/${t.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
                   </div>
                 </div>
               );
@@ -392,7 +392,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                       <p className="text-xs text-slate-400">{new Date(t.CreatedDate).toLocaleDateString()}</p>
                     </div>
                   </div>
-                  {baseUrl && <a href={`${baseUrl}/${t.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} className="text-slate-300" /></a>}
+                  {baseUrl && <a href={`${baseUrl}/${t.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
                 </div>
               ))}
             </div>
