@@ -442,6 +442,12 @@ export function usePracticeData() {
           }
 
           setData(practiceData);
+          // Persist practice snapshot (fire-and-forget)
+          fetch("/api/analytics/snapshot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ stats: { healthScore: practiceData.healthScore, totalHouseholds: practiceData.totalHouseholds, openTasks: practiceData.openTasks, unsigned: practiceData.unsigned } }),
+          }).catch(() => {});
         } else { setError("Could not connect to Salesforce."); }
       } catch { setError("Failed to load dashboard data."); }
       setLoading(false);

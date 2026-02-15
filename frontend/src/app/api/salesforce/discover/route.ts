@@ -14,15 +14,8 @@ import { NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/sf-connection";
 import { discoverOrg, classifyOrgHeuristic } from "@/lib/schema-discovery";
 import { setOrgMapping } from "@/lib/org-query";
-import type { OrgMapping, OrgMetadataBundle } from "@/lib/schema-discovery";
-
-// In-memory cache of discovery results (per org).
-// In production, this would be stored in encrypted cookies or a database.
-const discoveryCache = new Map<string, {
-  mapping: OrgMapping;
-  bundle: OrgMetadataBundle;
-  cachedAt: string;
-}>();
+import { getDb, ensureSchema } from "@/lib/db";
+import type { OrgMetadataBundle } from "@/lib/schema-discovery";
 
 // POST: Run discovery + classification
 export async function POST() {
@@ -35,11 +28,26 @@ export async function POST() {
     // Classify using heuristics (Phase 2 will add LLM option)
     const mapping = classifyOrgHeuristic(bundle);
 
-    // Cache the result
-    discoveryCache.set(bundle.orgId || "default", {
-      mapping,
-      bundle,
-      cachedAt: new Date().toISOString(),
+    // Persist to Turso
+    await ensureSchema();
+    const db = getDb();
+    const orgId = bundle.orgId || "default";
+    const now = new Date().toISOString();
+    await db.execute({
+      sql: `INSERT INTO org_patterns (org_id, mapping_json, bundle_summary_json, discovered_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(org_id) DO UPDATE SET
+              mapping_json = excluded.mapping_json,
+              bundle_summary_json = excluded.bundle_summary_json,
+              updated_at = excluded.updated_at`,
+      args: [orgId, JSON.stringify(mapping), JSON.stringify({
+        orgId: bundle.orgId,
+        apiCallsMade: bundle.apiCallsMade,
+        durationMs: bundle.durationMs,
+        recordCounts: bundle.recordCounts,
+        fscObjectsFound: bundle.fscObjectsFound.length,
+        personAccountsEnabled: bundle.personAccountsEnabled,
+      }), now, now],
     });
 
     // Store mapping for query engine to consume
@@ -65,6 +73,12 @@ export async function POST() {
       errors: bundle.errors,
       warnings: mapping.warnings,
     };
+
+    // Track discovery event (server-side, direct insert)
+    db.execute({
+      sql: "INSERT INTO events (org_id, event_name, properties_json) VALUES (?, ?, ?)",
+      args: [orgId, "discovery_completed", JSON.stringify({ orgType: healthReport.orgType, confidence: mapping.confidence })],
+    }).catch(() => {}); // fire-and-forget
 
     return NextResponse.json({
       success: true,
@@ -101,18 +115,20 @@ export async function POST() {
 // GET: Return cached mapping
 export async function GET() {
   try {
-    const ctx = await getAccessToken();
+    await getAccessToken(); // validate connection
 
-    // Try to find cached result
-    // In demo mode, use "default" key since we might not have orgId
-    const cached = discoveryCache.get("default") ||
-      Array.from(discoveryCache.values())[0];
+    await ensureSchema();
+    const db = getDb();
+    const row = await db.execute({
+      sql: "SELECT mapping_json, discovered_at FROM org_patterns ORDER BY updated_at DESC LIMIT 1",
+      args: [],
+    });
 
-    if (cached) {
+    if (row.rows.length > 0) {
       return NextResponse.json({
         success: true,
-        mapping: cached.mapping,
-        cachedAt: cached.cachedAt,
+        mapping: JSON.parse(row.rows[0].mapping_json as string),
+        cachedAt: row.rows[0].discovered_at,
         stale: false,
       });
     }

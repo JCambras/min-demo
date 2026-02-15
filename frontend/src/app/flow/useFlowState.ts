@@ -5,6 +5,7 @@ import { emptyClient } from "@/lib/types";
 import { callSF } from "@/lib/salesforce";
 import { timestamp, docsFor } from "@/lib/format";
 import { FLOW_STEPS_ORDER, ROUTING_DB } from "@/lib/constants";
+import { trackEvent } from "@/lib/analytics";
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -198,10 +199,26 @@ function reducer(state: FlowState, action: FlowAction): FlowState {
 
 const DRAFT_KEY = "min-flow-draft";
 
+// PII fields that must never persist to sessionStorage
+const PII_FIELDS: (keyof ClientInfo)[] = ["ssn", "idNumber", "dob"];
+
+function stripPII(client: ClientInfo): ClientInfo {
+  const stripped = { ...client };
+  for (const field of PII_FIELDS) {
+    stripped[field] = "";
+  }
+  return stripped;
+}
+
 function saveDraft(state: FlowState) {
   try {
     if (state.step === "context" || state.step === "complete" || state.step === "generating") return;
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(state));
+    const safe = {
+      ...state,
+      p1: stripPII(state.p1),
+      p2: stripPII(state.p2),
+    };
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(safe));
   } catch { /* quota exceeded — ignore */ }
 }
 
@@ -513,6 +530,7 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
       }
       // Final "Done" step
       d({ type: "SET_GEN_STEP", value: steps.length + 1 });
+      trackEvent("flow_completed", { accountCount: state.accounts.length, hasDraft: !!draft });
       setTimeout(() => d({ type: "SET_STEP", step: "complete" }), 600);
     } catch (err) {
       console.error(err);
