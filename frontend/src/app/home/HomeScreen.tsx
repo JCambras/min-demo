@@ -259,7 +259,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {/* Recent Activity */}
       {sfConnected && stats && stats.recentItems.length > 0 && (isOps || !expandedStat) && (
         <div className="mb-8 bg-white border border-slate-200 rounded-2xl overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-slate-100"><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Recent Activity</p></div>
+          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3"><Clock size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Recent Activity</p></div>
           {stats.recentItems.map((t, i) => (<a key={i} href={t.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
             {iconForType(t.type)}<div className="min-w-0 flex-1"><p className="text-sm text-slate-700 truncate">{t.subject}</p><p className="text-xs text-slate-400">{t.household}</p></div>
           </a>))}

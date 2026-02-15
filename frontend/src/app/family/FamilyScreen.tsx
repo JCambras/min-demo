@@ -231,7 +231,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           {data && data.contacts.length > 0 && (
             <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
-                <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Contacts</p>
+                <Users size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Contacts</p>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{data.contacts.length}</span>
               </div>
               {data.contacts.map((c, i) => (
@@ -256,7 +256,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           {complianceReviews.length > 0 && (
             <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
-                <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Compliance History</p>
+                <Shield size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Compliance History</p>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{complianceReviews.length}</span>
               </div>
               {complianceReviews.map((t, i) => {
@@ -286,8 +286,8 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           {/* Account Details (from Description) */}
           {parsed && (parsed.accounts || parsed.funding) && (
             <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-slate-100">
-                <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Account Details</p>
+              <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
+                <Briefcase size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Account Details</p>
               </div>
               <div className="px-4 py-3 space-y-3">
                 {parsed.accounts && parsed.accounts !== "None yet" && (
@@ -311,7 +311,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           {/* Open Action Items */}
           <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
             <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
-              <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Open Action Items</p>
+              <Clock size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Open Action Items</p>
               <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{openTasks.length}</span>
             </div>
             {openTasks.length === 0 ? (
@@ -374,7 +374,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           {completedTasks.length > 0 && (
             <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
-                <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Completed</p>
+                <CheckCircle size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Completed</p>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-600 font-medium">{completedTasks.length}</span>
                 <div className="flex-1" />
                 {completedTasks.length > 5 && (

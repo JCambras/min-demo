@@ -366,7 +366,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
 
                 {/* Key Highlights */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-6">
-                  <p className="text-xs uppercase tracking-wider text-slate-400 mb-4">Key Highlights</p>
+                  <p className="text-xs uppercase tracking-wider text-slate-400 mb-4"><CheckCircle size={12} className="inline mr-1" /> Key Highlights</p>
                   <div className="space-y-3">
                     {s.intel.accountsOpened.length > 0 && (
                       <div className="flex items-start gap-3">
@@ -529,7 +529,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
                 {/* Account Plan (from Description) */}
                 {s.intel.description && (
                   <div className="bg-white border border-slate-200 rounded-2xl p-6">
-                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-3">Account Plan</p>
+                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-3"><FileText size={12} className="inline mr-1" /> Account Plan</p>
                     <p className="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{s.intel.description}</p>
                   </div>
                 )}

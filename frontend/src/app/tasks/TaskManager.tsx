@@ -264,7 +264,7 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
           {completed.size > 0 && (
             <div className="mt-8">
               <div className="flex items-center gap-3 mb-3">
-                <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Completed This Session</p>
+                <CheckCircle size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Completed This Session</p>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-600 font-medium">{completed.size}</span>
               </div>
               <div className="space-y-1">

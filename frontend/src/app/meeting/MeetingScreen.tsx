@@ -1,6 +1,6 @@
 "use client";
 import { useReducer, useEffect, useRef } from "react";
-import { Search, Loader2, Plus, Trash2, Check, ExternalLink, ChevronRight, Calendar, Clock, Users, MessageSquare, Shield } from "lucide-react";
+import { Search, Loader2, Plus, Trash2, Check, ExternalLink, ChevronRight, Calendar, Clock, Users, MessageSquare, Shield, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn, FieldLabel, SelectField } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
@@ -317,7 +317,7 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
                 {/* Preview card */}
                 {s.notes.trim() && (
                   <div className="bg-white border border-slate-200 rounded-2xl p-5">
-                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-3">Salesforce Preview</p>
+                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-3"><FileText size={12} className="inline mr-1" /> Salesforce Preview</p>
                     <p className="text-sm font-medium text-slate-800 mb-1">MEETING NOTE — {familyName}{s.meetingType ? ` (${s.meetingType})` : ""}</p>
                     <p className="text-xs text-slate-400 mb-2">{s.meetingDate} · {s.duration} · {s.attendees || `Advisor + ${familyName}`}</p>
                     <p className="text-sm text-slate-600 line-clamp-3">{s.notes}</p>
