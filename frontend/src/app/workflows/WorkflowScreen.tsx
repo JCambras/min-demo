@@ -157,7 +157,7 @@ export function WorkflowScreen({ onExit, onNavigate }: {
               <div className="animate-fade-in space-y-6">
 
                 {/* Summary stats */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
                     <Zap size={16} className="text-blue-500 mx-auto mb-2" />
                     <p className="text-2xl font-light text-blue-600">{activeCount}</p>

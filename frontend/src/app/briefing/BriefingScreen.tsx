@@ -344,7 +344,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
                     </div>
                   </div>
                   {/* At-a-glance stats */}
-                  <div className="grid grid-cols-4 border-t border-slate-100">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 border-t border-slate-100">
                     <div className="px-4 py-3 text-center border-r border-slate-100">
                       <p className="text-xl font-light text-slate-900">{s.intel.contacts.length}</p>
                       <p className="text-[10px] text-slate-400 uppercase tracking-wider">Contacts</p>

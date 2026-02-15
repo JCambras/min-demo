@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap } from "lucide-react";
 import { DemoMode, TourButton } from "../tour/DemoMode";
 import { callSF } from "@/lib/salesforce";
@@ -126,6 +126,24 @@ function RecentActivityRow({ item, icon }: {
 export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast }: HomeScreenProps) {
   const { role, advisorName, sfConnected, sfInstance, stats, statsLoading, tourActive, principalAdvisor } = state;
 
+  // ── Keyboard shortcut: Cmd+R / Ctrl+R to cycle role ──
+  const cycleRole = useCallback(() => {
+    const ids = ROLES.map(r => r.id);
+    const next = ids[(ids.indexOf(role || "advisor") + 1) % ids.length];
+    dispatch({ type: "SET_ROLE_INLINE", role: next as UserRole });
+  }, [role, dispatch]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "r") {
+        e.preventDefault();
+        cycleRole();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [cycleRole]);
+
   // ── Local UI state (not app-level) ──
   const [expandedStat, setExpandedStat] = useState<string | null>(null);
   const [panelFilter, setPanelFilter] = useState("");
@@ -203,8 +221,8 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           <p className="text-sm text-slate-400 font-light mt-1">{role === "principal" && principalAdvisor !== "all" ? `Viewing ${principalAdvisor}'s households` : "Your practice, simplified."}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => { const ids = ROLES.map(r => r.id); const next = ids[(ids.indexOf(role || "advisor") + 1) % ids.length]; dispatch({ type: "SET_ROLE_INLINE", role: next as UserRole }); setExpandedStat(null); }}
-            className="text-xs text-slate-400 hover:text-slate-600 transition-all" title="Click to switch role">
+          <button onClick={() => { cycleRole(); setExpandedStat(null); }}
+            className="text-xs text-slate-400 hover:text-slate-600 transition-all" title="Click or ⌘R to switch role">
             {ROLES.find(r => r.id === role)?.label || "Advisor"}{role === "principal" && principalAdvisor !== "all" ? ` · ${principalAdvisor}` : ""}
           </button>
           <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} aria-label="Settings" className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-all"><Settings size={16} /></button>

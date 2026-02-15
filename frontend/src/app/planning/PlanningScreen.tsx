@@ -198,7 +198,7 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
               <div className="animate-fade-in space-y-6">
 
                 {/* Stats row */}
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="bg-white border border-slate-200 rounded-xl p-3 text-center">
                     <p className="text-2xl font-light text-slate-900">{activeGoals.length}</p>
                     <p className="text-[10px] text-slate-400">Active</p>
@@ -277,11 +277,7 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
                       placeholder="Goal description..." className="w-full px-4 py-2.5 text-sm rounded-xl border border-slate-200 text-slate-700 placeholder:text-slate-300 outline-none focus:border-slate-400" />
 
                     <div className="grid grid-cols-3 gap-3">
-                      <select value={newGoal.householdId} onChange={e => setNewGoal(prev => ({ ...prev, householdId: e.target.value }))}
-                        className="w-full h-12 px-3 text-base rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-slate-400">
-                        <option value="">Select household...</option>
-                        {households.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-                      </select>
+                      <SelectField value={newGoal.householdId} onChange={v => setNewGoal(prev => ({ ...prev, householdId: v }))} optionItems={households.map(h => ({ value: h.id, label: h.name }))} placeholder="Select household..." />
                       <Input type="date" className="h-12 rounded-xl" value={newGoal.dueDate} onChange={e => setNewGoal(prev => ({ ...prev, dueDate: e.target.value }))} />
                       <SelectField value={newGoal.priority} onChange={v => setNewGoal(prev => ({ ...prev, priority: v }))} options={["Normal", "High"]} />
                     </div>

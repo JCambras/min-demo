@@ -49,14 +49,14 @@ export function FieldLabel({ label, required }: { label: string; required?: bool
 
 // ─── Select Field ────────────────────────────────────────────────────────────
 
-export function SelectField({ value, onChange, options, placeholder }: {
-  value: string; onChange: (v: string) => void; options: string[]; placeholder?: string;
+export function SelectField({ value, onChange, options, optionItems, placeholder }: {
+  value: string; onChange: (v: string) => void; options?: string[]; optionItems?: { value: string; label: string }[]; placeholder?: string;
 }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)}
       className="w-full h-12 px-3 text-base rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-slate-400">
       {placeholder && <option value="">{placeholder}</option>}
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      {optionItems ? optionItems.map((o) => <option key={o.value} value={o.value}>{o.label}</option>) : options?.map((o) => <option key={o} value={o}>{o}</option>)}
     </select>
   );
 }
