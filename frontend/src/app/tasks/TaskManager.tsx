@@ -65,6 +65,7 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
   const [viewMode, setViewMode] = useState<ViewMode>("grouped");
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [completing, setCompleting] = useState<string | null>(null);
+  const [justCompleted, setJustCompleted] = useState<string | null>(null);
   const [collapsedBuckets, setCollapsedBuckets] = useState<Set<Bucket>>(new Set());
 
   const allItems = stats?.openTaskItems || [];
@@ -115,9 +116,14 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
     } catch (err) {
       console.error("Failed to complete task:", err);
     }
-    setCompleted(prev => { const s = new Set(prev); s.add(item.url); return s; });
     setCompleting(null);
-    showToast(`Task completed in Salesforce`);
+    setJustCompleted(item.url);
+    // Let the animations play (check-pop + slide-out) before moving the item
+    setTimeout(() => {
+      setJustCompleted(null);
+      setCompleted(prev => { const s = new Set(prev); s.add(item.url); return s; });
+      showToast(`Task completed in Salesforce`);
+    }, 400);
   };
 
   const typeCounts = useMemo(() => {
@@ -136,11 +142,12 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
   const renderTask = (t: StatDetailItem, i: number) => {
     const taskType = classifyTask(t.label);
     const isCompleting = completing === t.url;
+    const isDone = justCompleted === t.url;
     return (
-      <div key={`${t.url}-${i}`} className="flex items-center gap-3 px-4 py-3 bg-white border border-slate-200 rounded-xl hover:shadow-sm transition-all group">
-        <button onClick={() => markComplete(t)} disabled={isCompleting}
+      <div key={`${t.url}-${i}`} className={`flex items-center gap-3 px-4 py-3 bg-white border border-slate-200 rounded-xl hover:shadow-sm transition-all group ${isDone ? "animate-task-done" : ""}`}>
+        <button onClick={() => markComplete(t)} disabled={isCompleting || isDone}
           className="w-5 h-5 rounded-full border-2 border-slate-300 flex items-center justify-center hover:border-green-500 hover:bg-green-50 transition-all flex-shrink-0">
-          {isCompleting ? <Loader2 size={12} className="animate-spin text-slate-400" /> : <CheckCircle size={12} className="text-transparent group-hover:text-green-400 transition-colors" />}
+          {isCompleting ? <Loader2 size={12} className="animate-spin text-slate-400" /> : isDone ? <CheckCircle size={12} className="text-green-500 animate-check-pop" /> : <CheckCircle size={12} className="text-transparent group-hover:text-green-400 transition-colors" />}
         </button>
         <div className="flex-shrink-0">{typeIcon(taskType)}</div>
         <div className="min-w-0 flex-1">
