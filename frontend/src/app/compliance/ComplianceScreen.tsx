@@ -587,9 +587,9 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                             {catChecks.map(check => (
                               <div key={check.id} className="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">
                                 <div className="mt-0.5 flex-shrink-0">
-                                  {check.status === "pass" && <div className="w-5 h-5 rounded-full bg-green-500 text-white flex items-center justify-center"><Check size={12} /></div>}
-                                  {check.status === "warn" && <div className="w-5 h-5 rounded-full bg-amber-400 text-white flex items-center justify-center"><AlertTriangle size={11} /></div>}
-                                  {check.status === "fail" && <div className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center"><X size={12} /></div>}
+                                  {check.status === "pass" && <div className="w-5 h-5 rounded-full bg-green-500 text-white flex items-center justify-center" role="img" aria-label="Passed"><Check size={12} /></div>}
+                                  {check.status === "warn" && <div className="w-5 h-5 rounded-full bg-amber-400 text-white flex items-center justify-center" role="img" aria-label="Warning"><AlertTriangle size={11} /></div>}
+                                  {check.status === "fail" && <div className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center" role="img" aria-label="Failed"><X size={12} /></div>}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium text-slate-800">{check.label}<WhyBubble reason={check.detail} regulation={check.regulation} compact /></p>
@@ -729,7 +729,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
       <div className={`${state.showRightPane ? "fixed inset-0 z-50 bg-white" : "hidden"} lg:block lg:static lg:w-[30%] border-l border-slate-200 bg-white flex flex-col`}>
         <div className="px-5 py-5 border-b border-slate-100 flex items-center justify-between">
           <p className="text-xs uppercase tracking-wider text-slate-400">Compliance Log</p>
-          <button onClick={() => d({ type: "SET_SHOW_RIGHT_PANE", value: false })} className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>
+          <button onClick={() => d({ type: "SET_SHOW_RIGHT_PANE", value: false })} aria-label="Close panel" className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {state.evidence.length === 0 ? (

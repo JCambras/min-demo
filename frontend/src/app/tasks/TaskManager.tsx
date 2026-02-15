@@ -145,7 +145,7 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
     const isDone = justCompleted === t.url;
     return (
       <div key={`${t.url}-${i}`} className={`flex items-center gap-3 px-4 py-3 bg-white border border-slate-200 rounded-xl hover:shadow-sm transition-all group ${isDone ? "animate-task-done" : ""}`}>
-        <button onClick={() => markComplete(t)} disabled={isCompleting || isDone}
+        <button onClick={() => markComplete(t)} disabled={isCompleting || isDone} aria-label="Mark task complete"
           className="w-5 h-5 rounded-full border-2 border-slate-300 flex items-center justify-center hover:border-green-500 hover:bg-green-50 transition-all flex-shrink-0">
           {isCompleting ? <Loader2 size={12} className="animate-spin text-slate-400" /> : isDone ? <CheckCircle size={12} className="text-green-500 animate-check-pop" /> : <CheckCircle size={12} className="text-transparent group-hover:text-green-400 transition-colors" />}
         </button>
@@ -206,7 +206,7 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input className="w-full h-10 rounded-xl border border-slate-200 bg-white pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
               placeholder="Filter tasks..." value={filter} onChange={e => setFilter(e.target.value)} />
-            {filter && <button onClick={() => setFilter("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={14} /></button>}
+            {filter && <button onClick={() => setFilter("")} aria-label="Clear search filter" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={14} /></button>}
           </div>
 
           {/* Task list */}

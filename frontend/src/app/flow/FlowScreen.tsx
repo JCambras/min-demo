@@ -286,7 +286,7 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
                       <div key={acc.id} className={`bg-white border rounded-2xl p-5 transition-all ${!surv && ab.length > 0 && totalPct !== 100 ? "border-amber-300" : "border-slate-200"}`}>
                         <div className="flex items-center justify-between mb-2">
                           <p className="font-medium text-slate-900">{acc.owner}&rsquo;s {acc.type}</p>
-                          {!surv && <button onClick={() => d({ type: "SET_EDIT_BENE", value: editing ? null : acc.id })} className={`transition-colors ${editing ? "text-blue-500" : "text-slate-400 hover:text-slate-600"}`}><Pencil size={15} /></button>}
+                          {!surv && <button onClick={() => d({ type: "SET_EDIT_BENE", value: editing ? null : acc.id })} aria-label="Edit beneficiaries" className={`transition-colors ${editing ? "text-blue-500" : "text-slate-400 hover:text-slate-600"}`}><Pencil size={15} /></button>}
                         </div>
                         {surv ? <div><p className="text-sm text-slate-500">Survivorship rights — no beneficiary needed</p><WhyBubble reason="JTWROS and Community Property accounts pass automatically to the surviving account holder at death. A separate beneficiary designation is not needed and could create conflicting instructions." regulation="UCC Article 6 / State Property Law" compact /></div> : (
                           <div className="space-y-2">
@@ -298,7 +298,7 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span className="text-slate-500 font-medium">{b.percentage}%</span>
-                                  {editing && <button onClick={() => d({ type: "REMOVE_BENEFICIARY", accountId: acc.id, name: b.name })} className="text-red-300 hover:text-red-500 ml-1"><Trash2 size={14} /></button>}
+                                  {editing && <button onClick={() => d({ type: "REMOVE_BENEFICIARY", accountId: acc.id, name: b.name })} aria-label={`Remove beneficiary ${b.name}`} className="text-red-300 hover:text-red-500 ml-1"><Trash2 size={14} /></button>}
                                 </div>
                               </div>
                             ))}

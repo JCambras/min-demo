@@ -150,7 +150,7 @@ function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect }: {
                 Step {stepIndex + 1} of {totalSteps}
               </span>
             </div>
-            <button onClick={onSkip} className="text-slate-300 hover:text-slate-500 transition-colors">
+            <button onClick={onSkip} aria-label="Skip tour" className="text-slate-300 hover:text-slate-500 transition-colors">
               <X size={14} />
             </button>
           </div>

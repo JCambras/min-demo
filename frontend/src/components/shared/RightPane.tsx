@@ -47,7 +47,7 @@ export function RightPane({
     <div className={`fixed inset-0 z-50 bg-white mobile-pane ${showMobile ? "mobile-pane-open" : ""} lg:relative lg:z-auto lg:translate-x-0 lg:transition-none lg:w-[30%] border-l border-slate-200 flex flex-col`}>
       <div className="px-5 py-5 border-b border-slate-100 flex items-center justify-between">
         <p className="text-xs uppercase tracking-wider text-slate-400">{title}</p>
-        <button onClick={onCloseMobile} className="lg:hidden text-slate-400 hover:text-slate-600"><ArrowLeft size={18} /></button>
+        <button onClick={onCloseMobile} aria-label="Close panel" className="lg:hidden text-slate-400 hover:text-slate-600"><ArrowLeft size={18} /></button>
       </div>
       <div className="flex-1 overflow-y-auto px-5 py-4" ref={rpRef}>
         {!hasContent ? (

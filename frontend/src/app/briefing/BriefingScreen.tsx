@@ -358,7 +358,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
                       <p className="text-[10px] text-slate-400 uppercase tracking-wider">Open Items</p>
                     </div>
                     <div className="px-4 py-3 text-center">
-                      <p className={`text-xl font-light ${s.intel.hasComplianceReview ? "text-green-600" : "text-amber-600"}`}>{s.intel.hasComplianceReview ? "✓" : "—"}</p>
+                      <p className={`text-xl font-light ${s.intel.hasComplianceReview ? "text-green-600" : "text-amber-600"}`} aria-label={s.intel.hasComplianceReview ? "Compliance: on file" : "Compliance: none"}>{s.intel.hasComplianceReview ? "✓" : "—"}</p>
                       <p className="text-[10px] text-slate-400 uppercase tracking-wider">Compliance</p>
                     </div>
                   </div>
@@ -469,15 +469,15 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
                     </p>
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${s.intel.hasACH ? "bg-green-500" : "bg-slate-200"}`} />
+                        <div className={`w-2 h-2 rounded-full ${s.intel.hasACH ? "bg-green-500" : "bg-slate-200"}`} role="img" aria-label={s.intel.hasACH ? "Complete" : "Incomplete"} />
                         <span className={s.intel.hasACH ? "text-slate-700" : "text-slate-400"}>{custodian.achLabel}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${s.intel.hasBeneficiaries ? "bg-green-500" : "bg-slate-200"}`} />
+                        <div className={`w-2 h-2 rounded-full ${s.intel.hasBeneficiaries ? "bg-green-500" : "bg-slate-200"}`} role="img" aria-label={s.intel.hasBeneficiaries ? "Complete" : "Incomplete"} />
                         <span className={s.intel.hasBeneficiaries ? "text-slate-700" : "text-slate-400"}>Beneficiaries</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${s.intel.hasComplianceReview ? "bg-green-500" : "bg-slate-200"}`} />
+                        <div className={`w-2 h-2 rounded-full ${s.intel.hasComplianceReview ? "bg-green-500" : "bg-slate-200"}`} role="img" aria-label={s.intel.hasComplianceReview ? "Complete" : "Incomplete"} />
                         <span className={s.intel.hasComplianceReview ? "text-slate-700" : "text-slate-400"}>Compliance review</span>
                       </div>
                     </div>
@@ -558,7 +558,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
       <div className={`${s.showRightPane ? "fixed inset-0 z-50 bg-white" : "hidden"} lg:block lg:static lg:w-[30%] border-l border-slate-200 bg-white flex flex-col`}>
         <div className="px-5 py-5 border-b border-slate-100 flex items-center justify-between">
           <p className="text-xs uppercase tracking-wider text-slate-400">Salesforce Records</p>
-          <button onClick={() => d({ type: "SET_RIGHT_PANE", v: false })} className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>
+          <button onClick={() => d({ type: "SET_RIGHT_PANE", v: false })} aria-label="Close panel" className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {!s.intel ? (

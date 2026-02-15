@@ -216,7 +216,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           ) : (
             <button onClick={() => dispatch({ type: "SET_SETUP_STEP", step: "crm" })} className="text-xs px-2.5 py-1.5 rounded-xl text-slate-400 hover:text-slate-600 transition-all">{advisorName || "Settings"}</button>
           )}
-          <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-all"><Settings size={16} /></button>
+          <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} aria-label="Settings" className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-all"><Settings size={16} /></button>
         </div>
       </div>
 
@@ -329,7 +329,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {/* Footer */}
       <div className="flex items-center justify-center gap-3 text-xs text-slate-500 font-medium">
         <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} className="inline-flex items-center gap-1.5 hover:text-slate-600 transition-colors">
-          {sfConnected === null ? <div className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse" /> : sfConnected ? <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> : <div className="w-1.5 h-1.5 rounded-full bg-red-400" />}
+          {sfConnected === null ? <div className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse" role="img" aria-label="Checking connection" /> : sfConnected ? <div className="w-1.5 h-1.5 rounded-full bg-green-500" role="img" aria-label="Connected" /> : <div className="w-1.5 h-1.5 rounded-full bg-red-400" role="img" aria-label="Not connected" />}
           <span>{sfConnected === null ? "Checking..." : sfConnected ? `Connected to Salesforce: ${sfInstance || "Org"}` : "Not connected"}</span>
         </button>
         <span>·</span><span>Powered by Impacting Advisors</span>

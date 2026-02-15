@@ -120,6 +120,17 @@
 .stagger-list > *:nth-child(6) { animation-delay: 200ms; }
 .stagger-list > *:nth-child(n+7) { animation-delay: 240ms; }
 
+/* ─── Focus-visible styles ───────────────────────────────────────────────── */
+
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+[tabindex="0"]:focus-visible {
+  outline: 2px solid oklch(0.55 0.2 260);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
 /* Mobile slide-in pane */
 .mobile-pane {
   transform: translateX(100%);

@@ -25,7 +25,7 @@ export function FlowHeader({ title, familyName, stepLabel, progressPct, onBack, 
 
   return (
     <div className="px-4 sm:px-8 py-4 flex items-center gap-4">
-      <button onClick={onBack} className="text-slate-300 hover:text-slate-600 transition-colors">
+      <button onClick={onBack} aria-label="Go back" className="text-slate-300 hover:text-slate-600 transition-colors">
         <ArrowLeft size={22} strokeWidth={1.5} />
       </button>
       <div className="flex-1">
@@ -37,7 +37,7 @@ export function FlowHeader({ title, familyName, stepLabel, progressPct, onBack, 
           <div className={`h-full ${ACCENT_COLORS[accent]} rounded-full transition-all duration-500`} style={{ width: `${progressPct}%` }} />
         </div>
       </div>
-      <button onClick={onShowPane} className="lg:hidden text-slate-400 hover:text-slate-600 relative">
+      <button onClick={onShowPane} aria-label="Show activity log" className="lg:hidden text-slate-400 hover:text-slate-600 relative">
         <FileText size={20} />
         {hasIndicator && <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full" />}
       </button>

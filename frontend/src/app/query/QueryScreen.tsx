@@ -418,7 +418,7 @@ export function QueryScreen({ onExit, initialQuery }: { onExit: () => void; init
       <div className={`${s.showRightPane ? "fixed inset-0 z-50 bg-white" : "hidden"} lg:block lg:static lg:w-[30%] border-l border-slate-200 bg-white flex flex-col`}>
         <div className="px-5 py-5 border-b border-slate-100 flex items-center justify-between">
           <p className="text-xs uppercase tracking-wider text-slate-400">Query History</p>
-          <button onClick={() => d({ type: "SET_RIGHT_PANE", v: false })} className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>
+          <button onClick={() => d({ type: "SET_RIGHT_PANE", v: false })} aria-label="Close panel" className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {s.history.length === 0 ? (

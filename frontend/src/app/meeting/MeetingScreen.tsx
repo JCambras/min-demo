@@ -287,7 +287,7 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
                             <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">{i + 1}</span>
                             <span className="text-sm text-slate-700">{f}</span>
                           </div>
-                          <button onClick={() => d({ type: "REMOVE_FOLLOW_UP", idx: i })} className="text-slate-300 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
+                          <button onClick={() => d({ type: "REMOVE_FOLLOW_UP", idx: i })} aria-label="Remove follow-up item" className="text-slate-300 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
                         </div>
                       ))}
                     </div>
@@ -296,7 +296,7 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
                     <Input className="h-11 rounded-xl flex-1" placeholder="Add a follow-up item..." value={s.newFollowUp}
                       onChange={e => d({ type: "SET_NEW_FOLLOW_UP", v: e.target.value })}
                       onKeyDown={e => { if (e.key === "Enter" && s.newFollowUp.trim()) { e.preventDefault(); d({ type: "ADD_FOLLOW_UP" }); } }} />
-                    <button onClick={() => d({ type: "ADD_FOLLOW_UP" })} disabled={!s.newFollowUp.trim()}
+                    <button onClick={() => d({ type: "ADD_FOLLOW_UP" })} disabled={!s.newFollowUp.trim()} aria-label="Add follow-up item"
                       className="h-11 w-11 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 disabled:opacity-30 transition-colors"><Plus size={18} /></button>
                   </div>
                   {s.followUps.length > 0 && (
@@ -392,7 +392,7 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
       <div className={`${s.showRightPane ? "fixed inset-0 z-50 bg-white" : "hidden"} lg:block lg:static lg:w-[30%] border-l border-slate-200 bg-white flex flex-col`}>
         <div className="px-5 py-5 border-b border-slate-100 flex items-center justify-between">
           <p className="text-xs uppercase tracking-wider text-slate-400">Activity Log</p>
-          <button onClick={() => d({ type: "SET_RIGHT_PANE", v: false })} className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>
+          <button onClick={() => d({ type: "SET_RIGHT_PANE", v: false })} aria-label="Close panel" className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {s.evidence.length === 0 ? (

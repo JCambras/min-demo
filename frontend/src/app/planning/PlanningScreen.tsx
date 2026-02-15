@@ -258,7 +258,7 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
                   <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 animate-fade-in">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-semibold text-slate-700">New Goal</p>
-                      <button onClick={() => setShowAdd(false)}><X size={16} className="text-slate-400" /></button>
+                      <button onClick={() => setShowAdd(false)} aria-label="Close add goal form"><X size={16} className="text-slate-400" /></button>
                     </div>
 
                     {/* Quick templates */}
@@ -331,7 +331,7 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
                       return (
                         <div key={i} className="flex items-center gap-3 px-5 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
                           {/* Check circle */}
-                          <button onClick={() => toggleComplete(g)} className="flex-shrink-0">
+                          <button onClick={() => toggleComplete(g)} aria-label={g.status === "Completed" ? "Mark goal incomplete" : "Mark goal complete"} className="flex-shrink-0">
                             {g.status === "Completed"
                               ? <CheckCircle size={18} className="text-green-500" />
                               : <Circle size={18} className="text-slate-300 hover:text-slate-500 transition-colors" />}

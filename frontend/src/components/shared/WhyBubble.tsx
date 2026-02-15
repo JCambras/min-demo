@@ -19,7 +19,7 @@ export function WhyBubble({ reason, regulation, compact }: WhyBubbleProps) {
         </button>
         {open && (
           <span className="absolute left-0 bottom-full mb-2 z-30 w-64 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-xl animate-fade-in">
-            <button onClick={() => setOpen(false)} className="absolute top-2 right-2 text-slate-400 hover:text-white"><X size={12} /></button>
+            <button onClick={() => setOpen(false)} aria-label="Close explanation" className="absolute top-2 right-2 text-slate-400 hover:text-white"><X size={12} /></button>
             <span className="block mb-1 font-medium text-blue-300">Why?</span>
             <span className="block leading-relaxed">{reason}</span>
             {regulation && <span className="block mt-1.5 text-slate-400 text-[10px]">{regulation}</span>}
