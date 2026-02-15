@@ -165,10 +165,10 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
     const t = setTimeout(async () => {
       try {
         const res = await callSF("searchHouseholds", { query: s.searchQuery });
-        if (res.success) d({ type: "SET_RESULTS", v: res.households.map((h: { Id: string; Name: string; Description: string; CreatedDate: string; Contacts?: { records: { FirstName: string; Id: string }[] } }) => ({
-          id: h.Id, name: h.Name, createdDate: new Date(h.CreatedDate).toLocaleDateString(),
-          contactNames: h.Contacts?.records?.map(c => c.FirstName).filter(Boolean).join(" & ") || "",
-          primaryContactId: h.Contacts?.records?.[0]?.Id || undefined,
+        if (res.success) d({ type: "SET_RESULTS", v: res.households.map((h: { id: string; name: string; description: string; createdAt: string; contacts?: { firstName: string; id: string }[] }) => ({
+          id: h.id, name: h.name, createdDate: new Date(h.createdAt).toLocaleDateString(),
+          contactNames: h.contacts?.map(c => c.firstName).filter(Boolean).join(" & ") || "",
+          primaryContactId: h.contacts?.[0]?.id || undefined,
         })) });
       } catch { /* swallow */ }
       d({ type: "SET_SEARCHING", v: false });

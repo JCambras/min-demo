@@ -160,9 +160,9 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     const t = setTimeout(async () => {
       try {
         const res = await callSF("searchHouseholds", { query: familyQuery });
-        if (res.success) setFamilyResults((res.households as { Id: string; Name: string; CreatedDate: string; Contacts?: { records: { FirstName: string }[] } }[]).map(h => ({
-          id: h.Id, name: h.Name, createdDate: formatDate(h.CreatedDate),
-          contactNames: h.Contacts?.records?.map((c: { FirstName: string }) => c.FirstName).filter(Boolean).join(" & ") || "",
+        if (res.success) setFamilyResults((res.households as { id: string; name: string; createdAt: string; contacts?: { firstName: string }[] }[]).map(h => ({
+          id: h.id, name: h.name, createdDate: formatDate(h.createdAt),
+          contactNames: h.contacts?.map((c: { firstName: string }) => c.firstName).filter(Boolean).join(" & ") || "",
         })));
       } catch (err) {
         log.warn("HomeScreen", "Family search failed", { query: familyQuery, error: err instanceof Error ? err.message : "Unknown" });

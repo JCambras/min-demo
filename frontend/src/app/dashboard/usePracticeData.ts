@@ -5,14 +5,14 @@ import { callSF } from "@/lib/salesforce";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface SFTask {
-  Id: string; Subject: string; Status: string; Priority: string;
-  Description: string; CreatedDate: string; ActivityDate: string;
-  What?: { Name: string; Id?: string };
+  id: string; subject: string; status: string; priority: string;
+  description: string; createdAt: string; dueDate: string;
+  householdName?: string; householdId?: string;
 }
 
 export interface SFHousehold {
-  Id: string; Name: string; CreatedDate: string; Description?: string;
-  Owner?: { Name: string };
+  id: string; name: string; createdAt: string; description?: string;
+  advisorName?: string;
 }
 
 export interface AdvisorScore {
@@ -140,22 +140,22 @@ function assignDemoAdvisors(households: SFHousehold[]): Map<string, string> {
   const assignments = new Map<string, string>();
   let rrIdx = 0;
 
-  // Detect diverse ownership: if multiple distinct owners exist, this is a real org
-  // with proper advisor assignments. If all records share one owner (demo API user), skip.
-  const owners = new Set(households.map(h => h.Owner?.Name).filter(Boolean));
+  // Detect diverse ownership: if multiple distinct advisors exist, this is a real org
+  // with proper advisor assignments. If all records share one advisor (demo API user), skip.
+  const owners = new Set(households.map(h => h.advisorName).filter(Boolean));
   const hasRealOwnership = owners.size > 1;
 
   for (const h of households) {
-    // 1. Real org: use Owner.Name when ownership is diverse (schema-aware advisor field)
-    if (hasRealOwnership && h.Owner?.Name) {
-      assignments.set(h.Name, h.Owner.Name);
+    // 1. Real org: use advisorName when ownership is diverse (schema-aware advisor field)
+    if (hasRealOwnership && h.advisorName) {
+      assignments.set(h.name, h.advisorName);
       continue;
     }
     // 2. Demo fallback: parse advisor from Description text
-    const parsed = getAdvisor(h.Description);
-    if (parsed) { assignments.set(h.Name, parsed); }
+    const parsed = getAdvisor(h.description);
+    if (parsed) { assignments.set(h.name, parsed); }
     // 3. Round-robin fallback for records with no advisor info
-    else { assignments.set(h.Name, KNOWN_ADVISORS[rrIdx % KNOWN_ADVISORS.length]); rrIdx++; }
+    else { assignments.set(h.name, KNOWN_ADVISORS[rrIdx % KNOWN_ADVISORS.length]); rrIdx++; }
   }
   return assignments;
 }
@@ -170,7 +170,7 @@ function buildRevenueData(households: SFHousehold[], pipeline: PipelineStage[], 
 
   const advHouseholds = new Map<string, number>();
   for (const h of households) {
-    const adv = advisorMap.get(h.Name) || "Unassigned";
+    const adv = advisorMap.get(h.name) || "Unassigned";
     advHouseholds.set(adv, (advHouseholds.get(adv) || 0) + 1);
   }
   const revenuePerAdvisor = Array.from(advHouseholds.entries())
@@ -187,7 +187,7 @@ function buildRevenueData(households: SFHousehold[], pipeline: PipelineStage[], 
   const quarters = ["Q-3", "Q-2", "Q-1", "Current"];
   const quarterlyTrend = quarters.map((label, i) => {
     const quarterEnd = now - (3 - i) * msQuarter;
-    const hhInPeriod = households.filter(h => new Date(h.CreatedDate).getTime() <= quarterEnd).length;
+    const hhInPeriod = households.filter(h => new Date(h.createdAt).getTime() <= quarterEnd).length;
     return { label, value: Math.round(hhInPeriod * avgAumPerHousehold * (feeScheduleBps / 10000) / 1000) };
   });
 
@@ -204,21 +204,21 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
   const thisWeek = (d: string) => daysSince(d) <= 7;
   const lastWeek = (d: string) => { const ds = daysSince(d); return ds > 7 && ds <= 14; };
 
-  const open = tasks.filter(t => t.Status !== "Completed");
-  const completed = tasks.filter(t => t.Status === "Completed");
-  const compReviews = tasks.filter(t => t.Subject?.includes("COMPLIANCE REVIEW"));
-  const meetingNotes = tasks.filter(t => t.Subject?.includes("MEETING NOTE"));
-  const unsigned = open.filter(t => t.Subject?.includes("SEND DOCU") || t.Subject?.includes("DocuSign"));
-  const overdue = open.filter(t => t.ActivityDate && new Date(t.ActivityDate).getTime() < now);
+  const open = tasks.filter(t => t.status !== "Completed");
+  const completed = tasks.filter(t => t.status === "Completed");
+  const compReviews = tasks.filter(t => t.subject?.includes("COMPLIANCE REVIEW"));
+  const meetingNotes = tasks.filter(t => t.subject?.includes("MEETING NOTE"));
+  const unsigned = open.filter(t => t.subject?.includes("SEND DOCU") || t.subject?.includes("DocuSign"));
+  const overdue = open.filter(t => t.dueDate && new Date(t.dueDate).getTime() < now);
 
   const reviewedSet = new Set<string>();
-  compReviews.forEach(t => { if (t.What?.Name) reviewedSet.add(t.What.Name); });
+  compReviews.forEach(t => { if (t.householdName) reviewedSet.add(t.householdName); });
   const metLast90 = new Set<string>();
-  meetingNotes.forEach(t => { if (daysSince(t.CreatedDate) <= 90 && t.What?.Name) metLast90.add(t.What.Name); });
+  meetingNotes.forEach(t => { if (daysSince(t.createdAt) <= 90 && t.householdName) metLast90.add(t.householdName); });
 
   // Health Score
   const complianceCoverage = households.length > 0 ? reviewedSet.size / households.length : 1;
-  const docusignVelocity = unsigned.length === 0 ? 1 : Math.max(0, 1 - unsigned.filter(t => daysSince(t.CreatedDate) > 7).length / Math.max(unsigned.length, 1));
+  const docusignVelocity = unsigned.length === 0 ? 1 : Math.max(0, 1 - unsigned.filter(t => daysSince(t.createdAt) > 7).length / Math.max(unsigned.length, 1));
   const taskOnTime = completed.length > 0 ? 1 - Math.min(overdue.length / Math.max(open.length + completed.length, 1), 1) : 1;
   const meetingCoverage = households.length > 0 ? metLast90.size / households.length : 1;
 
@@ -235,24 +235,24 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
   for (const adv of KNOWN_ADVISORS) { advisorMap.set(adv, { households: new Set(), openTasks: 0, overdue: 0, unsigned: 0, reviewed: new Set(), meetings90: new Set() }); }
   const hhAdvisorMap = assignDemoAdvisors(households);
   for (const h of households) {
-    const adv = hhAdvisorMap.get(h.Name) || "Unassigned";
+    const adv = hhAdvisorMap.get(h.name) || "Unassigned";
     if (!advisorMap.has(adv)) advisorMap.set(adv, { households: new Set(), openTasks: 0, overdue: 0, unsigned: 0, reviewed: new Set(), meetings90: new Set() });
-    advisorMap.get(adv)!.households.add(h.Name);
+    advisorMap.get(adv)!.households.add(h.name);
   }
   for (const t of tasks) {
-    const hhName = t.What?.Name;
+    const hhName = t.householdName;
     if (!hhName) continue;
     let advName = "Unassigned";
     for (const [name, data] of advisorMap) { if (data.households.has(hhName)) { advName = name; break; } }
     if (!advisorMap.has(advName)) advisorMap.set(advName, { households: new Set(), openTasks: 0, overdue: 0, unsigned: 0, reviewed: new Set(), meetings90: new Set() });
     const ad = advisorMap.get(advName)!;
-    if (t.Status !== "Completed") {
+    if (t.status !== "Completed") {
       ad.openTasks++;
-      if (t.ActivityDate && new Date(t.ActivityDate).getTime() < now) ad.overdue++;
-      if (t.Subject?.includes("SEND DOCU") || t.Subject?.includes("DocuSign")) ad.unsigned++;
+      if (t.dueDate && new Date(t.dueDate).getTime() < now) ad.overdue++;
+      if (t.subject?.includes("SEND DOCU") || t.subject?.includes("DocuSign")) ad.unsigned++;
     }
-    if (t.Subject?.includes("COMPLIANCE REVIEW")) ad.reviewed.add(hhName);
-    if (t.Subject?.includes("MEETING NOTE") && daysSince(t.CreatedDate) <= 90) ad.meetings90.add(hhName);
+    if (t.subject?.includes("COMPLIANCE REVIEW")) ad.reviewed.add(hhName);
+    if (t.subject?.includes("MEETING NOTE") && daysSince(t.createdAt) <= 90) ad.meetings90.add(hhName);
   }
   const advisors: AdvisorScore[] = Array.from(advisorMap.entries())
     .filter(([name]) => name !== "Unassigned" || advisorMap.get(name)!.households.size > 0)
@@ -268,13 +268,13 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
 
   // Pipeline
   const hhTasks = new Map<string, { id: string; hasCompliance: boolean; hasDocuSent: boolean; hasDocuSigned: boolean; hasAcctOpen: boolean; hasMeeting: boolean; days: number }>();
-  for (const h of households) { hhTasks.set(h.Name, { id: h.Id, hasCompliance: false, hasDocuSent: false, hasDocuSigned: false, hasAcctOpen: false, hasMeeting: false, days: daysSince(h.CreatedDate) }); }
+  for (const h of households) { hhTasks.set(h.name, { id: h.id, hasCompliance: false, hasDocuSent: false, hasDocuSigned: false, hasAcctOpen: false, hasMeeting: false, days: daysSince(h.createdAt) }); }
   for (const t of tasks) {
-    const hhName = t.What?.Name; if (!hhName || !hhTasks.has(hhName)) continue; const hh = hhTasks.get(hhName)!;
-    if (t.Subject?.includes("COMPLIANCE REVIEW")) hh.hasCompliance = true;
-    if (t.Subject?.includes("SEND DOCU") || t.Subject?.includes("DocuSign")) { hh.hasDocuSent = true; if (t.Status === "Completed") hh.hasDocuSigned = true; }
-    if (t.Subject?.includes("MEETING NOTE")) hh.hasMeeting = true;
-    if (t.Subject?.includes("Account opening") || t.Subject?.includes("ACCOUNT")) hh.hasAcctOpen = true;
+    const hhName = t.householdName; if (!hhName || !hhTasks.has(hhName)) continue; const hh = hhTasks.get(hhName)!;
+    if (t.subject?.includes("COMPLIANCE REVIEW")) hh.hasCompliance = true;
+    if (t.subject?.includes("SEND DOCU") || t.subject?.includes("DocuSign")) { hh.hasDocuSent = true; if (t.status === "Completed") hh.hasDocuSigned = true; }
+    if (t.subject?.includes("MEETING NOTE")) hh.hasMeeting = true;
+    if (t.subject?.includes("Account opening") || t.subject?.includes("ACCOUNT")) hh.hasAcctOpen = true;
   }
   const stages: PipelineStage[] = [
     { label: "Just Onboarded", count: 0, stuck: 0, households: [], avgDays: 0, benchmarkDays: 7, velocityRatio: 0, conversionRate: 0 },
@@ -305,35 +305,35 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
 
   // Risk Radar
   const risks: RiskItem[] = [];
-  for (const t of unsigned) { const ds = daysSince(t.CreatedDate); if (ds >= 5) risks.push({ id: t.Id, label: `DocuSign unsigned for ${ds} days`, household: t.What?.Name || "", householdId: t.What?.Id || "", severity: ds > 10 ? "critical" : "high", category: "DocuSign", action: "Send Reminder", daysStale: ds, url: `${instanceUrl}/${t.Id}` }); }
-  for (const h of households) { if (!reviewedSet.has(h.Name)) { const ds = daysSince(h.CreatedDate); if (ds >= 7) risks.push({ id: h.Id, label: `No compliance review on file`, household: h.Name, householdId: h.Id, severity: ds > 30 ? "critical" : ds > 14 ? "high" : "medium", category: "Compliance", action: "Run Review", daysStale: ds, url: `${instanceUrl}/${h.Id}` }); } }
-  for (const t of overdue) { if (t.Priority === "High") { const ds = daysSince(t.ActivityDate); risks.push({ id: t.Id, label: t.Subject, household: t.What?.Name || "", householdId: t.What?.Id || "", severity: ds > 7 ? "critical" : "high", category: "Overdue Task", action: "View Task", daysStale: ds, url: `${instanceUrl}/${t.Id}` }); } }
+  for (const t of unsigned) { const ds = daysSince(t.createdAt); if (ds >= 5) risks.push({ id: t.id, label: `DocuSign unsigned for ${ds} days`, household: t.householdName || "", householdId: t.householdId || "", severity: ds > 10 ? "critical" : "high", category: "DocuSign", action: "Send Reminder", daysStale: ds, url: `${instanceUrl}/${t.id}` }); }
+  for (const h of households) { if (!reviewedSet.has(h.name)) { const ds = daysSince(h.createdAt); if (ds >= 7) risks.push({ id: h.id, label: `No compliance review on file`, household: h.name, householdId: h.id, severity: ds > 30 ? "critical" : ds > 14 ? "high" : "medium", category: "Compliance", action: "Run Review", daysStale: ds, url: `${instanceUrl}/${h.id}` }); } }
+  for (const t of overdue) { if (t.priority === "High") { const ds = daysSince(t.dueDate); risks.push({ id: t.id, label: t.subject, household: t.householdName || "", householdId: t.householdId || "", severity: ds > 7 ? "critical" : "high", category: "Overdue Task", action: "View Task", daysStale: ds, url: `${instanceUrl}/${t.id}` }); } }
   const lastActivityMap = new Map<string, number>();
-  for (const t of tasks) { if (t.What?.Name) { lastActivityMap.set(t.What.Name, Math.max(lastActivityMap.get(t.What.Name) || 0, new Date(t.CreatedDate).getTime())); } }
-  for (const h of households) { const lastAct = lastActivityMap.get(h.Name); const stale = lastAct ? Math.floor((now - lastAct) / msDay) : daysSince(h.CreatedDate); if (stale >= 30) risks.push({ id: h.Id, label: `No activity in ${stale} days`, household: h.Name, householdId: h.Id, severity: stale > 60 ? "critical" : "medium", category: "Stale Account", action: "View Family", daysStale: stale, url: `${instanceUrl}/${h.Id}` }); }
+  for (const t of tasks) { if (t.householdName) { lastActivityMap.set(t.householdName, Math.max(lastActivityMap.get(t.householdName) || 0, new Date(t.createdAt).getTime())); } }
+  for (const h of households) { const lastAct = lastActivityMap.get(h.name); const stale = lastAct ? Math.floor((now - lastAct) / msDay) : daysSince(h.createdAt); if (stale >= 30) risks.push({ id: h.id, label: `No activity in ${stale} days`, household: h.name, householdId: h.id, severity: stale > 60 ? "critical" : "medium", category: "Stale Account", action: "View Family", daysStale: stale, url: `${instanceUrl}/${h.id}` }); }
   risks.sort((a, b) => { const sev = { critical: 0, high: 1, medium: 2 }; return (sev[a.severity] - sev[b.severity]) || (b.daysStale - a.daysStale); });
 
   // Weekly Comparison
-  const thisWeekCompleted = completed.filter(t => thisWeek(t.CreatedDate)).length;
-  const lastWeekCompleted = completed.filter(t => lastWeek(t.CreatedDate)).length;
-  const thisWeekOnboarded = households.filter(h => thisWeek(h.CreatedDate)).length;
-  const lastWeekOnboarded = households.filter(h => lastWeek(h.CreatedDate)).length;
-  const thisWeekReviews = compReviews.filter(t => thisWeek(t.CreatedDate)).length;
-  const lastWeekReviews = compReviews.filter(t => lastWeek(t.CreatedDate)).length;
-  const thisWeekSigned = completed.filter(t => thisWeek(t.CreatedDate) && (t.Subject?.includes("DocuSign") || t.Subject?.includes("SEND DOCU"))).length;
-  const lastWeekSigned = completed.filter(t => lastWeek(t.CreatedDate) && (t.Subject?.includes("DocuSign") || t.Subject?.includes("SEND DOCU"))).length;
+  const thisWeekCompleted = completed.filter(t => thisWeek(t.createdAt)).length;
+  const lastWeekCompleted = completed.filter(t => lastWeek(t.createdAt)).length;
+  const thisWeekOnboarded = households.filter(h => thisWeek(h.createdAt)).length;
+  const lastWeekOnboarded = households.filter(h => lastWeek(h.createdAt)).length;
+  const thisWeekReviews = compReviews.filter(t => thisWeek(t.createdAt)).length;
+  const lastWeekReviews = compReviews.filter(t => lastWeek(t.createdAt)).length;
+  const thisWeekSigned = completed.filter(t => thisWeek(t.createdAt) && (t.subject?.includes("DocuSign") || t.subject?.includes("SEND DOCU"))).length;
+  const lastWeekSigned = completed.filter(t => lastWeek(t.createdAt) && (t.subject?.includes("DocuSign") || t.subject?.includes("SEND DOCU"))).length;
 
   const revenue = buildRevenueData(households, stages, hhAdvisorMap, assumptions);
 
   // Detail drawer items: actual task lists behind the stat counts
   const toSummary = (t: SFTask): TaskSummary => ({
-    id: t.Id, subject: t.Subject, household: t.What?.Name || "", householdId: t.What?.Id || "",
-    daysOld: daysSince(t.CreatedDate), status: t.Status, priority: t.Priority,
+    id: t.id, subject: t.subject, household: t.householdName || "", householdId: t.householdId || "",
+    daysOld: daysSince(t.createdAt), status: t.status, priority: t.priority,
   });
-  const openTaskItems = open.sort((a, b) => daysSince(b.CreatedDate) - daysSince(a.CreatedDate)).slice(0, 10).map(toSummary);
-  const unsignedItems = unsigned.sort((a, b) => daysSince(b.CreatedDate) - daysSince(a.CreatedDate)).slice(0, 10).map(toSummary);
-  const reviewItems = compReviews.sort((a, b) => daysSince(a.CreatedDate) - daysSince(b.CreatedDate)).slice(0, 10).map(toSummary);
-  const meetingItems = meetingNotes.sort((a, b) => daysSince(a.CreatedDate) - daysSince(b.CreatedDate)).slice(0, 10).map(toSummary);
+  const openTaskItems = open.sort((a, b) => daysSince(b.createdAt) - daysSince(a.createdAt)).slice(0, 10).map(toSummary);
+  const unsignedItems = unsigned.sort((a, b) => daysSince(b.createdAt) - daysSince(a.createdAt)).slice(0, 10).map(toSummary);
+  const reviewItems = compReviews.sort((a, b) => daysSince(a.createdAt) - daysSince(b.createdAt)).slice(0, 10).map(toSummary);
+  const meetingItems = meetingNotes.sort((a, b) => daysSince(a.createdAt) - daysSince(b.createdAt)).slice(0, 10).map(toSummary);
 
   return {
     healthScore, healthBreakdown, advisors, pipeline: stages, risks: risks.slice(0, 30),
@@ -360,7 +360,7 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
 
 function parseFirmConfig(households: SFHousehold[]): Partial<RevenueAssumptions> {
   for (const h of households) {
-    const desc = h.Description || "";
+    const desc = h.description || "";
     const match = desc.match(/Revenue Config:\s*(.+)/i);
     if (!match) continue;
     const config = match[1];
@@ -418,7 +418,7 @@ export function usePracticeData() {
                 // hhAdvisorMap is keyed by household Name.
                 // We need Name→Id to bridge them.
                 const hhNameToId = new Map<string, string>();
-                for (const h of households) { hhNameToId.set(h.Name, h.Id); }
+                for (const h of households) { hhNameToId.set(h.name, h.id); }
 
                 const advisorRealAum = new Map<string, number>();
                 for (const [hhName, advName] of practiceData.hhAdvisorMap) {

@@ -396,7 +396,8 @@ describe("onboardingHandlers", () => {
       await onboardingHandlers.sendDocusign(validInput, adapter, crmCtx);
 
       expect(fireWorkflowTrigger).toHaveBeenCalledWith(
-        mockCtx,
+        adapter,
+        crmCtx,
         "docusign_sent",
         VALID_HH_ID,
         "IRA Application", // first envelope name
@@ -508,7 +509,8 @@ describe("complianceHandlers", () => {
       await complianceHandlers.recordComplianceReview(passedInput, adapter, crmCtx);
 
       expect(fireWorkflowTrigger).toHaveBeenCalledWith(
-        mockCtx,
+        adapter,
+        crmCtx,
         "compliance_reviewed",
         VALID_HH_ID,
         "Anderson Household",

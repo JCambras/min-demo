@@ -365,7 +365,7 @@ describe("householdHandlers.confirmIntent", () => {
 
     // Verify workflow trigger
     expect(fireWorkflowTrigger).toHaveBeenCalledWith(
-      mockCtx, "household_created", VALID_HH_ID, "Thompson Household"
+      adapter, crmCtx, "household_created", VALID_HH_ID, "Thompson Household"
     );
   });
 

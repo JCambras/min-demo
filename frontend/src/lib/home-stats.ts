@@ -31,23 +31,25 @@ export interface HomeStats {
   recentItems: { subject: string; household: string; url: string; type: string }[];
 }
 
-// ─── Salesforce Record Shapes ───────────────────────────────────────────────
+// ─── Canonical CRM Record Shapes ────────────────────────────────────────────
 
 export type SFTask = {
-  Id: string;
-  Subject: string;
-  Status: string;
-  Priority: string;
-  CreatedDate: string;
-  ActivityDate: string;
-  What?: { Name: string; Id?: string; Description?: string };
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  createdAt: string;
+  dueDate: string;
+  householdName?: string;
+  householdId?: string;
+  description?: string;
 };
 
 export type SFHousehold = {
-  Id: string;
-  Name: string;
-  CreatedDate: string;
-  Description?: string;
+  id: string;
+  name: string;
+  createdAt: string;
+  description?: string;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -75,34 +77,34 @@ export function buildHomeStats(
   if (filterAdvisor) {
     const advisorHHIds = new Set(
       households
-        .filter(h => getHouseholdAdvisor(h.Description) === filterAdvisor)
-        .map(h => h.Id)
+        .filter(h => getHouseholdAdvisor(h.description) === filterAdvisor)
+        .map(h => h.id)
     );
-    filteredHH = households.filter(h => advisorHHIds.has(h.Id));
-    filteredTasks = tasks.filter(t => t.What?.Id && advisorHHIds.has(t.What.Id));
+    filteredHH = households.filter(h => advisorHHIds.has(h.id));
+    filteredTasks = tasks.filter(t => t.householdId && advisorHHIds.has(t.householdId));
   }
 
-  const open = filteredTasks.filter(t => t.Status !== "Completed");
-  const completed = filteredTasks.filter(t => t.Status === "Completed");
-  const overdue = open.filter(t => t.ActivityDate && new Date(t.ActivityDate).getTime() < now);
-  const meetings = filteredTasks.filter(t => isMeetingNote(t.Subject));
-  const compReviews = filteredTasks.filter(t => isComplianceReview(t.Subject));
+  const open = filteredTasks.filter(t => t.status !== "Completed");
+  const completed = filteredTasks.filter(t => t.status === "Completed");
+  const overdue = open.filter(t => t.dueDate && new Date(t.dueDate).getTime() < now);
+  const meetings = filteredTasks.filter(t => isMeetingNote(t.subject));
+  const compReviews = filteredTasks.filter(t => isComplianceReview(t.subject));
   const reviewed = new Set<string>();
-  compReviews.forEach(t => { if (t.What?.Name) reviewed.add(t.What.Name); });
+  compReviews.forEach(t => { if (t.householdName) reviewed.add(t.householdName); });
   const unsigned = filteredTasks.filter(t =>
-    t.Status === "Not Started" && isDocuSignSend(t.Subject)
+    t.status === "Not Started" && isDocuSignSend(t.subject)
   );
-  const unreviewedHH = filteredHH.filter(h => !reviewed.has(h.Name));
-  const upMeetings = meetings.filter(t => thisWeek(t.CreatedDate));
+  const unreviewedHH = filteredHH.filter(h => !reviewed.has(h.name));
+  const upMeetings = meetings.filter(t => thisWeek(t.createdAt));
 
   const taskToItem = (t: SFTask): StatDetailItem => ({
-    label: t.Subject,
-    sub: `${t.What?.Name || ""}${t.ActivityDate ? ` · Due ${formatDate(t.ActivityDate)}` : ""}`,
-    url: `${instanceUrl}/${t.Id}`,
-    priority: t.Priority,
-    due: t.ActivityDate ? formatDate(t.ActivityDate) : "",
-    householdId: t.What?.Id,
-    householdName: t.What?.Name,
+    label: t.subject,
+    sub: `${t.householdName || ""}${t.dueDate ? ` · Due ${formatDate(t.dueDate)}` : ""}`,
+    url: `${instanceUrl}/${t.id}`,
+    priority: t.priority,
+    due: t.dueDate ? formatDate(t.dueDate) : "",
+    householdId: t.householdId,
+    householdName: t.householdName,
   });
 
   return {
@@ -114,27 +116,27 @@ export function buildHomeStats(
     overdueTaskItems: overdue.slice(0, 20).map(taskToItem),
     openTaskItems: open.slice(0, 20).map(taskToItem),
     readyForReviewItems: unreviewedHH.slice(0, 20).map(h => ({
-      label: h.Name,
-      sub: `Created ${formatDate(h.CreatedDate)} · No compliance review`,
-      url: `${instanceUrl}/${h.Id}`,
-      householdId: h.Id,
-      householdName: h.Name,
+      label: h.name,
+      sub: `Created ${formatDate(h.createdAt)} · No compliance review`,
+      url: `${instanceUrl}/${h.id}`,
+      householdId: h.id,
+      householdName: h.name,
     })),
     unsignedItems: unsigned.slice(0, 20).map(t => ({
-      label: t.Subject.replace(`${DOCUSIGN_SEND} — `, ""),
-      sub: `${t.What?.Name || ""} · Awaiting signature`,
-      url: `${instanceUrl}/${t.Id}`,
+      label: t.subject.replace(`${DOCUSIGN_SEND} — `, ""),
+      sub: `${t.householdName || ""} · Awaiting signature`,
+      url: `${instanceUrl}/${t.id}`,
     })),
     upcomingMeetingItems: upMeetings.slice(0, 20).map(t => ({
-      label: t.Subject,
-      sub: `${t.What?.Name || ""} · ${formatDate(t.CreatedDate)}`,
-      url: `${instanceUrl}/${t.Id}`,
+      label: t.subject,
+      sub: `${t.householdName || ""} · ${formatDate(t.createdAt)}`,
+      url: `${instanceUrl}/${t.id}`,
     })),
     recentItems: completed.slice(0, 5).map(t => ({
-      subject: t.Subject,
-      household: t.What?.Name || "",
-      url: `${instanceUrl}/${t.Id}`,
-      type: classifyTask(t.Subject),
+      subject: t.subject,
+      household: t.householdName || "",
+      url: `${instanceUrl}/${t.id}`,
+      type: classifyTask(t.subject),
     })),
   };
 }

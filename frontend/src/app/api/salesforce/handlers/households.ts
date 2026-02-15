@@ -7,7 +7,6 @@
 
 import { NextResponse } from "next/server";
 import type { CRMPort, CRMContext } from "@/lib/crm/port";
-import type { SFContext } from "@/lib/sf-client";
 import { validate } from "@/lib/sf-validation";
 import { fireWorkflowTrigger } from "@/lib/workflows";
 
@@ -17,7 +16,7 @@ export const householdHandlers: Record<string, Handler> = {
   searchContacts: async (raw, adapter, ctx) => {
     const data = validate.searchContacts(raw);
     const contacts = await adapter.searchContacts(ctx, data.query);
-    return NextResponse.json({ success: true, contacts: contacts.map(c => c.raw) });
+    return NextResponse.json({ success: true, contacts });
   },
 
   confirmIntent: async (raw, adapter, ctx) => {
@@ -46,7 +45,7 @@ export const householdHandlers: Record<string, Handler> = {
       relationship = await adapter.createContactRelationship?.(ctx, contacts[0].id, contacts[1].id, "Spouse") ?? null;
     }
 
-    const wf = await fireWorkflowTrigger(ctx.auth as SFContext, "household_created", household.id, `${data.familyName} Household`);
+    const wf = await fireWorkflowTrigger(adapter, ctx, "household_created", household.id, `${data.familyName} Household`);
     return NextResponse.json({ success: true, household, contacts, relationship, workflows: wf });
   },
 
@@ -55,7 +54,7 @@ export const householdHandlers: Record<string, Handler> = {
     const result = await adapter.searchHouseholds(ctx, data.query, data.limit, data.offset);
     return NextResponse.json({
       success: true,
-      households: result.households.map(h => h.raw),
+      households: result.households,
       pagination: { offset: data.offset, limit: data.limit, hasMore: result.hasMore },
     });
   },
@@ -65,9 +64,9 @@ export const householdHandlers: Record<string, Handler> = {
     const result = await adapter.getHouseholdDetail(ctx, data.householdId);
     return NextResponse.json({
       success: true,
-      household: result.household?.raw || null,
-      contacts: result.contacts.map(c => c.raw),
-      tasks: result.tasks.map(t => t.raw),
+      household: result.household || null,
+      contacts: result.contacts,
+      tasks: result.tasks,
       householdUrl: `${ctx.instanceUrl}/${data.householdId}`,
     });
   },

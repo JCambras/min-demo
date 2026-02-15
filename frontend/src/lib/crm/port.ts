@@ -112,6 +112,12 @@ export interface CRMPort {
     taskId: string,
   ): Promise<CRMRecord>;
 
+  /** Query workflow-prefixed tasks for a household (or all if no householdId). */
+  queryWorkflowTasks(
+    ctx: CRMContext,
+    options?: { householdId?: string; activeOnly?: boolean; limit?: number },
+  ): Promise<CRMTask[]>;
+
   // ── Optional (CRM-specific capabilities) ────────────────────────────────
 
   createContactRelationship?(

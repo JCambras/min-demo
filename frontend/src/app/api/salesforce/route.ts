@@ -12,6 +12,7 @@
 import { NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/sf-connection";
 import { SFValidationError, SFQueryError, SFMutationError, SFTimeoutError } from "@/lib/sf-client";
+import { CRMAuthError, CRMQueryError, CRMMutationError, CRMNotSupportedError } from "@/lib/crm/errors";
 import type { SFContext } from "@/lib/sf-client";
 import { shouldAudit, writeAuditLog } from "@/lib/audit";
 import { getCRMAdapter, getCRMContext } from "@/lib/crm/factory";
@@ -115,6 +116,37 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { success: false, error: { code: error.code, message: error.message }, requestId },
         { status: 502 }
+      );
+    }
+
+    if (error instanceof CRMAuthError) {
+      console.error(`[CRM Auth Error] requestId=${requestId}: ${error.message}`);
+      return NextResponse.json(
+        { success: false, error: { code: error.code, message: error.message }, requestId },
+        { status: error.httpStatus }
+      );
+    }
+
+    if (error instanceof CRMQueryError) {
+      console.error(`[CRM Query Error] requestId=${requestId} status=${error.status}: ${error.message}`);
+      return NextResponse.json(
+        { success: false, error: { code: error.code, message: error.message }, requestId },
+        { status: error.httpStatus }
+      );
+    }
+
+    if (error instanceof CRMMutationError) {
+      console.error(`[CRM Mutation Error] requestId=${requestId} object=${error.objectType} status=${error.status}: ${error.message}`);
+      return NextResponse.json(
+        { success: false, error: { code: error.code, message: error.message }, requestId },
+        { status: error.httpStatus }
+      );
+    }
+
+    if (error instanceof CRMNotSupportedError) {
+      return NextResponse.json(
+        { success: false, error: { code: error.code, message: error.message }, requestId },
+        { status: error.httpStatus }
       );
     }
 

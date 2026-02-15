@@ -2,7 +2,6 @@
 
 import { NextResponse } from "next/server";
 import type { CRMPort, CRMContext } from "@/lib/crm/port";
-import type { SFContext } from "@/lib/sf-client";
 import { validate } from "@/lib/sf-validation";
 import { fireWorkflowTrigger } from "@/lib/workflows";
 
@@ -20,7 +19,7 @@ export const complianceHandlers: Record<string, Handler> = {
         data.checks.map(c => `${c.status === "pass" ? "✓" : c.status === "warn" ? "⚠" : "✗"} ${c.label}: ${c.detail}`).join("\n") +
         `\n\nReviewed by: ${data.reviewerName || "Advisor"}\nNext review due: ${data.nextReviewDate || "90 days"}`,
     });
-    await fireWorkflowTrigger(ctx.auth as SFContext, "compliance_reviewed", data.householdId, `${data.familyName} Household`);
+    await fireWorkflowTrigger(adapter, ctx, "compliance_reviewed", data.householdId, `${data.familyName} Household`);
     return NextResponse.json({ success: true, task });
   },
 };

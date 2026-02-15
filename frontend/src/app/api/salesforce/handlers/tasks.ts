@@ -14,8 +14,8 @@ export const taskHandlers: Record<string, Handler> = {
     const result = await adapter.queryTasks(ctx, data.limit, data.offset);
     return NextResponse.json({
       success: true,
-      tasks: result.tasks.map(t => t.raw),
-      households: result.households.map(h => h.raw),
+      tasks: result.tasks,
+      households: result.households,
       instanceUrl: ctx.instanceUrl,
       pagination: {
         tasks: { offset: data.offset, limit: data.limit, hasMore: result.tasksHasMore },

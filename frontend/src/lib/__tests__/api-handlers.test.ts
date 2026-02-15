@@ -50,7 +50,7 @@ vi.mock("@/lib/org-query", () => ({
 }));
 
 vi.mock("@/lib/workflows", () => ({
-  fireWorkflowTrigger: vi.fn().mockResolvedValue([]),
+  fireWorkflowTrigger: vi.fn().mockResolvedValue({ triggered: [], tasksCreated: 0, skippedSteps: 0, errors: [] }),
 }));
 
 vi.mock("@/lib/audit", () => ({
@@ -514,13 +514,13 @@ describe("Advisor Assignment", () => {
     KNOWN_ADVISORS = mod.KNOWN_ADVISORS;
   });
 
-  it("uses Owner.Name when diverse ownership exists", () => {
+  it("uses advisorName when diverse ownership exists", () => {
     const households = [
-      { Id: "001A", Name: "Smith HH", CreatedDate: "2024-01-01", Owner: { Name: "Advisor A" } },
-      { Id: "001B", Name: "Jones HH", CreatedDate: "2024-01-01", Owner: { Name: "Advisor B" } },
+      { id: "001A", name: "Smith HH", createdAt: "2024-01-01", advisorName: "Advisor A" },
+      { id: "001B", name: "Jones HH", createdAt: "2024-01-01", advisorName: "Advisor B" },
     ];
     const tasks = [
-      { Id: "00T1", Subject: "Test", Status: "Not Started", Priority: "Normal", CreatedDate: "2024-01-01", ActivityDate: "2024-02-01", Description: "", What: { Name: "Smith HH", Id: "001A" } },
+      { id: "00T1", subject: "Test", status: "Not Started", priority: "Normal", createdAt: "2024-01-01", dueDate: "2024-02-01", description: "", householdName: "Smith HH", householdId: "001A" },
     ];
     const data = buildPracticeData(tasks, households, "https://test.salesforce.com");
 
@@ -533,10 +533,10 @@ describe("Advisor Assignment", () => {
     expect(advisorB!.households).toBe(1);
   });
 
-  it("falls back to Description parsing when single owner (demo mode)", () => {
+  it("falls back to description parsing when single owner (demo mode)", () => {
     const households = [
-      { Id: "001A", Name: "Smith HH", CreatedDate: "2024-01-01", Description: "Assigned Advisor: Jon Cambras", Owner: { Name: "API User" } },
-      { Id: "001B", Name: "Jones HH", CreatedDate: "2024-01-01", Description: "Assigned Advisor: Marcus Rivera", Owner: { Name: "API User" } },
+      { id: "001A", name: "Smith HH", createdAt: "2024-01-01", description: "Assigned Advisor: Jon Cambras", advisorName: "API User" },
+      { id: "001B", name: "Jones HH", createdAt: "2024-01-01", description: "Assigned Advisor: Marcus Rivera", advisorName: "API User" },
     ];
     const data = buildPracticeData([], households, "https://test.salesforce.com");
 
@@ -548,8 +548,8 @@ describe("Advisor Assignment", () => {
 
   it("uses round-robin when no advisor info available", () => {
     const households = [
-      { Id: "001A", Name: "HH A", CreatedDate: "2024-01-01" },
-      { Id: "001B", Name: "HH B", CreatedDate: "2024-01-01" },
+      { id: "001A", name: "HH A", createdAt: "2024-01-01" },
+      { id: "001B", name: "HH B", createdAt: "2024-01-01" },
     ];
     const data = buildPracticeData([], households, "https://test.salesforce.com");
 

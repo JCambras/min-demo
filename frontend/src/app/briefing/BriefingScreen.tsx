@@ -9,8 +9,8 @@ import type { Screen, WorkflowContext } from "@/lib/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type SFContact = { Id: string; FirstName: string; LastName: string; Email: string; Phone: string; CreatedDate: string };
-type SFTask = { Id: string; Subject: string; Status: string; Priority: string; Description: string; CreatedDate: string; ActivityDate: string };
+type SFContact = { id: string; firstName: string; lastName: string; email: string; phone: string; createdAt: string };
+type SFTask = { id: string; subject: string; status: string; priority: string; description: string; createdAt: string; dueDate: string };
 
 interface HHResult { id: string; name: string; description: string; createdDate: string; contactNames: string }
 
@@ -38,79 +38,79 @@ interface ClientIntel {
 // Synthesizes raw SF records into advisor-readable narrative.
 
 function buildIntel(
-  household: { Name: string; Description: string; CreatedDate: string },
+  household: { name: string; description: string; createdAt: string },
   contacts: SFContact[],
   tasks: SFTask[],
 ): ClientIntel {
-  const created = new Date(household.CreatedDate);
+  const created = new Date(household.createdAt);
   const daysSince = Math.floor((Date.now() - created.getTime()) / (1000 * 60 * 60 * 24));
 
-  const subj = (t: SFTask) => (t.Subject || "").toLowerCase();
-  const desc = (t: SFTask) => (t.Description || "").toLowerCase();
+  const subj = (t: SFTask) => (t.subject || "").toLowerCase();
+  const desc = (t: SFTask) => (t.description || "").toLowerCase();
 
   // Parse accounts opened from task subjects
   const accountTasks = tasks.filter(t => subj(t).includes("account plan") || subj(t).includes("paperwork generated"));
   const accountsOpened: ClientIntel["accountsOpened"] = [];
   for (const t of accountTasks) {
-    const match = t.Subject?.match(/Paperwork generated — (.+)/i);
+    const match = t.subject?.match(/Paperwork generated — (.+)/i);
     if (match) {
       // Extract owner from description or use household
-      const ownerMatch = t.Description?.match(/Envelope: (.+)/);
-      accountsOpened.push({ type: match[1], owner: ownerMatch?.[1] || household.Name, date: new Date(t.CreatedDate).toLocaleDateString() });
+      const ownerMatch = t.description?.match(/Envelope: (.+)/);
+      accountsOpened.push({ type: match[1], owner: ownerMatch?.[1] || household.name, date: new Date(t.createdAt).toLocaleDateString() });
     }
   }
 
   // Parse funding
   const fundingTasks = tasks.filter(t => subj(t).includes("funding"));
   const fundingMethods: ClientIntel["fundingMethods"] = fundingTasks.map(t => {
-    const d = t.Description || "";
+    const d = t.description || "";
     const typeMatch = d.match(/Funding method: (.+)/i);
-    return { type: typeMatch?.[1] || "Configured", detail: t.Subject };
+    return { type: typeMatch?.[1] || "Configured", detail: t.subject };
   });
 
   // DocuSign status
   const docuTasks = tasks.filter(t => subj(t).includes("send docu") || subj(t).includes("docusign"));
   const docuSignStatus: ClientIntel["docuSignStatus"] = docuTasks.map(t => ({
-    name: t.Subject.replace(/^SEND DOCU — /i, ""),
-    status: t.Status === "Completed" ? "Signed" : "Pending",
-    date: new Date(t.CreatedDate).toLocaleDateString(),
+    name: t.subject.replace(/^SEND DOCU — /i, ""),
+    status: t.status === "Completed" ? "Signed" : "Pending",
+    date: new Date(t.createdAt).toLocaleDateString(),
   }));
 
   // Compliance reviews
   const compTasks = tasks.filter(t => subj(t).includes("compliance review"));
   const complianceReviews: ClientIntel["complianceReviews"] = compTasks.map(t => ({
     result: subj(t).includes("passed") ? "Passed" : "Flagged",
-    date: new Date(t.CreatedDate).toLocaleDateString(),
+    date: new Date(t.createdAt).toLocaleDateString(),
   }));
 
   // Open items (not completed, not "informational")
   const openItems = tasks
-    .filter(t => t.Status !== "Completed" && t.Priority)
-    .map(t => ({ id: t.Id, subject: t.Subject, priority: t.Priority, dueDate: t.ActivityDate ? new Date(t.ActivityDate).toLocaleDateString() : "" }));
+    .filter(t => t.status !== "Completed" && t.priority)
+    .map(t => ({ id: t.id, subject: t.subject, priority: t.priority, dueDate: t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "" }));
 
   // Flags
-  const allText = tasks.map(t => `${t.Subject} ${t.Description}`).join(" ").toLowerCase();
+  const allText = tasks.map(t => `${t.subject} ${t.description}`).join(" ").toLowerCase();
   const hasACH = allText.includes("moneylink") || allText.includes("ach") || allText.includes("eft");
   const hasBeneficiaries = allText.includes("beneficiar");
   const hasComplianceReview = compTasks.length > 0;
 
   // Last activity
-  const sorted = [...tasks].sort((a, b) => new Date(b.CreatedDate).getTime() - new Date(a.CreatedDate).getTime());
-  const lastActivity = sorted[0] ? new Date(sorted[0].CreatedDate).toLocaleDateString() : "No activity";
+  const sorted = [...tasks].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const lastActivity = sorted[0] ? new Date(sorted[0].createdAt).toLocaleDateString() : "No activity";
 
   return {
-    householdName: household.Name,
+    householdName: household.name,
     onboardedDate: created.toLocaleDateString(),
     daysSinceOnboard: daysSince,
-    contacts: contacts.map(c => ({ name: `${c.FirstName} ${c.LastName}`, email: c.Email || "", phone: c.Phone || "" })),
+    contacts: contacts.map(c => ({ name: `${c.firstName} ${c.lastName}`, email: c.email || "", phone: c.phone || "" })),
     accountsOpened,
     fundingMethods,
     docuSignStatus,
     complianceReviews,
     openItems,
-    completedTasks: tasks.filter(t => t.Status === "Completed").length,
+    completedTasks: tasks.filter(t => t.status === "Completed").length,
     totalTasks: tasks.length,
-    description: household.Description || "",
+    description: household.description || "",
     lastActivity,
     hasACH,
     hasBeneficiaries,
@@ -223,9 +223,9 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
     const t = setTimeout(async () => {
       try {
         const res = await callSF("searchHouseholds", { query: s.searchQuery });
-        if (res.success) d({ type: "SET_RESULTS", v: res.households.map((h: { Id: string; Name: string; Description: string; CreatedDate: string; Contacts?: { records: { FirstName: string }[] } }) => ({
-          id: h.Id, name: h.Name, description: h.Description || "", createdDate: new Date(h.CreatedDate).toLocaleDateString(),
-          contactNames: h.Contacts?.records?.map(c => c.FirstName).filter(Boolean).join(" & ") || "",
+        if (res.success) d({ type: "SET_RESULTS", v: res.households.map((h: { id: string; name: string; description: string; createdAt: string; contacts?: { firstName: string }[] }) => ({
+          id: h.id, name: h.name, description: h.description || "", createdDate: new Date(h.createdAt).toLocaleDateString(),
+          contactNames: h.contacts?.map(c => c.firstName).filter(Boolean).join(" & ") || "",
         })) });
       } catch { /* swallow */ }
       d({ type: "SET_SEARCHING", v: false });

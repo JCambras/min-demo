@@ -79,7 +79,7 @@ export const financialAccountHandlers: Record<string, Handler> = {
     return NextResponse.json({
       success: true,
       fscAvailable: result.fscAvailable,
-      accounts: result.accounts.map(a => a.raw),
+      accounts: result.accounts,
       totalAum: result.totalAum,
       aumByHousehold: result.aumByHousehold,
       count: result.accounts.length,

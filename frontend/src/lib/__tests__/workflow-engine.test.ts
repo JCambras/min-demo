@@ -7,9 +7,11 @@
 //  11. Deduplication identifiers
 //  12. Dashboard computation (buildPracticeData — now testable thanks to decomposition)
 
-import { describe, it, expect } from "vitest";
-import { WORKFLOW_TEMPLATES, listTemplates } from "@/lib/workflows";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { WORKFLOW_TEMPLATES, listTemplates, fireWorkflowTrigger, getHouseholdWorkflows, getAllActiveWorkflows } from "@/lib/workflows";
 import type { WorkflowTemplate, WorkflowStep, TriggerEvent } from "@/lib/workflows";
+import type { CRMPort, CRMContext } from "@/lib/crm/port";
+import type { CRMTask } from "@/lib/crm/types";
 import { buildPracticeData, REVENUE_ASSUMPTIONS, KNOWN_ADVISORS } from "@/app/dashboard/usePracticeData";
 import type { SFTask, SFHousehold } from "@/app/dashboard/usePracticeData";
 
@@ -254,21 +256,22 @@ const mockInstanceUrl = "https://test.salesforce.com";
 
 function makeHousehold(name: string, daysAgo: number, desc?: string): SFHousehold {
   const d = new Date(); d.setDate(d.getDate() - daysAgo);
-  return { Id: `001${name.replace(/\s/g, "")}`, Name: name, CreatedDate: d.toISOString(), Description: desc };
+  return { id: `001${name.replace(/\s/g, "")}`, name, createdAt: d.toISOString(), description: desc };
 }
 
 function makeTask(subject: string, hhName: string, status: string, daysAgo: number, opts?: { priority?: string; activityDaysAgo?: number }): SFTask {
   const d = new Date(); d.setDate(d.getDate() - daysAgo);
   const ad = opts?.activityDaysAgo !== undefined ? (() => { const a = new Date(); a.setDate(a.getDate() - opts.activityDaysAgo!); return a.toISOString(); })() : "";
   return {
-    Id: `00T${subject.slice(0, 8).replace(/\s/g, "")}${Math.random().toString(36).slice(2, 6)}`,
-    Subject: subject,
-    Status: status,
-    Priority: opts?.priority || "Normal",
-    Description: "",
-    CreatedDate: d.toISOString(),
-    ActivityDate: ad,
-    What: { Name: hhName, Id: `001${hhName.replace(/\s/g, "")}` },
+    id: `00T${subject.slice(0, 8).replace(/\s/g, "")}${Math.random().toString(36).slice(2, 6)}`,
+    subject,
+    status,
+    priority: opts?.priority || "Normal",
+    description: "",
+    createdAt: d.toISOString(),
+    dueDate: ad,
+    householdName: hhName,
+    householdId: `001${hhName.replace(/\s/g, "")}`,
   };
 }
 
@@ -558,5 +561,247 @@ describe("buildPracticeData", () => {
     expect(data.meetingItems.length).toBe(1);   // MEETING NOTE
     expect(data.openTaskItems[0].subject).toBeDefined();
     expect(data.openTaskItems[0].household).toBe("Smith Household");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 13. RUNTIME TESTS — fireWorkflowTrigger, getHouseholdWorkflows, getAllActiveWorkflows
+// ═════════════════════════════════════════════════════════════════════════════
+
+const HH_ID = "0011234567890ABCDE";
+const HH_NAME = "Smith Household";
+const mockCrmCtx: CRMContext = { auth: { accessToken: "t", instanceUrl: "https://test.sf.com" }, instanceUrl: "https://test.sf.com" };
+
+function makeCRMTask(overrides: Partial<CRMTask> & { subject: string }): CRMTask {
+  return {
+    id: `00T${Math.random().toString(36).slice(2, 8)}`,
+    subject: overrides.subject,
+    status: overrides.status || "Not Started",
+    priority: overrides.priority || "Normal",
+    description: overrides.description || "",
+    createdAt: overrides.createdAt || new Date().toISOString(),
+    dueDate: overrides.dueDate || null,
+    householdId: overrides.householdId || HH_ID,
+    householdName: overrides.householdName || HH_NAME,
+    contactId: overrides.contactId || null,
+  };
+}
+
+function mockAdapter(queryResult: CRMTask[] = [], batchResult?: { records: { id: string; url: string }[]; errors: string[] }): CRMPort {
+  return {
+    queryWorkflowTasks: vi.fn().mockResolvedValue(queryResult),
+    createTasksBatch: vi.fn().mockResolvedValue(batchResult || { records: Array.from({ length: 6 }, (_, i) => ({ id: `00T${i}`, url: "" })), errors: [] }),
+    // Stub remaining CRMPort methods — not called by workflow engine
+    searchContacts: vi.fn(),
+    findHouseholdByName: vi.fn(),
+    createHousehold: vi.fn(),
+    createContacts: vi.fn(),
+    createContactRelationship: vi.fn(),
+    getHousehold: vi.fn(),
+    updateHousehold: vi.fn(),
+    createTask: vi.fn(),
+    searchHouseholds: vi.fn(),
+    getHouseholdDetail: vi.fn(),
+    queryTasks: vi.fn(),
+    completeTask: vi.fn(),
+    queryFinancialAccounts: vi.fn(),
+  } as unknown as CRMPort;
+}
+
+describe("fireWorkflowTrigger runtime", () => {
+  it("creates immediate tasks (delayDays=0) for matching template", async () => {
+    const adapter = mockAdapter();
+    const result = await fireWorkflowTrigger(adapter, mockCrmCtx, "household_created", HH_ID, HH_NAME);
+
+    expect(result.triggered).toContain("New Client Onboarding");
+    expect(result.tasksCreated).toBeGreaterThan(0);
+    expect(adapter.createTasksBatch).toHaveBeenCalled();
+
+    // Verify batch input includes the immediate welcome step
+    const batchInputs = (adapter.createTasksBatch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const immediate = batchInputs.filter((t: { dueDate?: string }) => !t.dueDate);
+    expect(immediate.length).toBeGreaterThanOrEqual(1);
+    expect(immediate[0].subject).toContain("Send welcome package");
+  });
+
+  it("creates scheduled tasks with correct future due dates", async () => {
+    const adapter = mockAdapter();
+    await fireWorkflowTrigger(adapter, mockCrmCtx, "household_created", HH_ID, HH_NAME);
+
+    const batchInputs = (adapter.createTasksBatch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const scheduled = batchInputs.filter((t: { dueDate?: string }) => t.dueDate);
+    expect(scheduled.length).toBeGreaterThanOrEqual(1);
+    // Each scheduled task should have a valid ISO date
+    for (const task of scheduled) {
+      expect(task.dueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  it("skips disabled templates", async () => {
+    // Temporarily disable the template
+    const original = WORKFLOW_TEMPLATES[0].enabled;
+    WORKFLOW_TEMPLATES[0].enabled = false;
+    try {
+      const adapter = mockAdapter();
+      const result = await fireWorkflowTrigger(adapter, mockCrmCtx, "household_created", HH_ID, HH_NAME);
+      expect(result.triggered).not.toContain("New Client Onboarding");
+      expect(adapter.createTasksBatch).not.toHaveBeenCalled();
+    } finally {
+      WORKFLOW_TEMPLATES[0].enabled = original;
+    }
+  });
+
+  it("skips non-matching trigger events", async () => {
+    const adapter = mockAdapter();
+    const result = await fireWorkflowTrigger(adapter, mockCrmCtx, "docusign_completed", HH_ID, HH_NAME);
+    // No templates match docusign_completed in current set
+    expect(result.triggered).toHaveLength(0);
+    expect(result.tasksCreated).toBe(0);
+  });
+
+  it("deduplicates: skips steps that already have tasks (step-level idempotency)", async () => {
+    const template = WORKFLOW_TEMPLATES[0]; // new-client-onboarding
+    const existingTasks = template.steps.map(step =>
+      makeCRMTask({
+        subject: `${step.taskSubject} — ${HH_NAME}`,
+        description: `WORKFLOW_ID:${template.id} STEP:${step.id}\nTest`,
+      })
+    );
+    const adapter = mockAdapter(existingTasks);
+    const result = await fireWorkflowTrigger(adapter, mockCrmCtx, "household_created", HH_ID, HH_NAME);
+
+    // All steps exist → should skip entirely
+    expect(result.tasksCreated).toBe(0);
+    expect(result.skippedSteps).toBe(0); // Skipped at template level (continue)
+    expect(adapter.createTasksBatch).not.toHaveBeenCalled();
+  });
+
+  it("creates only pending steps when some already exist (partial re-fire)", async () => {
+    const template = WORKFLOW_TEMPLATES[0];
+    // Only first 2 steps exist
+    const existingTasks = template.steps.slice(0, 2).map(step =>
+      makeCRMTask({
+        subject: `${step.taskSubject} — ${HH_NAME}`,
+        description: `WORKFLOW_ID:${template.id} STEP:${step.id}\nTest`,
+      })
+    );
+    const remainingCount = template.steps.length - 2;
+    const adapter = mockAdapter(existingTasks, {
+      records: Array.from({ length: remainingCount }, (_, i) => ({ id: `00T${i}`, url: "" })),
+      errors: [],
+    });
+    const result = await fireWorkflowTrigger(adapter, mockCrmCtx, "household_created", HH_ID, HH_NAME);
+
+    expect(result.skippedSteps).toBe(2);
+    expect(result.tasksCreated).toBe(remainingCount);
+    expect(result.triggered).toContain("New Client Onboarding");
+
+    // Verify batch only contains the remaining steps
+    const batchInputs = (adapter.createTasksBatch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(batchInputs.length).toBe(remainingCount);
+    // None of the batch inputs should be for the first 2 steps
+    for (const input of batchInputs) {
+      expect(input.description).not.toContain(`STEP:${template.steps[0].id}`);
+      expect(input.description).not.toContain(`STEP:${template.steps[1].id}`);
+    }
+  });
+
+  it("returns { triggered, tasksCreated, skippedSteps, errors } shape", async () => {
+    const adapter = mockAdapter();
+    const result = await fireWorkflowTrigger(adapter, mockCrmCtx, "household_created", HH_ID, HH_NAME);
+
+    expect(result).toHaveProperty("triggered");
+    expect(result).toHaveProperty("tasksCreated");
+    expect(result).toHaveProperty("skippedSteps");
+    expect(result).toHaveProperty("errors");
+    expect(Array.isArray(result.triggered)).toBe(true);
+    expect(typeof result.tasksCreated).toBe("number");
+    expect(typeof result.skippedSteps).toBe("number");
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  it("propagates batch creation errors into errors array", async () => {
+    const adapter = mockAdapter([], {
+      records: [{ id: "00T1", url: "" }],
+      errors: ["Failed to create step nco-2"],
+    });
+    const result = await fireWorkflowTrigger(adapter, mockCrmCtx, "household_created", HH_ID, HH_NAME);
+
+    expect(result.errors).toContain("Failed to create step nco-2");
+    expect(result.errors.length).toBe(1);
+  });
+
+  it("document-expiration template always checks (not skipped even if all steps exist)", async () => {
+    const template = WORKFLOW_TEMPLATES.find(t => t.id === "document-expiration")!;
+    // All steps exist for document-expiration
+    const existingTasks = template.steps.map(step =>
+      makeCRMTask({
+        subject: `${step.taskSubject} — ${HH_NAME}`,
+        description: `WORKFLOW_ID:${template.id} STEP:${step.id}\nTest`,
+      })
+    );
+    const adapter = mockAdapter(existingTasks);
+    // scheduled trigger matches document-expiration
+    const result = await fireWorkflowTrigger(adapter, mockCrmCtx, "scheduled", HH_ID, HH_NAME);
+
+    // Template is not skipped, but all steps are deduped → skippedSteps = step count
+    expect(result.skippedSteps).toBe(template.steps.length);
+  });
+});
+
+describe("getHouseholdWorkflows runtime", () => {
+  it("groups workflow tasks by template using WORKFLOW_ID structured matching", async () => {
+    const onboarding = WORKFLOW_TEMPLATES[0];
+    const tasks = onboarding.steps.slice(0, 3).map(step =>
+      makeCRMTask({
+        subject: `${step.taskSubject} — ${HH_NAME}`,
+        description: `WORKFLOW_ID:${onboarding.id} STEP:${step.id}\nTest`,
+        status: "Not Started",
+      })
+    );
+    const adapter = mockAdapter(tasks);
+    const instances = await getHouseholdWorkflows(adapter, mockCrmCtx, HH_ID);
+
+    expect(instances.length).toBe(1);
+    expect(instances[0].templateId).toBe("new-client-onboarding");
+    expect(instances[0].householdId).toBe(HH_ID);
+  });
+
+  it("returns correct status (active vs completed) based on task completion", async () => {
+    const onboarding = WORKFLOW_TEMPLATES[0];
+    const tasks = onboarding.steps.map(step =>
+      makeCRMTask({
+        subject: `${step.taskSubject} — ${HH_NAME}`,
+        description: `WORKFLOW_ID:${onboarding.id} STEP:${step.id}\nTest`,
+        status: "Completed",
+      })
+    );
+    const adapter = mockAdapter(tasks);
+    const instances = await getHouseholdWorkflows(adapter, mockCrmCtx, HH_ID);
+
+    expect(instances.length).toBe(1);
+    expect(instances[0].status).toBe("completed");
+    expect(instances[0].completedSteps.length).toBe(onboarding.steps.length);
+  });
+});
+
+describe("getAllActiveWorkflows runtime", () => {
+  it("returns enriched tasks with templateName and stepLabel from structured IDs", async () => {
+    const onboarding = WORKFLOW_TEMPLATES[0];
+    const step = onboarding.steps[0];
+    const tasks = [
+      makeCRMTask({
+        subject: `${step.taskSubject} — ${HH_NAME}`,
+        description: `WORKFLOW_ID:${onboarding.id} STEP:${step.id}\n${step.taskDescription}`,
+        status: "Not Started",
+      }),
+    ];
+    const adapter = mockAdapter(tasks);
+    const result = await getAllActiveWorkflows(adapter, mockCrmCtx);
+
+    expect(result.length).toBe(1);
+    expect(result[0].templateName).toBe("New Client Onboarding");
+    expect(result[0].stepLabel).toBe("Send Welcome Package");
+    expect(result[0].task.subject).toContain("WORKFLOW —");
   });
 });

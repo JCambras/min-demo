@@ -12,8 +12,8 @@
 // Salesforce tasks with a special prefix, so they survive server restarts
 // and are visible in the firm's SF org.
 
-import type { SFContext, TaskInput } from "./sf-client";
-import { createTask, createTasksBatch, query, sanitizeSOQL } from "./sf-client";
+import type { CRMPort, CRMContext } from "./crm/port";
+import type { CRMTaskInput } from "./crm/types";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -186,7 +186,8 @@ const WORKFLOW_PREFIX = "WORKFLOW —";
  * Returns the tasks created by the workflow engine.
  */
 export async function fireWorkflowTrigger(
-  ctx: SFContext,
+  adapter: CRMPort,
+  ctx: CRMContext,
   event: TriggerEvent,
   householdId: string,
   householdName: string,
@@ -206,28 +207,31 @@ export async function fireWorkflowTrigger(
 
   for (const template of matches) {
     // Query existing workflow tasks for this template + household (step-level dedup)
-    const existing = await query(ctx,
-      `SELECT Id, Description FROM Task WHERE WhatId = '${sanitizeSOQL(householdId)}' AND Subject LIKE '${WORKFLOW_PREFIX}%' AND Description LIKE 'WORKFLOW_ID:${sanitizeSOQL(template.id)}%' LIMIT 50`
+    const existing = await adapter.queryWorkflowTasks(ctx, { householdId });
+
+    // Filter to tasks belonging to this template
+    const templateTasks = existing.filter(t =>
+      t.description?.startsWith(`WORKFLOW_ID:${template.id}`)
     );
 
     // Extract step IDs already created
     const existingStepIds = new Set(
-      existing.map(t => {
-        const m = ((t.Description as string) || "").match(/STEP:(\S+)/);
+      templateTasks.map(t => {
+        const m = (t.description || "").match(/STEP:(\S+)/);
         return m ? m[1] : null;
       }).filter(Boolean) as string[]
     );
 
     // Don't double-fire: if ALL steps already exist for this template, skip entirely
     // Unless it's the document expiration workflow, which should always check
-    if (existing.length > 0 && existingStepIds.size >= template.steps.length && template.id !== "document-expiration") continue;
+    if (templateTasks.length > 0 && existingStepIds.size >= template.steps.length && template.id !== "document-expiration") continue;
 
     // Filter out steps that already have tasks (step-level idempotency)
     const pendingSteps = template.steps.filter(step => !existingStepIds.has(step.id));
     skippedSteps += template.steps.length - pendingSteps.length;
 
     // Create immediate tasks (delayDays === 0)
-    const immediateTasks: TaskInput[] = pendingSteps
+    const immediateTasks: CRMTaskInput[] = pendingSteps
       .filter(step => step.delayDays === 0)
       .map(step => ({
         subject: `${step.taskSubject} — ${householdName}`,
@@ -238,7 +242,7 @@ export async function fireWorkflowTrigger(
       }));
 
     // Create scheduled tasks (delayDays > 0) with future due dates
-    const scheduledTasks: TaskInput[] = pendingSteps
+    const scheduledTasks: CRMTaskInput[] = pendingSteps
       .filter(step => step.delayDays > 0)
       .map(step => {
         const dueDate = new Date();
@@ -248,14 +252,14 @@ export async function fireWorkflowTrigger(
           householdId,
           status: step.taskStatus || "Not Started",
           priority: step.taskPriority || "Normal",
-          activityDate: dueDate.toISOString().split("T")[0],
+          dueDate: dueDate.toISOString().split("T")[0],
           description: `WORKFLOW_ID:${template.id} STEP:${step.id}\n${step.taskDescription || ""}\n\nWorkflow: ${template.name}\nStep: ${step.label}\nDue: ${dueDate.toISOString().split("T")[0]}\nTriggered: ${new Date().toISOString()}`,
         };
       });
 
     const allTasks = [...immediateTasks, ...scheduledTasks];
     if (allTasks.length > 0) {
-      const { records, errors: batchErrors } = await createTasksBatch(ctx, allTasks);
+      const { records, errors: batchErrors } = await adapter.createTasksBatch(ctx, allTasks);
       tasksCreated += records.length;
       errors.push(...batchErrors);
       triggered.push(template.name);
@@ -270,12 +274,11 @@ export async function fireWorkflowTrigger(
  * Reads all WORKFLOW tasks and groups them by template.
  */
 export async function getHouseholdWorkflows(
-  ctx: SFContext,
+  adapter: CRMPort,
+  ctx: CRMContext,
   householdId: string
 ): Promise<WorkflowInstance[]> {
-  const tasks = await query(ctx,
-    `SELECT Id, Subject, Status, ActivityDate, CreatedDate, Description FROM Task WHERE WhatId = '${sanitizeSOQL(householdId)}' AND Subject LIKE '${WORKFLOW_PREFIX}%' ORDER BY ActivityDate ASC`
-  );
+  const tasks = await adapter.queryWorkflowTasks(ctx, { householdId });
 
   // Group tasks by workflow template using structured IDs
   const instances = new Map<string, WorkflowInstance>();
@@ -283,25 +286,25 @@ export async function getHouseholdWorkflows(
   for (const template of WORKFLOW_TEMPLATES) {
     // Prefer structured ID matching, fall back to subject heuristic
     const templateTasks = tasks.filter(t => {
-      const desc = (t.Description as string) || "";
+      const desc = t.description || "";
       const structMatch = desc.match(/^WORKFLOW_ID:(\S+)/);
       if (structMatch) return structMatch[1] === template.id;
       // Legacy fallback: match by subject prefix
-      return (t.Subject as string).includes(template.steps[0]?.taskSubject?.split("—")[0]?.trim() || template.name);
+      return t.subject.includes(template.steps[0]?.taskSubject?.split("—")[0]?.trim() || template.name);
     });
 
     if (templateTasks.length === 0) continue;
 
-    const completed = templateTasks.filter(t => t.Status === "Completed");
+    const completed = templateTasks.filter(t => t.status === "Completed");
     const allDone = completed.length === templateTasks.length;
 
     instances.set(template.id, {
       templateId: template.id,
       householdId,
       householdName: "",
-      startedAt: templateTasks[0]?.CreatedDate as string || new Date().toISOString(),
+      startedAt: templateTasks[0]?.createdAt || new Date().toISOString(),
       currentStepIndex: completed.length,
-      completedSteps: completed.map(t => (t.Subject as string)),
+      completedSteps: completed.map(t => t.subject),
       status: allDone ? "completed" : "active",
     });
   }
@@ -314,15 +317,13 @@ export async function getHouseholdWorkflows(
  * Used by the Workflows dashboard screen.
  */
 export async function getAllActiveWorkflows(
-  ctx: SFContext
-): Promise<{ task: Record<string, unknown>; templateName: string; stepLabel: string }[]> {
-  const tasks = await query(ctx,
-    `SELECT Id, Subject, Status, Priority, ActivityDate, CreatedDate, Description, What.Name, What.Id FROM Task WHERE Subject LIKE '${WORKFLOW_PREFIX}%' AND Status != 'Completed' ORDER BY ActivityDate ASC LIMIT 100`
-  );
+  adapter: CRMPort,
+  ctx: CRMContext
+): Promise<{ task: { id: string; subject: string; status: string; priority: string; dueDate: string | null; createdAt: string | null; description: string; householdName: string | null; householdId: string | null }; templateName: string; stepLabel: string }[]> {
+  const tasks = await adapter.queryWorkflowTasks(ctx, { activeOnly: true });
 
   return tasks.map(t => {
-    const subject = t.Subject as string;
-    const desc = (t.Description as string) || "";
+    const desc = t.description || "";
     // Prefer structured ID (new format), fall back to human-readable parsing (legacy)
     const structMatch = desc.match(/^WORKFLOW_ID:(\S+)\s+STEP:(\S+)/);
     if (structMatch) {
@@ -340,7 +341,7 @@ export async function getAllActiveWorkflows(
     return {
       task: t,
       templateName: descMatch?.[1]?.split("\n")[0] || "Unknown",
-      stepLabel: stepMatch?.[1]?.split("\n")[0] || subject.replace(WORKFLOW_PREFIX, "").trim(),
+      stepLabel: stepMatch?.[1]?.split("\n")[0] || t.subject.replace(WORKFLOW_PREFIX, "").trim(),
     };
   });
 }

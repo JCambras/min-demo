@@ -136,15 +136,15 @@ describe("buildHomeStats", () => {
   const pastDue = new Date(now.getTime() - 2 * 86400000).toISOString().split("T")[0];
 
   const households: SFHousehold[] = [
-    { Id: "001000000000001", Name: "Smith Household", CreatedDate: twoWeeksAgo },
-    { Id: "001000000000002", Name: "Jones Household", CreatedDate: lastWeek, Description: "Assigned Advisor: Jon Cambras" },
+    { id: "001000000000001", name: "Smith Household", createdAt: twoWeeksAgo },
+    { id: "001000000000002", name: "Jones Household", createdAt: lastWeek, description: "Assigned Advisor: Jon Cambras" },
   ];
 
   const tasks: SFTask[] = [
-    { Id: "t1", Subject: "COMPLIANCE REVIEW PASSED — Smith", Status: "Completed", Priority: "Normal", CreatedDate: lastWeek, ActivityDate: "", What: { Name: "Smith Household", Id: "001000000000001" } },
-    { Id: "t2", Subject: "SEND DOCU — Smith IRA", Status: "Not Started", Priority: "High", CreatedDate: yesterday, ActivityDate: pastDue, What: { Name: "Smith Household", Id: "001000000000001" } },
-    { Id: "t3", Subject: "MEETING NOTE — Jones", Status: "Completed", Priority: "Normal", CreatedDate: lastWeek, ActivityDate: "", What: { Name: "Jones Household", Id: "001000000000002" } },
-    { Id: "t4", Subject: "FOLLOW-UP: Call Jones", Status: "Not Started", Priority: "Normal", CreatedDate: yesterday, ActivityDate: tomorrow, What: { Name: "Jones Household", Id: "001000000000002" } },
+    { id: "t1", subject: "COMPLIANCE REVIEW PASSED — Smith", status: "Completed", priority: "Normal", createdAt: lastWeek, dueDate: "", householdName: "Smith Household", householdId: "001000000000001" },
+    { id: "t2", subject: "SEND DOCU — Smith IRA", status: "Not Started", priority: "High", createdAt: yesterday, dueDate: pastDue, householdName: "Smith Household", householdId: "001000000000001" },
+    { id: "t3", subject: "MEETING NOTE — Jones", status: "Completed", priority: "Normal", createdAt: lastWeek, dueDate: "", householdName: "Jones Household", householdId: "001000000000002" },
+    { id: "t4", subject: "FOLLOW-UP: Call Jones", status: "Not Started", priority: "Normal", createdAt: yesterday, dueDate: tomorrow, householdName: "Jones Household", householdId: "001000000000002" },
   ];
 
   const url = "https://test.salesforce.com";

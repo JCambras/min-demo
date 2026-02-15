@@ -7,18 +7,18 @@ import { classifyTask, TASK_TYPE_LABELS, isComplianceReview, isMeetingNote } fro
 import type { Screen, WorkflowContext } from "@/lib/types";
 
 interface Contact {
-  Id: string; FirstName: string; LastName: string;
-  Email: string; Phone: string; Birthdate?: string;
+  id: string; firstName: string; lastName: string;
+  email: string; phone: string;
 }
 
 interface Task {
-  Id: string; Subject: string; Status: string;
-  Priority: string; CreatedDate: string; ActivityDate: string;
-  Description?: string;
+  id: string; subject: string; status: string;
+  priority: string; createdAt: string; dueDate: string;
+  description?: string;
 }
 
 interface FamilyData {
-  household: { Id: string; Name: string; CreatedDate: string; Description?: string };
+  household: { id: string; name: string; createdAt: string; description?: string };
   contacts: Contact[];
   tasks: Task[];
   instanceUrl: string;
@@ -77,7 +77,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
       const res = await callSF("getHouseholdDetail", { householdId: context.householdId });
       if (res.success) {
         setData({
-          household: res.household || { Id: context.householdId, Name: context.familyName + " Household", CreatedDate: "" },
+          household: res.household || { id: context.householdId, name: context.familyName + " Household", createdAt: "" },
           contacts: res.contacts || [],
           tasks: res.tasks || [],
           instanceUrl: res.householdUrl ? res.householdUrl.replace(`/${context.householdId}`, "") : "",
@@ -95,31 +95,31 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
   const baseUrl = data?.instanceUrl || "";
 
   // Derived data
-  const parsed = useMemo(() => parseDescription(data?.household.Description), [data]);
+  const parsed = useMemo(() => parseDescription(data?.household.description), [data]);
   const allTasks = data?.tasks || [];
-  const openTasks = allTasks.filter(t => t.Status !== "Completed");
-  const completedTasks = allTasks.filter(t => t.Status === "Completed");
-  const unsignedTasks = openTasks.filter(t => classifyTask(t.Subject) === "docusign");
-  const followUps = openTasks.filter(t => classifyTask(t.Subject) === "followup");
+  const openTasks = allTasks.filter(t => t.status !== "Completed");
+  const completedTasks = allTasks.filter(t => t.status === "Completed");
+  const unsignedTasks = openTasks.filter(t => classifyTask(t.subject) === "docusign");
+  const followUps = openTasks.filter(t => classifyTask(t.subject) === "followup");
 
   const complianceReviews = allTasks
-    .filter(t => isComplianceReview(t.Subject))
-    .sort((a, b) => new Date(b.CreatedDate).getTime() - new Date(a.CreatedDate).getTime());
+    .filter(t => isComplianceReview(t.subject))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const hasComplianceReview = complianceReviews.length > 0;
 
   const meetingNotes = allTasks
-    .filter(t => isMeetingNote(t.Subject))
-    .sort((a, b) => new Date(b.CreatedDate).getTime() - new Date(a.CreatedDate).getTime());
+    .filter(t => isMeetingNote(t.subject))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const totalTasks = allTasks.length;
   const completionPct = totalTasks > 0 ? Math.round((completedTasks.length / totalTasks) * 100) : 0;
 
   const lastActivity = allTasks.length > 0
-    ? new Date(Math.max(...allTasks.map(t => new Date(t.CreatedDate).getTime())))
+    ? new Date(Math.max(...allTasks.map(t => new Date(t.createdAt).getTime())))
     : null;
 
-  const daysSinceOnboard = data?.household.CreatedDate
-    ? Math.floor((Date.now() - new Date(data.household.CreatedDate).getTime()) / 86400000)
+  const daysSinceOnboard = data?.household.createdAt
+    ? Math.floor((Date.now() - new Date(data.household.createdAt).getTime()) / 86400000)
     : null;
 
   if (loading) return (
@@ -144,8 +144,8 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           <div className="flex items-start justify-between mb-6" data-tour="family-header">
             <div>
               <div className="flex items-center gap-2 text-sm text-slate-400 flex-wrap">
-                {data?.household.CreatedDate && (
-                  <span>Client since {new Date(data.household.CreatedDate).toLocaleDateString()}</span>
+                {data?.household.createdAt && (
+                  <span>Client since {new Date(data.household.createdAt).toLocaleDateString()}</span>
                 )}
                 {daysSinceOnboard !== null && <span>· {daysSinceOnboard === 0 ? "Today" : `${daysSinceOnboard}d ago`}</span>}
                 {parsed?.advisor && <span>· Assigned Advisor: <span className="text-slate-600 font-medium">{parsed.advisor}</span></span>}
@@ -241,14 +241,14 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><Users size={16} /></div>
                     <div>
-                      <p className="text-sm font-medium text-slate-700">{c.FirstName} {c.LastName}</p>
+                      <p className="text-sm font-medium text-slate-700">{c.firstName} {c.lastName}</p>
                       <div className="flex items-center gap-3 text-xs text-slate-400">
-                        {c.Email && <span className="inline-flex items-center gap-1"><Mail size={10} />{c.Email}</span>}
-                        {c.Phone && <span className="inline-flex items-center gap-1"><Phone size={10} />{c.Phone}</span>}
+                        {c.email && <span className="inline-flex items-center gap-1"><Mail size={10} />{c.email}</span>}
+                        {c.phone && <span className="inline-flex items-center gap-1"><Phone size={10} />{c.phone}</span>}
                       </div>
                     </div>
                   </div>
-                  {baseUrl && <a href={`${baseUrl}/${c.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
+                  {baseUrl && <a href={`${baseUrl}/${c.id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
                 </div>
               ))}
             </div>
@@ -262,19 +262,19 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                 <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{complianceReviews.length}</span>
               </div>
               {complianceReviews.map((t, i) => {
-                const passed = t.Subject.includes("PASSED");
+                const passed = t.subject.includes("PASSED");
                 return (
                   <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
                       {passed ? <CheckCircle size={14} className="text-green-500 flex-shrink-0" /> : <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />}
                       <div className="min-w-0">
                         <p className="text-sm text-slate-700">{passed ? "All checks passed" : "Items flagged for attention"}</p>
-                        <p className="text-xs text-slate-400">{new Date(t.CreatedDate).toLocaleDateString()} at {new Date(t.CreatedDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                        <p className="text-xs text-slate-400">{new Date(t.createdAt).toLocaleDateString()} at {new Date(t.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${passed ? "bg-green-100 text-green-600" : "bg-amber-100 text-amber-600"}`}>{passed ? "Passed" : "Flagged"}</span>
-                      {baseUrl && <a href={`${baseUrl}/${t.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
+                      {baseUrl && <a href={`${baseUrl}/${t.id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
                     </div>
                   </div>
                 );
@@ -319,22 +319,22 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
             {openTasks.length === 0 ? (
               <div className="px-4 py-8 text-center"><CheckCircle size={24} className="mx-auto text-green-200 mb-2" /><p className="text-sm font-medium text-slate-500">All clear</p><p className="text-xs text-slate-400 mt-1">No open action items for this family.</p></div>
             ) : openTasks.map((t, i) => {
-              const type = classifyTask(t.Subject);
+              const type = classifyTask(t.subject);
               return (
                 <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     {taskTypeIcon(type)}
                     <div className="min-w-0">
-                      <p className="text-sm text-slate-700 truncate">{t.Subject}</p>
+                      <p className="text-sm text-slate-700 truncate">{t.subject}</p>
                       <p className="text-xs text-slate-400">
-                        {t.ActivityDate ? `Due ${new Date(t.ActivityDate).toLocaleDateString()}` : `Created ${new Date(t.CreatedDate).toLocaleDateString()}`}
+                        {t.dueDate ? `Due ${new Date(t.dueDate).toLocaleDateString()}` : `Created ${new Date(t.createdAt).toLocaleDateString()}`}
                         {TYPE_LABEL[type] && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">{TYPE_LABEL[type]}</span>}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-3">
-                    {t.Priority === "High" && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">High</span>}
-                    {baseUrl && <a href={`${baseUrl}/${t.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
+                    {t.priority === "High" && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">High</span>}
+                    {baseUrl && <a href={`${baseUrl}/${t.id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
                   </div>
                 </div>
               );
@@ -356,7 +356,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
               );
             }
             const now = Date.now();
-            const recentMeeting = meetingNotes.find(t => (now - new Date(t.CreatedDate).getTime()) < 60 * 86400000);
+            const recentMeeting = meetingNotes.find(t => (now - new Date(t.createdAt).getTime()) < 60 * 86400000);
             if (!recentMeeting && daysSinceOnboard !== null && daysSinceOnboard >= 7) {
               return (
                 <div className="mb-6 bg-amber-50 border border-amber-200/60 rounded-2xl p-4 flex items-start gap-3">
@@ -390,11 +390,11 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <CheckCircle size={13} className="text-green-500" />
                     <div className="min-w-0">
-                      <p className="text-sm text-slate-600 truncate">{t.Subject}</p>
-                      <p className="text-xs text-slate-400">{new Date(t.CreatedDate).toLocaleDateString()}</p>
+                      <p className="text-sm text-slate-600 truncate">{t.subject}</p>
+                      <p className="text-xs text-slate-400">{new Date(t.createdAt).toLocaleDateString()}</p>
                     </div>
                   </div>
-                  {baseUrl && <a href={`${baseUrl}/${t.Id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
+                  {baseUrl && <a href={`${baseUrl}/${t.id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>}
                 </div>
               ))}
             </div>

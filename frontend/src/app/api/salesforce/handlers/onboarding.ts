@@ -5,7 +5,6 @@
 
 import { NextResponse } from "next/server";
 import type { CRMPort, CRMContext } from "@/lib/crm/port";
-import type { SFContext } from "@/lib/sf-client";
 import { validate } from "@/lib/sf-validation";
 import { custodian } from "@/lib/custodian";
 import { fireWorkflowTrigger } from "@/lib/workflows";
@@ -100,7 +99,7 @@ export const onboardingHandlers: Record<string, Handler> = {
     }));
     const { records: tasks } = await adapter.createTasksBatch(ctx, inputs);
 
-    await fireWorkflowTrigger(ctx.auth as SFContext, "docusign_sent", data.householdId, data.envelopes[0]?.name || "Client");
+    await fireWorkflowTrigger(adapter, ctx, "docusign_sent", data.householdId, data.envelopes[0]?.name || "Client");
     return NextResponse.json({ success: true, tasks, count: tasks.length });
   },
 };

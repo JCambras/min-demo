@@ -23,11 +23,11 @@ interface CheckResult {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SFHousehold = { Id: string; Name: string; Description: string; CreatedDate: string; Contacts?: { records: { FirstName: string }[] } };
+type SFHousehold = { id: string; name: string; description: string; createdAt: string };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SFContact = { Id: string; FirstName: string; LastName: string; Email: string; Phone: string; CreatedDate: string };
+type SFContact = { id: string; firstName: string; lastName: string; email: string; phone: string; createdAt: string };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SFTask = { Id: string; Subject: string; Status: string; Priority: string; Description: string; CreatedDate: string; ActivityDate: string };
+type SFTask = { id: string; subject: string; status: string; priority: string; description: string; createdAt: string; dueDate: string };
 
 interface HouseholdSearchResult {
   id: string;
@@ -46,8 +46,8 @@ function runComplianceChecks(
   tasks: SFTask[],
 ): CheckResult[] {
   const checks: CheckResult[] = [];
-  const taskSubjects = tasks.map(t => (t.Subject || "").toLowerCase());
-  const taskDescs = tasks.map(t => (t.Description || "").toLowerCase());
+  const taskSubjects = tasks.map(t => (t.subject || "").toLowerCase());
+  const taskDescs = tasks.map(t => (t.description || "").toLowerCase());
   const allTaskText = [...taskSubjects, ...taskDescs].join(" ");
 
   // Helper: does any task mention this keyword?
@@ -202,7 +202,7 @@ function runComplianceChecks(
   });
 
   // Household creation date — check staleness
-  const createdDate = new Date(household.CreatedDate);
+  const createdDate = new Date(household.createdAt);
   const daysSinceCreation = Math.floor((Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
   if (daysSinceCreation > 365) {
     checks.push({
@@ -347,9 +347,9 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
         const res = await callSF("searchHouseholds", { query: state.searchQuery });
         if (res.success) {
           d({ type: "SET_SEARCH_RESULTS", value: res.households.map((h: SFHousehold) => ({
-            id: h.Id, name: h.Name, description: h.Description || "",
-            createdDate: new Date(h.CreatedDate).toLocaleDateString(),
-            contactNames: h.Contacts?.records?.map(c => c.FirstName).filter(Boolean).join(" & ") || "",
+            id: h.id, name: h.name, description: h.description || "",
+            createdDate: new Date(h.createdAt).toLocaleDateString(),
+            contactNames: "",
           })) });
         }
       } catch { /* swallow */ }
@@ -453,7 +453,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
         body: JSON.stringify({
           familyName,
           householdUrl: state.householdUrl,
-          contacts: state.contacts.map(c => ({ name: `${c.FirstName} ${c.LastName}`, email: c.Email })),
+          contacts: state.contacts.map(c => ({ name: `${c.firstName} ${c.lastName}`, email: c.email })),
           tasksScanned: state.tasks.length,
           checks: state.checks.map(c => ({ label: c.label, category: c.category, regulation: c.regulation, status: c.status, detail: c.detail })),
           reviewDate,
@@ -673,9 +673,9 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                 {/* Next Best Action */}
                 {onNavigate && state.selectedHousehold && (() => {
                   // Check meeting recency — suggest meeting if no recent meetings
-                  const meetingTasks = state.tasks.filter(t => t.Subject?.toUpperCase().includes("MEETING NOTE"));
+                  const meetingTasks = state.tasks.filter(t => t.subject?.toUpperCase().includes("MEETING NOTE"));
                   const now = Date.now();
-                  const recentMeeting = meetingTasks.find(t => (now - new Date(t.CreatedDate).getTime()) < 60 * 86400000);
+                  const recentMeeting = meetingTasks.find(t => (now - new Date(t.createdAt).getTime()) < 60 * 86400000);
                   const hasFlags = state.checks.some(c => c.status === "warn" || c.status === "fail");
 
                   if (!recentMeeting) {

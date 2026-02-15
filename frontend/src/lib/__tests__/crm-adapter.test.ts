@@ -110,7 +110,6 @@ describe("SalesforceAdapter", () => {
         householdId: VALID_HH_ID,
         householdName: "Doe Household",
         createdAt: "2024-01-15T00:00:00Z",
-        raw: expect.any(Object),
       });
     });
 

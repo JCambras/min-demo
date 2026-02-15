@@ -4,8 +4,7 @@
 // Each method delegates to the same underlying functions the handlers already
 // use, then maps results to canonical CRM types.
 //
-// Every method also returns the `raw` SF record so handlers can pass through
-// SF-shaped data to the frontend during the migration period.
+// Every method maps SF records to canonical CRM types for the frontend.
 
 import type { CRMPort, CRMContext } from "../port";
 import type {
@@ -93,7 +92,6 @@ function mapContact(raw: Record<string, unknown>): CRMContact {
     householdId: (raw.AccountId as string) || null,
     householdName: (account?.Name as string) || null,
     createdAt: (raw.CreatedDate as string) || null,
-    raw,
   };
 }
 
@@ -105,7 +103,6 @@ function mapHousehold(raw: Record<string, unknown>): CRMHousehold {
     description: (raw.Description as string) || "",
     createdAt: (raw.CreatedDate as string) || null,
     advisorName: (owner as string) || null,
-    raw,
   };
 }
 
@@ -122,7 +119,6 @@ function mapTask(raw: Record<string, unknown>): CRMTask {
     householdId: (what?.Id as string) || (raw.WhatId as string) || null,
     householdName: (what?.Name as string) || null,
     contactId: (raw.WhoId as string) || null,
-    raw,
   };
 }
 
@@ -140,7 +136,6 @@ function mapFinancialAccount(raw: Record<string, unknown>): CRMFinancialAccount 
     ownerName: (owner?.Name as string) || null,
     status: (raw.FinServ__Status__c as string) || "",
     openDate: (raw.FinServ__OpenDate__c as string) || null,
-    raw,
   };
 }
 
@@ -376,6 +371,23 @@ export class SalesforceAdapter implements CRMPort {
     try {
       const record = await update(sfCtx(ctx), "Task", taskId, { Status: "Completed" });
       return { id: record.id, url: record.url };
+    } catch (err) {
+      wrapError(err);
+    }
+  }
+
+  // ── Workflow Tasks ──────────────────────────────────────────────────
+
+  async queryWorkflowTasks(ctx: CRMContext, options?: { householdId?: string; activeOnly?: boolean; limit?: number }): Promise<CRMTask[]> {
+    try {
+      const parts = ["Subject LIKE 'WORKFLOW —%'"];
+      if (options?.householdId) parts.push(`WhatId = '${sanitizeSOQL(options.householdId)}'`);
+      if (options?.activeOnly) parts.push("Status != 'Completed'");
+      const where = parts.join(" AND ");
+      const lim = options?.limit || 100;
+      const fields = "Id, Subject, Status, Priority, Description, CreatedDate, ActivityDate, What.Name, What.Id, WhoId";
+      const records = await query(sfCtx(ctx), `SELECT ${fields} FROM Task WHERE ${where} ORDER BY ActivityDate ASC LIMIT ${lim}`);
+      return records.map(mapTask);
     } catch (err) {
       wrapError(err);
     }

@@ -2,10 +2,7 @@
 //
 // Normalized domain objects that all CRM adapters produce. These are the
 // "inner" types in the hexagonal architecture — handlers and frontend code
-// will eventually consume these instead of raw SF field names.
-//
-// The `raw` field on each type preserves the original CRM record so handlers
-// can pass through CRM-shaped data to the frontend during incremental migration.
+// consume these instead of raw SF field names.
 
 // ─── Read Types ──────────────────────────────────────────────────────────────
 
@@ -24,8 +21,6 @@ export interface CRMContact {
   householdId: string | null;
   householdName: string | null;
   createdAt: string | null;
-  /** Original CRM record for pass-through during migration. */
-  raw?: Record<string, unknown>;
 }
 
 export interface CRMHousehold {
@@ -35,8 +30,6 @@ export interface CRMHousehold {
   createdAt: string | null;
   advisorName: string | null;
   contacts?: CRMContact[];
-  /** Original CRM record for pass-through during migration. */
-  raw?: Record<string, unknown>;
 }
 
 export interface CRMTask {
@@ -50,8 +43,6 @@ export interface CRMTask {
   householdId: string | null;
   householdName: string | null;
   contactId: string | null;
-  /** Original CRM record for pass-through during migration. */
-  raw?: Record<string, unknown>;
 }
 
 export interface CRMFinancialAccount {
@@ -65,8 +56,6 @@ export interface CRMFinancialAccount {
   ownerName: string | null;
   status: string;
   openDate: string | null;
-  /** Original CRM record for pass-through during migration. */
-  raw?: Record<string, unknown>;
 }
 
 // ─── Write Types (creation inputs) ──────────────────────────────────────────
