@@ -9,9 +9,18 @@ interface FlowHeaderProps {
   onBack: () => void;
   onShowPane: () => void;
   hasIndicator: boolean;
+  accent?: "slate" | "blue" | "green" | "purple" | "amber";
 }
 
-export function FlowHeader({ title, familyName, stepLabel, progressPct, onBack, onShowPane, hasIndicator }: FlowHeaderProps) {
+const ACCENT_COLORS: Record<string, string> = {
+  slate: "bg-slate-900",
+  blue: "bg-blue-600",
+  green: "bg-green-600",
+  purple: "bg-purple-600",
+  amber: "bg-amber-500",
+};
+
+export function FlowHeader({ title, familyName, stepLabel, progressPct, onBack, onShowPane, hasIndicator, accent = "slate" }: FlowHeaderProps) {
   const displayTitle = familyName && familyName !== "Client" ? `${title} · ${familyName}` : title;
 
   return (
@@ -25,7 +34,7 @@ export function FlowHeader({ title, familyName, stepLabel, progressPct, onBack, 
           <span className="text-xs text-slate-400 hidden sm:inline">{stepLabel}</span>
         </div>
         <div className="mt-2 h-1 bg-slate-100 rounded-full overflow-hidden">
-          <div className="h-full bg-slate-900 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
+          <div className={`h-full ${ACCENT_COLORS[accent]} rounded-full transition-all duration-500`} style={{ width: `${progressPct}%` }} />
         </div>
       </div>
       <button onClick={onShowPane} className="lg:hidden text-slate-400 hover:text-slate-600 relative">

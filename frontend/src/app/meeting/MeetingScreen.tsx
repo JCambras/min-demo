@@ -201,7 +201,7 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
   return (
     <div className="flex h-screen bg-[#fafafa]">
       <div className="w-full lg:w-[70%] flex flex-col">
-        <FlowHeader title="Meeting Logs" familyName={s.step !== "search" ? familyName : undefined} stepLabel={stepLabels[s.step] || ""} progressPct={pct} onBack={goBack} onShowPane={() => d({ type: "SET_RIGHT_PANE", v: true })} hasIndicator={s.evidence.length > 0} />
+        <FlowHeader title="Meeting Logs" familyName={s.step !== "search" ? familyName : undefined} stepLabel={stepLabels[s.step] || ""} progressPct={pct} onBack={goBack} onShowPane={() => d({ type: "SET_RIGHT_PANE", v: true })} hasIndicator={s.evidence.length > 0} accent="purple" />
 
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 pt-4 pb-16">
           <div className="max-w-2xl w-full mx-auto">

@@ -316,7 +316,7 @@ export function QueryScreen({ onExit, initialQuery }: { onExit: () => void; init
   return (
     <div className="flex h-screen bg-[#fafafa]">
       <div className="w-full lg:w-[70%] flex flex-col">
-        <FlowHeader title="Ask Min" familyName={undefined} stepLabel="" progressPct={s.result ? 100 : 50} onBack={() => { d({ type: "RESET" }); onExit(); }} onShowPane={() => d({ type: "SET_RIGHT_PANE", v: true })} hasIndicator={s.history.length > 0} />
+        <FlowHeader title="Ask Min" familyName={undefined} stepLabel="" progressPct={s.result ? 100 : 50} onBack={() => { d({ type: "RESET" }); onExit(); }} onShowPane={() => d({ type: "SET_RIGHT_PANE", v: true })} hasIndicator={s.history.length > 0} accent="blue" />
 
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 pt-4 pb-16">
           <div className="max-w-2xl w-full mx-auto">

@@ -491,7 +491,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
   return (
     <div className="flex h-screen bg-[#fafafa]">
       <div className="w-full lg:w-[70%] flex flex-col">
-        <FlowHeader title="Compliance Reviews" familyName={state.selectedHousehold ? familyName : undefined} stepLabel={STEP_LABELS[state.step] || ""} progressPct={progressPct} onBack={goBack} onShowPane={() => d({ type: "SET_SHOW_RIGHT_PANE", value: true })} hasIndicator={state.evidence.length > 0} />
+        <FlowHeader title="Compliance Reviews" familyName={state.selectedHousehold ? familyName : undefined} stepLabel={STEP_LABELS[state.step] || ""} progressPct={progressPct} onBack={goBack} onShowPane={() => d({ type: "SET_SHOW_RIGHT_PANE", value: true })} hasIndicator={state.evidence.length > 0} accent="green" />
 
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 pt-4 pb-16">
           <div className="max-w-xl w-full mx-auto">
