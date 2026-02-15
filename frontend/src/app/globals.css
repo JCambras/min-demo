@@ -117,3 +117,12 @@
 .stagger-list > *:nth-child(5) { animation-delay: 160ms; }
 .stagger-list > *:nth-child(6) { animation-delay: 200ms; }
 .stagger-list > *:nth-child(n+7) { animation-delay: 240ms; }
+
+/* Mobile slide-in pane */
+.mobile-pane {
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.mobile-pane.mobile-pane-open {
+  transform: translateX(0);
+}

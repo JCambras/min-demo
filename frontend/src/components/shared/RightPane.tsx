@@ -44,7 +44,7 @@ export function RightPane({
     : !!p1Name;
 
   return (
-    <div className={`${showMobile ? "fixed inset-0 z-50 bg-white" : "hidden"} lg:block lg:static lg:w-[30%] border-l border-slate-200 bg-white flex flex-col`}>
+    <div className={`fixed inset-0 z-50 bg-white mobile-pane ${showMobile ? "mobile-pane-open" : ""} lg:relative lg:z-auto lg:translate-x-0 lg:transition-none lg:w-[30%] border-l border-slate-200 flex flex-col`}>
       <div className="px-5 py-5 border-b border-slate-100 flex items-center justify-between">
         <p className="text-xs uppercase tracking-wider text-slate-400">{title}</p>
         <button onClick={onCloseMobile} className="lg:hidden text-slate-400 hover:text-slate-600"><ArrowLeft size={18} /></button>
