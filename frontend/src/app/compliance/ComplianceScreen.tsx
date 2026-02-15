@@ -1,6 +1,6 @@
 "use client";
 import { useReducer, useEffect, useCallback, useRef } from "react";
-import { Search, Loader2, Check, X, AlertTriangle, ExternalLink, Shield, ChevronDown, ChevronUp, Download, MessageSquare } from "lucide-react";
+import { Search, Loader2, Check, X, AlertTriangle, ExternalLink, Shield, ChevronDown, ChevronUp, Download, MessageSquare, Fingerprint, BarChart3, FileText, Briefcase, Scale } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
@@ -299,12 +299,12 @@ const SCAN_STEPS = [
   "Done",
 ];
 
-const CATEGORY_LABELS: Record<string, { label: string; icon: string; title?: string }> = {
-  identity: { label: "Identity & KYC", icon: "🪪", title: "Know Your Customer — identity verification requirements" },
-  suitability: { label: "Suitability & Recommendations", icon: "📊" },
-  documents: { label: "Disclosures & Delivery", icon: "📄" },
-  account: { label: "Account Setup", icon: "💼" },
-  regulatory: { label: "Regulatory Readiness", icon: "⚖️" },
+const CATEGORY_LABELS: Record<string, { label: string; icon: React.ReactNode; title?: string }> = {
+  identity: { label: "Identity & KYC", icon: <Fingerprint size={18} className="text-slate-500" />, title: "Know Your Customer — identity verification requirements" },
+  suitability: { label: "Suitability & Recommendations", icon: <BarChart3 size={18} className="text-slate-500" /> },
+  documents: { label: "Disclosures & Delivery", icon: <FileText size={18} className="text-slate-500" /> },
+  account: { label: "Account Setup", icon: <Briefcase size={18} className="text-slate-500" /> },
+  regulatory: { label: "Regulatory Readiness", icon: <Scale size={18} className="text-slate-500" /> },
 };
 
 const STEP_LABELS: Record<string, string> = {
@@ -571,7 +571,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                         <button onClick={() => d({ type: "TOGGLE_CATEGORY", category: cat })}
                           className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
                           <div className="flex items-center gap-3">
-                            <span className="text-lg">{catInfo.icon}</span>
+                            <span className="flex-shrink-0">{catInfo.icon}</span>
                             <span className="font-medium text-slate-800" title={catInfo.title}>{catInfo.label}</span>
                             <span className="text-xs text-slate-400">{catChecks.length} checks</span>
                           </div>

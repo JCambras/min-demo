@@ -182,7 +182,7 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
   return (
     <div className="flex h-screen bg-surface">
       <div className="w-full flex flex-col">
-        <FlowHeader title="Planning & Goals" familyName={familyName} stepLabel={familyName ? "Household Goals" : "All Households"} progressPct={progressPct} onBack={onExit} onShowPane={() => {}} hasIndicator={false} />
+        <FlowHeader title="Planning & Goals" familyName={familyName} stepLabel={familyName ? "Household Goals" : "All Households"} progressPct={progressPct} onBack={onExit} />
 
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 pt-6 pb-16">
           <div className="max-w-3xl w-full mx-auto">
@@ -301,8 +301,8 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
                   <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
                     <Target size={36} className="text-slate-300 mx-auto mb-4" />
                     <p className="text-slate-600 font-medium mb-1">No planning goals found</p>
-                    <p className="text-sm text-slate-400 mb-2">Goals are Salesforce tasks prefixed with <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-xs">GOAL:</span></p>
-                    <p className="text-xs text-slate-300 mb-5">Seed demo data from Settings, or add your first goal below.</p>
+                    <p className="text-sm text-slate-400 mb-2">No financial planning goals have been set for your households yet.</p>
+                    <p className="text-xs text-slate-300 mb-5">Add a goal below to start tracking progress.</p>
                     <button onClick={() => setShowAdd(true)} className="text-sm px-4 py-2 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors">
                       Add Your First Goal
                     </button>

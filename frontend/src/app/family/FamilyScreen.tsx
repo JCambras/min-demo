@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { FileText, BookOpen, MessageSquare, Briefcase, Shield, Clock, CheckCircle, Send, ExternalLink, Loader2, Users, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
 import { classifyTask, TASK_TYPE_LABELS, isComplianceReview, isMeetingNote } from "@/lib/task-subjects";
 import type { Screen, WorkflowContext } from "@/lib/types";
@@ -135,12 +136,13 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl w-full mx-auto px-6 py-10">
 
-          <button onClick={onExit} className="text-sm text-slate-400 hover:text-slate-600 transition-colors mb-6">← Back to Home</button>
+          <div className="mb-2">
+            <FlowHeader title={`${familyName} Household`} stepLabel="Household Detail" onBack={onExit} />
+          </div>
 
           {/* Header */}
           <div className="flex items-start justify-between mb-6" data-tour="family-header">
             <div>
-              <h1 className="text-3xl font-light text-slate-900 mb-1">{familyName} Household</h1>
               <div className="flex items-center gap-2 text-sm text-slate-400 flex-wrap">
                 {data?.household.CreatedDate && (
                   <span>Client since {new Date(data.household.CreatedDate).toLocaleDateString()}</span>

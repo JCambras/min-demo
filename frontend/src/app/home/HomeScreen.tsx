@@ -196,26 +196,10 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           <p className="text-sm text-slate-400 font-light mt-1">{role === "principal" && principalAdvisor !== "all" ? `Viewing ${principalAdvisor}'s households` : "Your practice, simplified."}</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <select value={role || ""} onChange={e => { dispatch({ type: "SET_ROLE_INLINE", role: e.target.value as UserRole }); setExpandedStat(null); }}
-              className="appearance-none text-xs pl-3 pr-7 py-1.5 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-600 hover:border-slate-400 transition-all bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-900"
-              style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}>
-              {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-            </select>
-          </div>
-          <span className="text-slate-200">·</span>
-          {role === "principal" ? (
-            <div className="relative">
-              <select value={principalAdvisor} onChange={e => { const v = e.target.value; dispatch({ type: "SET_PRINCIPAL_ADVISOR", advisor: v }); loadStats(v); setExpandedStat(null); }}
-                className="appearance-none text-xs pl-3 pr-7 py-1.5 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-600 hover:border-slate-400 transition-all bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-900"
-                style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}>
-                <option value="all">All Advisors</option>
-                {DEMO_ADVISORS.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
-              </select>
-            </div>
-          ) : (
-            <button onClick={() => dispatch({ type: "SET_SETUP_STEP", step: "crm" })} className="text-xs px-2.5 py-1.5 rounded-xl text-slate-400 hover:text-slate-600 transition-all">{advisorName || "Settings"}</button>
-          )}
+          <button onClick={() => { const ids = ROLES.map(r => r.id); const next = ids[(ids.indexOf(role || "advisor") + 1) % ids.length]; dispatch({ type: "SET_ROLE_INLINE", role: next as UserRole }); setExpandedStat(null); }}
+            className="text-xs text-slate-400 hover:text-slate-600 transition-all" title="Click to switch role">
+            {ROLES.find(r => r.id === role)?.label || "Advisor"}{role === "principal" && principalAdvisor !== "all" ? ` · ${principalAdvisor}` : ""}
+          </button>
           <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} aria-label="Settings" className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-all"><Settings size={16} /></button>
         </div>
       </div>
@@ -240,7 +224,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
 
       {/* Stat Cards (Advisor + Principal only) */}
       {(isAdvisor || role === "principal") && sfConnected && stats && (<div className="mb-8" data-tour="stat-cards">
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {([
             { key: "overdueTasks", label: "Overdue", value: stats.overdueTasks, Icon: Clock, color: stats.overdueTasks > 0 ? "text-red-500" : "text-green-500", vColor: stats.overdueTasks > 0 ? "text-red-600" : "text-green-600" },
             { key: "openTasks", label: "Open Tasks", value: stats.openTasks, Icon: CheckCircle, color: "text-amber-500", vColor: stats.openTasks > 0 ? "text-amber-600" : "" },

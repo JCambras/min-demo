@@ -1,8 +1,9 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Cloud, CloudOff, ExternalLink, Loader2, Check, AlertTriangle, Search, ChevronDown, ChevronUp, Shield, Zap, Database, Users, DollarSign, BarChart3, FileCheck, GitBranch } from "lucide-react";
+import { Cloud, CloudOff, ExternalLink, Loader2, Check, AlertTriangle, Search, ChevronDown, ChevronUp, Shield, Zap, Database, Users, DollarSign, BarChart3, FileCheck, GitBranch } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn } from "@/components/shared/FormControls";
+import { FlowHeader } from "@/components/shared/FlowHeader";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -491,12 +492,7 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
   return (
     <div className="flex h-screen bg-surface">
       <div className="flex-1 flex flex-col">
-        <div className="px-4 sm:px-8 py-4 flex items-center gap-4">
-          <button onClick={onExit} className="text-slate-300 hover:text-slate-600 transition-colors">
-            <ArrowLeft size={22} strokeWidth={1.5} />
-          </button>
-          <h1 className="text-lg sm:text-xl font-light text-slate-900">Settings</h1>
-        </div>
+        <FlowHeader title="Settings" stepLabel="Configuration" onBack={onExit} />
 
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 pt-4 pb-16">
           <div className="max-w-xl w-full mx-auto">

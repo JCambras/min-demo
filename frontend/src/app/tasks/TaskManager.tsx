@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo } from "react";
 import { Search, ArrowUpDown, ExternalLink, CheckCircle, Clock, Shield, MessageSquare, Send, Loader2, X, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
 import { classifyTask, TASK_TYPE_LABELS } from "@/lib/task-subjects";
 import type { TaskType } from "@/lib/task-subjects";
@@ -158,11 +159,11 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
           {t.priority === "High" && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">High</span>}
           {t.householdId && (
             <button onClick={() => goTo("family" as Screen, { householdId: t.householdId!, familyName: (t.householdName || t.sub || "").replace(" Household", "") })}
-              className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 text-slate-500 hover:border-slate-400 transition-colors whitespace-nowrap opacity-0 group-hover:opacity-100">
+              className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 text-slate-500 hover:border-slate-400 transition-colors whitespace-nowrap sm:opacity-0 sm:group-hover:opacity-100">
               View Family
             </button>
           )}
-          <a href={t.url} target="_blank" rel="noopener noreferrer" className="opacity-0 group-hover:opacity-100 transition-opacity">
+          <a href={t.url} target="_blank" rel="noopener noreferrer" className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
             <ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" />
           </a>
         </div>
@@ -175,10 +176,12 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl w-full mx-auto px-6 py-10">
 
-          <button onClick={onBack} className="text-sm text-slate-400 hover:text-slate-600 transition-colors mb-6">← Back</button>
+          <div className="mb-2">
+            <FlowHeader title="Task Manager" stepLabel={`${filtered.length} task${filtered.length !== 1 ? "s" : ""}`} onBack={onBack} />
+          </div>
 
           <div className="flex items-center justify-between mb-2">
-            <h1 className="text-3xl font-light text-slate-900">Task Manager</h1>
+            <div />
             <div className="flex items-center gap-3 text-sm text-slate-400">
               <span>{filtered.length} task{filtered.length !== 1 ? "s" : ""}</span>
               {completed.size > 0 && <span className="text-green-500">· {completed.size} done</span>}

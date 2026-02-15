@@ -1,5 +1,5 @@
 "use client";
-import { useReducer, useRef, useEffect, useCallback } from "react";
+import { useReducer, useRef, useEffect, useCallback, type Dispatch } from "react";
 import type { FlowStep, ClientInfo, AccountRequest, Beneficiary, SFEvidence, SFRefs, EnvStatus, SearchResult } from "@/lib/types";
 import { emptyClient } from "@/lib/types";
 import { callSF } from "@/lib/salesforce";
@@ -187,15 +187,41 @@ function reducer(state: FlowState, action: FlowAction): FlowState {
     case "SET_SHOW_RIGHT_PANE": return { ...state, showRightPane: action.value };
     case "SET_FREE_TEXT": return { ...state, freeText: action.value };
     case "RESET":
+      clearDraft();
       return { ...initialState };
     default:
       return state;
   }
 }
 
+// ─── Draft persistence ───────────────────────────────────────────────────────
+
+const DRAFT_KEY = "min-flow-draft";
+
+function saveDraft(state: FlowState) {
+  try {
+    if (state.step === "context" || state.step === "complete" || state.step === "generating") return;
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(state));
+  } catch { /* quota exceeded — ignore */ }
+}
+
+function loadDraft(): FlowState | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as FlowState;
+  } catch { return null; }
+}
+
+function clearDraft() {
+  try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+}
+
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; hasP2: boolean }) {
+  const draft = !initialClient ? loadDraft() : null;
+
   const init: FlowState = initialClient
     ? {
         ...initialState,
@@ -205,12 +231,22 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
         hasP2: initialClient.hasP2,
         clientType: "new",
       }
-    : initialState;
+    : draft || initialState;
 
-  const [state, dispatch] = useReducer(reducer, init);
+  const [state, rawDispatch] = useReducer(reducer, init);
   const sfRef = useRef<SFRefs>({});
 
-  const d = dispatch; // shorthand
+  // Wrap dispatch to persist drafts
+  const dispatch = useCallback((action: FlowAction) => {
+    rawDispatch(action);
+  }, []);
+  const d = dispatch;
+
+  // Persist draft on state changes (skip terminal steps)
+  useEffect(() => {
+    if (state.step === "complete" || state.step === "context") clearDraft();
+    else saveDraft(state);
+  }, [state]);
 
   // Derived values
   const p1Name = `${state.p1.firstName} ${state.p1.lastName}`.trim();
@@ -511,7 +547,7 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
   const primaryContactId = sfRef.current.primaryContactId || "";
 
   return {
-    state, dispatch: d,
+    state, dispatch: d, hasDraft: !!draft,
     // Derived
     p1Name, p2Name, fam, jLabel, progressPct, curFund,
     hasAcct, acctsFor, totalDocs, estMinutes, genStepLabels,

@@ -21,7 +21,7 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
   onNavigate?: (screen: Screen, ctx?: WorkflowContext) => void;
 }) {
   const flow = useFlowState(initialClient);
-  const { state, dispatch: d, p1Name, p2Name, fam, jLabel, progressPct, curFund, hasAcct, acctsFor, totalDocs, estMinutes, genStepLabels, householdUrl, householdId, primaryContactId, goBack, nextFund, nextP1, nextP2, nextJoint, executeGen } = flow;
+  const { state, dispatch: d, hasDraft, p1Name, p2Name, fam, jLabel, progressPct, curFund, hasAcct, acctsFor, totalDocs, estMinutes, genStepLabels, householdUrl, householdId, primaryContactId, goBack, nextFund, nextP1, nextP2, nextJoint, executeGen } = flow;
 
   const combinedResults = state.sfSearchResults;
 
@@ -45,6 +45,13 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
 
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 pt-4 pb-16">
           <div className="max-w-xl w-full mx-auto">
+
+            {hasDraft && state.step !== "context" && state.step !== "complete" && (
+              <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 animate-fade-in">
+                <p className="text-xs text-blue-700">Resumed where you left off.</p>
+                <button onClick={() => d({ type: "RESET" })} className="text-xs text-blue-500 hover:text-blue-700 font-medium">Start Over</button>
+              </div>
+            )}
 
             {state.step === "context" && (
               <div className="animate-fade-in">
