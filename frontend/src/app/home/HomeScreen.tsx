@@ -51,9 +51,9 @@ interface HomeScreenProps {
 
 // ─── Extracted Sub-Components ────────────────────────────────────────────────
 
-function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClick }: {
+function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClick, peekItems }: {
   label: string; value: number; Icon: React.ElementType; color: string; vColor: string;
-  expanded: boolean; tourKey: string; onClick: () => void;
+  expanded: boolean; tourKey: string; onClick: () => void; peekItems?: { label: string }[];
 }) {
   return (
     <button data-tour={`stat-${tourKey}`} onClick={onClick}
@@ -63,6 +63,13 @@ function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClic
         <span className="text-[11px] text-slate-400 truncate">{label}</span>
       </div>
       <p className={`text-2xl font-light ${vColor || "text-slate-900"}`}>{value}</p>
+      {peekItems && peekItems.length > 0 && !expanded && (
+        <div className="mt-2 pt-2 border-t border-slate-100 space-y-0.5">
+          {peekItems.slice(0, 2).map((item, i) => (
+            <p key={i} className="text-[10px] text-slate-400 truncate">{item.label}</p>
+          ))}
+        </div>
+      )}
     </button>
   );
 }
@@ -226,14 +233,15 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {(isAdvisor || role === "principal") && sfConnected && stats && (<div className="mb-8" data-tour="stat-cards">
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {([
-            { key: "overdueTasks", label: "Overdue", value: stats.overdueTasks, Icon: Clock, color: stats.overdueTasks > 0 ? "text-red-500" : "text-green-500", vColor: stats.overdueTasks > 0 ? "text-red-600" : "text-green-600" },
-            { key: "openTasks", label: "Open Tasks", value: stats.openTasks, Icon: CheckCircle, color: "text-amber-500", vColor: stats.openTasks > 0 ? "text-amber-600" : "" },
-            { key: "readyForReview", label: "Ready for Review", value: stats.readyForReview, Icon: Shield, color: stats.readyForReview > 0 ? "text-amber-500" : "text-green-500", vColor: stats.readyForReview > 0 ? "text-amber-600" : "" },
-            { key: "unsignedEnvelopes", label: "Unsigned", value: stats.unsignedEnvelopes, Icon: Send, color: stats.unsignedEnvelopes > 0 ? "text-blue-500" : "text-slate-400", vColor: stats.unsignedEnvelopes > 0 ? "text-blue-600" : "" },
-            { key: "upcomingMeetings", label: "Meetings (7d)", value: stats.upcomingMeetings, Icon: MessageSquare, color: "text-purple-500", vColor: "" },
+            { key: "overdueTasks", label: "Overdue", value: stats.overdueTasks, Icon: Clock, color: stats.overdueTasks > 0 ? "text-red-500" : "text-green-500", vColor: stats.overdueTasks > 0 ? "text-red-600" : "text-green-600", peek: stats.overdueTaskItems },
+            { key: "openTasks", label: "Open Tasks", value: stats.openTasks, Icon: CheckCircle, color: "text-amber-500", vColor: stats.openTasks > 0 ? "text-amber-600" : "", peek: stats.openTaskItems },
+            { key: "readyForReview", label: "Ready for Review", value: stats.readyForReview, Icon: Shield, color: stats.readyForReview > 0 ? "text-amber-500" : "text-green-500", vColor: stats.readyForReview > 0 ? "text-amber-600" : "", peek: stats.readyForReviewItems },
+            { key: "unsignedEnvelopes", label: "Unsigned", value: stats.unsignedEnvelopes, Icon: Send, color: stats.unsignedEnvelopes > 0 ? "text-blue-500" : "text-slate-400", vColor: stats.unsignedEnvelopes > 0 ? "text-blue-600" : "", peek: stats.unsignedItems },
+            { key: "upcomingMeetings", label: "Meetings (7d)", value: stats.upcomingMeetings, Icon: MessageSquare, color: "text-purple-500", vColor: "", peek: stats.upcomingMeetingItems },
           ] as const).map(s => (
             <StatCard key={s.key} tourKey={s.key} label={s.label} value={s.value} Icon={s.Icon}
               color={s.color} vColor={s.vColor} expanded={expandedStat === s.key}
+              peekItems={s.value > 0 ? s.peek : undefined}
               onClick={() => { setExpandedStat(expandedStat === s.key ? null : s.key); setPanelFilter(""); setPanelSort("alpha"); }}
             />))}
         </div>

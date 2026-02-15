@@ -420,7 +420,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
                 </div>
 
                 {/* Status Grid */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* DocuSign */}
                   <div className="bg-white border border-slate-200 rounded-2xl p-5">
                     <p className="text-xs uppercase tracking-wider text-slate-400 mb-3">

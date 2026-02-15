@@ -96,17 +96,60 @@ function reducer(s: State, a: Action): State {
     case "SET_SAVE_STEP": return { ...s, saveStep: a.v };
     case "ADD_EVIDENCE": return { ...s, evidence: [...s.evidence, a.ev] };
     case "SET_RIGHT_PANE": return { ...s, showRightPane: a.v };
-    case "RESET": return { ...init };
+    case "RESET": clearMeetingDraft(); return { ...init };
     default: return s;
   }
+}
+
+// ─── Draft Persistence ──────────────────────────────────────────────────────
+
+const DRAFT_KEY = "min-meeting-draft";
+
+function saveMeetingDraft(s: State) {
+  try {
+    if (s.step !== "compose") return;
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+      selectedHousehold: s.selectedHousehold,
+      meetingType: s.meetingType,
+      meetingDate: s.meetingDate,
+      duration: s.duration,
+      attendees: s.attendees,
+      notes: s.notes,
+      followUps: s.followUps,
+      followUpDays: s.followUpDays,
+    }));
+  } catch { /* quota exceeded — ignore */ }
+}
+
+function loadMeetingDraft(): Partial<State> | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+function clearMeetingDraft() {
+  try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: () => void; initialContext?: WorkflowContext | null; onNavigate?: (screen: Screen, ctx?: WorkflowContext) => void }) {
-  const [s, d] = useReducer(reducer, init);
+  const draft = !initialContext ? loadMeetingDraft() : null;
+  const initState: State = draft?.selectedHousehold
+    ? { ...init, step: "compose", selectedHousehold: draft.selectedHousehold as HHResult, meetingType: draft.meetingType || "", meetingDate: draft.meetingDate || today, duration: draft.duration || "30 min", attendees: draft.attendees || "", notes: draft.notes || "", followUps: draft.followUps || [], followUpDays: draft.followUpDays || 7 }
+    : init;
+  const [s, d] = useReducer(reducer, initState);
+  const hasDraft = !!draft?.selectedHousehold;
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const familyName = s.selectedHousehold?.name?.replace(" Household", "") || "Client";
+
+  // Persist draft on state changes
+  useEffect(() => {
+    if (s.step === "complete" || s.step === "search") clearMeetingDraft();
+    else saveMeetingDraft(s);
+  }, [s]);
 
   // Auto-select household from workflow context
   useEffect(() => {
@@ -238,6 +281,12 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
             {/* ─── Compose ─── */}
             {s.step === "compose" && (
               <div className="animate-fade-in space-y-6">
+                {hasDraft && (
+                  <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 animate-fade-in">
+                    <p className="text-xs text-blue-700">Resumed your draft meeting notes.</p>
+                    <button onClick={() => { clearMeetingDraft(); d({ type: "RESET" }); }} className="text-xs text-blue-500 hover:text-blue-700 font-medium">Start Over</button>
+                  </div>
+                )}
                 <div>
                   <h2 className="text-3xl font-light text-slate-900 mb-2">{familyName} Meeting</h2>
                   <p className="text-slate-400">Capture what happened and any follow-ups.</p>

@@ -179,7 +179,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           </div>
 
           {/* Status Summary — 5 cards */}
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
             <div className="bg-white border border-slate-200 rounded-xl p-3 text-center">
               <p className={`text-2xl font-light ${openTasks.length > 0 ? "text-amber-600" : "text-slate-900"}`}>{openTasks.length}</p>
               <p className="text-[10px] text-slate-400">Open Tasks</p>

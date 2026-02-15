@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Loader2, Target, CheckCircle, Circle, Plus, X, ChevronRight, Calendar, AlertTriangle, Search, ExternalLink } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { SelectField } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
 import type { Screen, WorkflowContext } from "@/lib/types";
@@ -276,17 +278,12 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
 
                     <div className="grid grid-cols-3 gap-3">
                       <select value={newGoal.householdId} onChange={e => setNewGoal(prev => ({ ...prev, householdId: e.target.value }))}
-                        className="px-3 py-2 text-sm rounded-xl border border-slate-200 text-slate-700 outline-none focus:border-slate-400 bg-white">
+                        className="w-full h-12 px-3 text-base rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-slate-400">
                         <option value="">Select household...</option>
                         {households.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
                       </select>
-                      <input type="date" value={newGoal.dueDate} onChange={e => setNewGoal(prev => ({ ...prev, dueDate: e.target.value }))}
-                        className="px-3 py-2 text-sm rounded-xl border border-slate-200 text-slate-700 outline-none focus:border-slate-400" />
-                      <select value={newGoal.priority} onChange={e => setNewGoal(prev => ({ ...prev, priority: e.target.value }))}
-                        className="px-3 py-2 text-sm rounded-xl border border-slate-200 text-slate-700 outline-none focus:border-slate-400 bg-white">
-                        <option value="Normal">Normal</option>
-                        <option value="High">High Priority</option>
-                      </select>
+                      <Input type="date" className="h-12 rounded-xl" value={newGoal.dueDate} onChange={e => setNewGoal(prev => ({ ...prev, dueDate: e.target.value }))} />
+                      <SelectField value={newGoal.priority} onChange={v => setNewGoal(prev => ({ ...prev, priority: v }))} options={["Normal", "High"]} />
                     </div>
 
                     <button onClick={addGoal} disabled={!newGoal.subject.trim() || !newGoal.householdId || saving}
