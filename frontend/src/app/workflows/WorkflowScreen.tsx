@@ -131,7 +131,7 @@ export function WorkflowScreen({ onExit, onNavigate }: {
   };
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-surface">
       <div className="w-full flex flex-col">
         <FlowHeader title="Workflow Automation" familyName={undefined} stepLabel="Active Chains & Templates" progressPct={100} onBack={onExit} onShowPane={() => {}} hasIndicator={false} />
 

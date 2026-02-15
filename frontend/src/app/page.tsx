@@ -37,7 +37,7 @@ const CRMS = [
 function NamePicker({ advisorName, onSelect, onContinue, onBack, role }: { advisorName: string; onSelect: (n: string) => void; onContinue: () => void; onBack: () => void; role: UserRole | null }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex h-screen bg-[#fafafa]"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-md w-full">
+    <div className="flex h-screen bg-surface"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-md w-full">
       <div className="text-center mb-10"><h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1><p className="text-lg text-slate-400 font-light">Welcome, {ROLES.find(r => r.id === role)?.label}.</p></div>
       <p className="text-sm text-slate-500 text-center mb-6">Select your name</p>
       <div className="relative">
@@ -79,7 +79,7 @@ export default function Home() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   if (setupStep === "role") return (
-    <div className="flex h-screen bg-[#fafafa]"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">
+    <div className="flex h-screen bg-surface"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">
       <div className="text-center mb-10"><h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1><p className="text-lg text-slate-400 font-light">Your practice, simplified.</p></div>
       <p className="text-sm text-slate-500 text-center mb-6">What&rsquo;s your role?</p>
       <div className="grid grid-cols-3 gap-4">
@@ -97,7 +97,7 @@ export default function Home() {
   if (setupStep === "name") return <NamePicker advisorName={advisorName} onSelect={n => dispatch({ type: "SET_ADVISOR_NAME", name: n })} onContinue={() => dispatch({ type: "SET_SETUP_STEP", step: "crm" })} onBack={() => dispatch({ type: "SET_SETUP_STEP", step: "role" })} role={role} />;
 
   if (setupStep === "crm") return (
-    <div className="flex h-screen bg-[#fafafa]"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">
+    <div className="flex h-screen bg-surface"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">
       <div className="text-center mb-10"><h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1><p className="text-lg text-slate-400 font-light">Connect your CRM</p></div>
       <p className="text-sm text-slate-500 text-center mb-6">Which CRM does your firm use?</p>
       <div className="grid grid-cols-3 gap-4">

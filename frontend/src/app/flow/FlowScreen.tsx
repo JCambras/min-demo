@@ -39,7 +39,7 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
   };
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-surface">
       <div className="w-full lg:w-[70%] flex flex-col">
         <FlowHeader title="Open Accounts" familyName={fam} stepLabel={STEP_LABELS[state.step] || ""} progressPct={progressPct} onBack={handleBack} onShowPane={() => d({ type: "SET_SHOW_RIGHT_PANE", value: true })} hasIndicator={state.accounts.length > 0 || state.evidence.length > 0} />
 

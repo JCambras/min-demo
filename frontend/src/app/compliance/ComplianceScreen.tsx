@@ -489,7 +489,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
   };
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-surface">
       <div className="w-full lg:w-[70%] flex flex-col">
         <FlowHeader title="Compliance Reviews" familyName={state.selectedHousehold ? familyName : undefined} stepLabel={STEP_LABELS[state.step] || ""} progressPct={progressPct} onBack={goBack} onShowPane={() => d({ type: "SET_SHOW_RIGHT_PANE", value: true })} hasIndicator={state.evidence.length > 0} accent="green" />
 

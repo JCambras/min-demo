@@ -122,7 +122,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
     : null;
 
   if (loading) return (
-    <div className="flex h-screen bg-[#fafafa] items-center justify-center">
+    <div className="flex h-screen bg-surface items-center justify-center">
       <div className="flex items-center gap-3 text-slate-400">
         <Loader2 size={22} className="animate-spin" />
         <span className="text-sm">Loading {familyName} household...</span>
@@ -131,7 +131,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
   );
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-surface">
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl w-full mx-auto px-6 py-10">
 
@@ -177,7 +177,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           </div>
 
           {/* Status Summary — 5 cards */}
-          <div className="grid grid-cols-5 gap-3 mb-6">
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mb-6">
             <div className="bg-white border border-slate-200 rounded-xl p-3 text-center">
               <p className={`text-2xl font-light ${openTasks.length > 0 ? "text-amber-600" : "text-slate-900"}`}>{openTasks.length}</p>
               <p className="text-[10px] text-slate-400">Open Tasks</p>

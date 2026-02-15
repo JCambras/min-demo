@@ -49,6 +49,71 @@ interface HomeScreenProps {
   showToast: (msg: string) => void;
 }
 
+// ─── Extracted Sub-Components ────────────────────────────────────────────────
+
+function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClick }: {
+  label: string; value: number; Icon: React.ElementType; color: string; vColor: string;
+  expanded: boolean; tourKey: string; onClick: () => void;
+}) {
+  return (
+    <button data-tour={`stat-${tourKey}`} onClick={onClick}
+      className={`bg-white border rounded-2xl p-4 text-left transition-all hover:shadow-md ${expanded ? "border-slate-400 shadow-md ring-1 ring-slate-200" : "border-slate-200"}`}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <Icon size={14} className={color} />
+        <span className="text-[11px] text-slate-400 truncate">{label}</span>
+      </div>
+      <p className={`text-2xl font-light ${vColor || "text-slate-900"}`}>{value}</p>
+    </button>
+  );
+}
+
+function StatPanelRow({ item, showAction, showReminder, reminderSent, onRemind, goTo }: {
+  item: { url: string; label: string; sub: string; priority?: string; householdId?: string; householdName?: string };
+  showAction?: string; showReminder?: boolean; reminderSent: Set<string>;
+  onRemind: (url: string) => void; goTo: (screen: Screen, ctx?: WorkflowContext) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+      <a href={item.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1">
+        <p className="text-sm text-slate-700 truncate">{item.label}</p>
+        <p className="text-xs text-slate-400">{item.sub}</p>
+      </a>
+      <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+        {item.priority === "High" && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">High</span>}
+        {showAction === "compliance" && item.householdId && (
+          <button data-tour="run-check-btn" onClick={() => goTo("compliance", { householdId: item.householdId!, familyName: (item.householdName || "").replace(" Household", "") })}
+            className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors whitespace-nowrap">Run Check</button>
+        )}
+        {showReminder && (
+          <button onClick={() => onRemind(item.url)} disabled={reminderSent.has(item.url)}
+            className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${reminderSent.has(item.url) ? "bg-green-100 text-green-600 cursor-default" : "bg-blue-600 text-white hover:bg-blue-700"}`}>
+            {reminderSent.has(item.url) ? "Sent \u2713" : "Send Reminder"}
+          </button>
+        )}
+        <a href={item.url} target="_blank" rel="noopener noreferrer">
+          <ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function RecentActivityRow({ item, icon }: {
+  item: { url: string; subject: string; household: string };
+  icon: React.ReactNode;
+}) {
+  return (
+    <a href={item.url} target="_blank" rel="noopener noreferrer"
+      className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+      {icon}
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-slate-700 truncate">{item.subject}</p>
+        <p className="text-xs text-slate-400">{item.household}</p>
+      </div>
+    </a>
+  );
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast }: HomeScreenProps) {
@@ -112,7 +177,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   // ── Loading state ──
   if ((isAdvisor || role === "principal") && sfConnected && statsLoading) {
     return (
-      <div className="flex h-screen bg-[#fafafa] items-center justify-center">
+      <div className="flex h-screen bg-surface items-center justify-center">
         <div className="flex items-center gap-3 text-slate-400"><Loader2 size={22} className="animate-spin" /><span className="text-sm">Loading your practice data...</span></div>
       </div>
     );
@@ -122,7 +187,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const tourOverlay = <DemoMode active={tourActive} onEnd={() => { dispatch({ type: "SET_TOUR", active: false }); }} screen="home" />;
 
   return (
-    <div className="flex h-screen bg-[#fafafa]"><div className="flex-1 overflow-y-auto"><div className="max-w-3xl w-full mx-auto px-6 py-10">
+    <div className="flex h-screen bg-surface"><div className="flex-1 overflow-y-auto"><div className="max-w-3xl w-full mx-auto px-6 py-10">
 
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
@@ -133,7 +198,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         <div className="flex items-center gap-2">
           <div className="relative">
             <select value={role || ""} onChange={e => { dispatch({ type: "SET_ROLE_INLINE", role: e.target.value as UserRole }); setExpandedStat(null); }}
-              className="appearance-none text-xs pl-3 pr-7 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-600 hover:border-slate-400 transition-all bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-900"
+              className="appearance-none text-xs pl-3 pr-7 py-1.5 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-600 hover:border-slate-400 transition-all bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-900"
               style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}>
               {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
             </select>
@@ -142,14 +207,14 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           {role === "principal" ? (
             <div className="relative">
               <select value={principalAdvisor} onChange={e => { const v = e.target.value; dispatch({ type: "SET_PRINCIPAL_ADVISOR", advisor: v }); loadStats(v); setExpandedStat(null); }}
-                className="appearance-none text-xs pl-3 pr-7 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-600 hover:border-slate-400 transition-all bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-900"
+                className="appearance-none text-xs pl-3 pr-7 py-1.5 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-600 hover:border-slate-400 transition-all bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-900"
                 style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}>
                 <option value="all">All Advisors</option>
                 {DEMO_ADVISORS.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
               </select>
             </div>
           ) : (
-            <button onClick={() => dispatch({ type: "SET_SETUP_STEP", step: "crm" })} className="text-xs px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-slate-600 transition-all">{advisorName || "Settings"}</button>
+            <button onClick={() => dispatch({ type: "SET_SETUP_STEP", step: "crm" })} className="text-xs px-2.5 py-1.5 rounded-xl text-slate-400 hover:text-slate-600 transition-all">{advisorName || "Settings"}</button>
           )}
           <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-all"><Settings size={16} /></button>
         </div>
@@ -175,7 +240,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
 
       {/* Stat Cards (Advisor + Principal only) */}
       {(isAdvisor || role === "principal") && sfConnected && stats && (<div className="mb-8" data-tour="stat-cards">
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
           {([
             { key: "overdueTasks", label: "Overdue", value: stats.overdueTasks, Icon: Clock, color: stats.overdueTasks > 0 ? "text-red-500" : "text-green-500", vColor: stats.overdueTasks > 0 ? "text-red-600" : "text-green-600" },
             { key: "openTasks", label: "Open Tasks", value: stats.openTasks, Icon: CheckCircle, color: "text-amber-500", vColor: stats.openTasks > 0 ? "text-amber-600" : "" },
@@ -183,11 +248,10 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
             { key: "unsignedEnvelopes", label: "Unsigned", value: stats.unsignedEnvelopes, Icon: Send, color: stats.unsignedEnvelopes > 0 ? "text-blue-500" : "text-slate-400", vColor: stats.unsignedEnvelopes > 0 ? "text-blue-600" : "" },
             { key: "upcomingMeetings", label: "Meetings (7d)", value: stats.upcomingMeetings, Icon: MessageSquare, color: "text-purple-500", vColor: "" },
           ] as const).map(s => (
-            <button key={s.key} data-tour={`stat-${s.key}`} onClick={() => { setExpandedStat(expandedStat === s.key ? null : s.key); setPanelFilter(""); setPanelSort("alpha"); }}
-              className={`bg-white border rounded-2xl p-4 text-left transition-all hover:shadow-md ${expandedStat === s.key ? "border-slate-400 shadow-md ring-1 ring-slate-200" : "border-slate-200"}`}>
-              <div className="flex items-center gap-1.5 mb-2"><s.Icon size={14} className={s.color} /><span className="text-[11px] text-slate-400 truncate">{s.label}</span></div>
-              <p className={`text-2xl font-light ${s.vColor || "text-slate-900"}`}>{s.value}</p>
-            </button>))}
+            <StatCard key={s.key} tourKey={s.key} label={s.label} value={s.value} Icon={s.Icon}
+              color={s.color} vColor={s.vColor} expanded={expandedStat === s.key}
+              onClick={() => { setExpandedStat(expandedStat === s.key ? null : s.key); setPanelFilter(""); setPanelSort("alpha"); }}
+            />))}
         </div>
 
         {/* Expanded stat panel */}
@@ -215,15 +279,11 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
             </div>
             {p.items.length > 4 && <div className="px-4 py-2 border-b border-slate-100"><input className="w-full text-sm text-slate-700 placeholder:text-slate-300 outline-none bg-transparent" placeholder="Filter..." value={panelFilter} onChange={e => setPanelFilter(e.target.value)} autoFocus /></div>}
             {filtered.length === 0 ? <div className="px-4 py-6 text-center"><Search size={20} className="mx-auto text-slate-200 mb-2" /><p className="text-sm text-slate-400">No items match your filter.</p></div>
-            : filtered.map((item, i) => (<div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
-              <a href={item.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1"><p className="text-sm text-slate-700 truncate">{item.label}</p><p className="text-xs text-slate-400">{item.sub}</p></a>
-              <div className="flex items-center gap-2 ml-3 flex-shrink-0">
-                {item.priority === "High" && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">High</span>}
-                {p.showAction === "compliance" && item.householdId && <button data-tour="run-check-btn" onClick={() => goTo("compliance", { householdId: item.householdId!, familyName: (item.householdName || "").replace(" Household", "") })} className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors whitespace-nowrap">Run Check</button>}
-                {p.showReminder && <button onClick={() => { setReminderSent(prev => { const s = new Set(prev); s.add(item.url); return s; }); showToast("DocuSign reminder sent to signers"); }} disabled={reminderSent.has(item.url)} className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${reminderSent.has(item.url) ? "bg-green-100 text-green-600 cursor-default" : "bg-blue-600 text-white hover:bg-blue-700"}`}>{reminderSent.has(item.url) ? "Sent ✓" : "Send Reminder"}</button>}
-                <a href={item.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" /></a>
-              </div>
-            </div>))}
+            : filtered.map((item, i) => (
+              <StatPanelRow key={i} item={item} showAction={p.showAction} showReminder={p.showReminder}
+                reminderSent={reminderSent} goTo={goTo}
+                onRemind={(url) => { setReminderSent(prev => { const s = new Set(prev); s.add(url); return s; }); showToast("DocuSign reminder sent to signers"); }}
+              />))}
           </div>);
         })()}
       </div>)}
@@ -260,9 +320,9 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {sfConnected && stats && stats.recentItems.length > 0 && (isOps || !expandedStat) && (
         <div className="mb-8 bg-white border border-slate-200 rounded-2xl overflow-hidden">
           <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3"><Clock size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Recent Activity</p></div>
-          {stats.recentItems.map((t, i) => (<a key={i} href={t.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
-            {iconForType(t.type)}<div className="min-w-0 flex-1"><p className="text-sm text-slate-700 truncate">{t.subject}</p><p className="text-xs text-slate-400">{t.household}</p></div>
-          </a>))}
+          {stats.recentItems.map((t, i) => (
+            <RecentActivityRow key={i} item={t} icon={iconForType(t.type)} />
+          ))}
         </div>
       )}
 

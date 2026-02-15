@@ -489,7 +489,7 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
   const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-surface">
       <div className="flex-1 flex flex-col">
         <div className="px-4 sm:px-8 py-4 flex items-center gap-4">
           <button onClick={onExit} className="text-slate-300 hover:text-slate-600 transition-colors">

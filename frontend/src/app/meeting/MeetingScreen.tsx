@@ -199,7 +199,7 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
   const canSave = s.notes.trim().length > 0;
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-surface">
       <div className="w-full lg:w-[70%] flex flex-col">
         <FlowHeader title="Meeting Logs" familyName={s.step !== "search" ? familyName : undefined} stepLabel={stepLabels[s.step] || ""} progressPct={pct} onBack={goBack} onShowPane={() => d({ type: "SET_RIGHT_PANE", v: true })} hasIndicator={s.evidence.length > 0} accent="purple" />
 

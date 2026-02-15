@@ -134,7 +134,7 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
   }, [allItems, completed]);
 
   if (!stats) return (
-    <div className="flex h-screen bg-[#fafafa] items-center justify-center">
+    <div className="flex h-screen bg-surface items-center justify-center">
       <div className="flex items-center gap-3 text-slate-400"><Loader2 size={22} className="animate-spin" /><span className="text-sm">Loading tasks...</span></div>
     </div>
   );
@@ -171,7 +171,7 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
   };
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-surface">
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl w-full mx-auto px-6 py-10">
 

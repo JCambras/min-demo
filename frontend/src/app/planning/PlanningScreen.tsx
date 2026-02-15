@@ -180,7 +180,7 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
   const progressPct = goals.length > 0 ? Math.round(completedGoals.length / (activeGoals.length + completedGoals.length) * 100) : 0;
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-surface">
       <div className="w-full flex flex-col">
         <FlowHeader title="Planning & Goals" familyName={familyName} stepLabel={familyName ? "Household Goals" : "All Households"} progressPct={progressPct} onBack={onExit} onShowPane={() => {}} hasIndicator={false} />
 

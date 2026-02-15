@@ -258,7 +258,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
   const pct = s.step === "search" ? 33 : s.step === "loading" ? 66 : 100;
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-surface">
       <div className="w-full lg:w-[70%] flex flex-col">
         <FlowHeader title="Client Briefing" familyName={s.step !== "search" ? familyName : undefined} stepLabel={stepLabels[s.step] || ""} progressPct={pct} onBack={goBack} onShowPane={() => d({ type: "SET_RIGHT_PANE", v: true })} hasIndicator={!!s.intel} accent="amber" />
 

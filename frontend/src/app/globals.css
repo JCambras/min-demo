@@ -9,6 +9,7 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --color-ring: var(--ring);
+  --color-surface: var(--surface);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
@@ -43,6 +44,7 @@
   --border: oklch(0.929 0.013 255.508);
   --input: oklch(0.929 0.013 255.508);
   --ring: oklch(0.704 0.04 256.788);
+  --surface: oklch(0.98 0 0);
 }
 
 @layer base {

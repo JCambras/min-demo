@@ -32,7 +32,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
   };
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-surface">
       <div className="w-full flex flex-col">
         <FlowHeader title="Practice Intelligence" familyName={undefined} stepLabel="Weekly Operations Report" progressPct={100} onBack={onExit} onShowPane={() => {}} hasIndicator={false} />
 
