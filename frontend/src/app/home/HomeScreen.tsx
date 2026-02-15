@@ -57,7 +57,7 @@ function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClic
 }) {
   return (
     <button data-tour={`stat-${tourKey}`} onClick={onClick}
-      className={`bg-white border rounded-2xl p-4 text-left transition-all hover:shadow-md ${expanded ? "border-slate-400 shadow-md ring-1 ring-slate-200" : "border-slate-200"}`}>
+      className={`bg-white border rounded-2xl p-4 text-left transition-all hover:shadow-md ${expanded ? "border-slate-900 shadow-md" : "border-slate-200"}`}>
       <div className="flex items-center gap-1.5 mb-2">
         <Icon size={14} className={color} />
         <span className="text-[11px] text-slate-400 truncate">{label}</span>

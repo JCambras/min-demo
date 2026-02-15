@@ -131,6 +131,50 @@ select:focus-visible,
   border-radius: var(--radius);
 }
 
+/* ─── Abbreviation tooltips ───────────────────────────────────────────────── */
+
+abbr[title] {
+  text-decoration: none;
+  border-bottom: 1px dashed oklch(0.7 0.02 260);
+  cursor: help;
+}
+
+/* ─── Print styles ───────────────────────────────────────────────────────── */
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Remove fixed viewport constraints so content flows naturally */
+  .h-screen {
+    height: auto !important;
+  }
+  .overflow-y-auto {
+    overflow: visible !important;
+  }
+  .overflow-hidden {
+    overflow: visible !important;
+  }
+
+  /* Full-width main content when right pane is hidden */
+  .lg\:w-\[70\%\] {
+    width: 100% !important;
+  }
+
+  /* Hide mobile-only UI chrome */
+  .lg\:hidden {
+    display: none !important;
+  }
+}
+
 /* Mobile slide-in pane */
 .mobile-pane {
   transform: translateX(100%);

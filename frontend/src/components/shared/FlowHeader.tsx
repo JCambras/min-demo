@@ -24,7 +24,7 @@ export function FlowHeader({ title, familyName, stepLabel, progressPct, onBack, 
   const displayTitle = familyName && familyName !== "Client" ? `${title} · ${familyName}` : title;
 
   return (
-    <div className="px-4 sm:px-8 py-4 flex items-center gap-4">
+    <div className="px-4 sm:px-8 py-4 flex items-center gap-4 print:hidden">
       <button onClick={onBack} aria-label="Go back" className="text-slate-300 hover:text-slate-600 transition-colors">
         <ArrowLeft size={22} strokeWidth={1.5} />
       </button>

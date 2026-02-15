@@ -555,7 +555,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
       </div>
 
       {/* Right pane — raw SF data for power users */}
-      <div className={`${s.showRightPane ? "fixed inset-0 z-50 bg-white" : "hidden"} lg:block lg:static lg:w-[30%] border-l border-slate-200 bg-white flex flex-col`}>
+      <div className={`${s.showRightPane ? "fixed inset-0 z-50 bg-white" : "hidden"} lg:block lg:static lg:w-[30%] border-l border-slate-200 bg-white flex flex-col print:hidden`}>
         <div className="px-5 py-5 border-b border-slate-100 flex items-center justify-between">
           <p className="text-xs uppercase tracking-wider text-slate-400">Salesforce Records</p>
           <button onClick={() => d({ type: "SET_RIGHT_PANE", v: false })} aria-label="Close panel" className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>

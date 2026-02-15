@@ -299,8 +299,8 @@ const SCAN_STEPS = [
   "Done",
 ];
 
-const CATEGORY_LABELS: Record<string, { label: string; icon: string }> = {
-  identity: { label: "Identity & KYC", icon: "🪪" },
+const CATEGORY_LABELS: Record<string, { label: string; icon: string; title?: string }> = {
+  identity: { label: "Identity & KYC", icon: "🪪", title: "Know Your Customer — identity verification requirements" },
   suitability: { label: "Suitability & Recommendations", icon: "📊" },
   documents: { label: "Disclosures & Delivery", icon: "📄" },
   account: { label: "Account Setup", icon: "💼" },
@@ -572,7 +572,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                           className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
                           <div className="flex items-center gap-3">
                             <span className="text-lg">{catInfo.icon}</span>
-                            <span className="font-medium text-slate-800">{catInfo.label}</span>
+                            <span className="font-medium text-slate-800" title={catInfo.title}>{catInfo.label}</span>
                             <span className="text-xs text-slate-400">{catChecks.length} checks</span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -583,7 +583,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                           </div>
                         </button>
                         {isExpanded && (
-                          <div className="border-t border-slate-100 px-4 pb-3">
+                          <div className="border-t border-slate-100 px-4 pb-3 animate-slide-down">
                             {catChecks.map(check => (
                               <div key={check.id} className="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">
                                 <div className="mt-0.5 flex-shrink-0">
@@ -726,7 +726,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
       </div>
 
       {/* Right pane — evidence log */}
-      <div className={`${state.showRightPane ? "fixed inset-0 z-50 bg-white" : "hidden"} lg:block lg:static lg:w-[30%] border-l border-slate-200 bg-white flex flex-col`}>
+      <div className={`${state.showRightPane ? "fixed inset-0 z-50 bg-white" : "hidden"} lg:block lg:static lg:w-[30%] border-l border-slate-200 bg-white flex flex-col print:hidden`}>
         <div className="px-5 py-5 border-b border-slate-100 flex items-center justify-between">
           <p className="text-xs uppercase tracking-wider text-slate-400">Compliance Log</p>
           <button onClick={() => d({ type: "SET_SHOW_RIGHT_PANE", value: false })} aria-label="Close panel" className="lg:hidden text-slate-400 hover:text-slate-600">✕</button>

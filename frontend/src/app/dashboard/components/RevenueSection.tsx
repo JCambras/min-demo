@@ -21,7 +21,7 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
       {/* Revenue headline cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <button onClick={() => toggleDetail("rev-aum")} className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
-          <p className="text-[10px] text-emerald-600 font-medium uppercase tracking-wider">Est. AUM<span className="text-emerald-400 ml-0.5">▾</span></p>
+          <p className="text-[10px] text-emerald-600 font-medium uppercase tracking-wider">Est. <abbr title="Assets Under Management" className="no-underline cursor-help">AUM</abbr><span className="text-emerald-400 ml-0.5">▾</span></p>
           <p className="text-2xl font-light text-emerald-700 mt-1">${(data.revenue.estimatedAum / 1_000_000).toFixed(0)}M</p>
         </button>
         <button onClick={() => toggleDetail("rev-fee")} className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
@@ -29,7 +29,7 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
           <p className="text-2xl font-light text-emerald-700 mt-1">${(data.revenue.annualFeeIncome / 1_000_000).toFixed(2)}M</p>
         </button>
         <button onClick={() => toggleDetail("rev-pipe")} className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
-          <p className="text-[10px] text-blue-600 font-medium uppercase tracking-wider">Pipeline AUM<span className="text-blue-400 ml-0.5">▾</span></p>
+          <p className="text-[10px] text-blue-600 font-medium uppercase tracking-wider">Pipeline <abbr title="Assets Under Management" className="no-underline cursor-help">AUM</abbr><span className="text-blue-400 ml-0.5">▾</span></p>
           <p className="text-2xl font-light text-blue-700 mt-1">${(data.revenue.pipelineForecast.totalPipelineAum / 1_000_000).toFixed(1)}M</p>
         </button>
         <button onClick={() => toggleDetail("rev-proj")} className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">

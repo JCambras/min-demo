@@ -254,7 +254,7 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
                       }`}>{items.length}</span>
                     </button>
                     {!isCollapsed && (
-                      <div className="space-y-2 ml-1">
+                      <div className="space-y-2 ml-1 animate-slide-down">
                         {items.map((t, i) => renderTask(t, i))}
                       </div>
                     )}
