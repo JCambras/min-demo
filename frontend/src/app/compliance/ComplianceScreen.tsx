@@ -733,7 +733,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {state.evidence.length === 0 ? (
-            <p className="text-sm text-slate-300 text-center mt-8">Compliance activity will appear here</p>
+            <div className="text-center mt-12"><Shield size={28} className="mx-auto text-slate-200 mb-3" /><p className="text-sm text-slate-400">Compliance activity will appear here</p><p className="text-xs text-slate-300 mt-1">Run a check to see results in real time.</p></div>
           ) : (
             <div className="space-y-1.5">
               {state.evidence.map((e, i) => (

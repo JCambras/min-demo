@@ -422,7 +422,7 @@ export function QueryScreen({ onExit, initialQuery }: { onExit: () => void; init
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {s.history.length === 0 ? (
-            <p className="text-sm text-slate-300 text-center mt-8">Questions will appear here</p>
+            <div className="text-center mt-12"><MessageSquare size={28} className="mx-auto text-slate-200 mb-3" /><p className="text-sm text-slate-400">Questions will appear here</p><p className="text-xs text-slate-300 mt-1">Ask anything about your book of business.</p></div>
           ) : (
             <div className="space-y-3">
               {[...s.history].reverse().map((h, i) => (

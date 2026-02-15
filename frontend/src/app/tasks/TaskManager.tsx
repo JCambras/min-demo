@@ -211,8 +211,12 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
 
           {/* Task list */}
           {filtered.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
-              <p className="text-sm text-slate-400">{filter || typeFilter !== "all" ? "No tasks match your filters." : "No open tasks — all clear!"}</p>
+            <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center">
+              {filter || typeFilter !== "all" ? (
+                <><Search size={24} className="mx-auto text-slate-200 mb-2" /><p className="text-sm font-medium text-slate-500">No tasks match your filters</p><p className="text-xs text-slate-400 mt-1">Try adjusting your search or category filter.</p></>
+              ) : (
+                <><CheckCircle size={24} className="mx-auto text-green-200 mb-2" /><p className="text-sm font-medium text-slate-500">All clear</p><p className="text-xs text-slate-400 mt-1">No open tasks across any household.</p></>
+              )}
             </div>
           ) : viewMode === "flat" ? (
             /* Flat view — simple list */

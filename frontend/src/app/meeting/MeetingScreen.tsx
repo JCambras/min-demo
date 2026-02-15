@@ -396,7 +396,7 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {s.evidence.length === 0 ? (
-            <p className="text-sm text-slate-300 text-center mt-8">Notes will appear here as you compose</p>
+            <div className="text-center mt-12"><FileText size={28} className="mx-auto text-slate-200 mb-3" /><p className="text-sm text-slate-400">Notes will appear here as you compose</p><p className="text-xs text-slate-300 mt-1">Everything saves to Salesforce automatically.</p></div>
           ) : (
             <div className="space-y-2">
               {s.evidence.map((e, i) => (

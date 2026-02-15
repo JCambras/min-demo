@@ -315,7 +315,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
               <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{openTasks.length}</span>
             </div>
             {openTasks.length === 0 ? (
-              <div className="px-4 py-6 text-center"><p className="text-sm text-slate-400">No open tasks — all clear!</p></div>
+              <div className="px-4 py-8 text-center"><CheckCircle size={24} className="mx-auto text-green-200 mb-2" /><p className="text-sm font-medium text-slate-500">All clear</p><p className="text-xs text-slate-400 mt-1">No open action items for this family.</p></div>
             ) : openTasks.map((t, i) => {
               const type = classifyTask(t.Subject);
               return (

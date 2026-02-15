@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useEffect } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileText, ClipboardList } from "lucide-react";
 import type { ClientInfo, AccountRequest, SFEvidence } from "@/lib/types";
 
 interface RightPaneProps {
@@ -51,9 +51,11 @@ export function RightPane({
       </div>
       <div className="flex-1 overflow-y-auto px-5 py-4" ref={rpRef}>
         {!hasContent ? (
-          <p className="text-sm text-slate-300 text-center mt-8">
-            {isFlow ? "Your plan will build here" : "Client details will appear here"}
-          </p>
+          <div className="text-center mt-12">
+            {isFlow ? <ClipboardList size={28} className="mx-auto text-slate-200 mb-3" /> : <FileText size={28} className="mx-auto text-slate-200 mb-3" />}
+            <p className="text-sm text-slate-400">{isFlow ? "Your plan will build here" : "Client details will appear here"}</p>
+            <p className="text-xs text-slate-300 mt-1">{isFlow ? "Selections update in real time." : "Fill in client info to see a summary."}</p>
+          </div>
         ) : (
           <div className="space-y-5">
             {/* Intents (flow only) */}

@@ -205,7 +205,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           if (panelSort === "alpha") filtered.sort((a, b) => a.label.localeCompare(b.label));
           else if (panelSort === "priority") filtered.sort((a, b) => { const pr = (v: string | undefined) => v === "High" ? 0 : v === "Normal" ? 1 : 2; return pr(a.priority) - pr(b.priority); });
           else if (panelSort === "due") filtered.sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
-          if (p.items.length === 0) return <div className="mt-3 bg-white border border-slate-200 rounded-2xl p-6 text-center animate-slide-down"><p className="text-sm text-slate-400">No items.</p></div>;
+          if (p.items.length === 0) return <div className="mt-3 bg-white border border-slate-200 rounded-2xl p-8 text-center animate-slide-down"><CheckCircle size={24} className="mx-auto text-slate-200 mb-2" /><p className="text-sm font-medium text-slate-500">Nothing here</p><p className="text-xs text-slate-400 mt-1">No {p.title.toLowerCase()} to show right now.</p></div>;
           return (<div className="mt-3 bg-white border border-slate-200 rounded-2xl overflow-hidden animate-slide-down">
             <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
               <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">{p.title}</p>
@@ -214,7 +214,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
               {p.sortable && <button onClick={() => setPanelSort(panelSort === "alpha" ? "priority" : panelSort === "priority" ? "due" : "alpha")} className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600"><ArrowUpDown size={11} /><span>{panelSort === "alpha" ? "A→Z" : panelSort === "priority" ? "Priority" : "Due"}</span></button>}
             </div>
             {p.items.length > 4 && <div className="px-4 py-2 border-b border-slate-100"><input className="w-full text-sm text-slate-700 placeholder:text-slate-300 outline-none bg-transparent" placeholder="Filter..." value={panelFilter} onChange={e => setPanelFilter(e.target.value)} autoFocus /></div>}
-            {filtered.length === 0 ? <div className="px-4 py-4 text-center"><p className="text-sm text-slate-400">No matches</p></div>
+            {filtered.length === 0 ? <div className="px-4 py-6 text-center"><Search size={20} className="mx-auto text-slate-200 mb-2" /><p className="text-sm text-slate-400">No items match your filter.</p></div>
             : filtered.map((item, i) => (<div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
               <a href={item.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1"><p className="text-sm text-slate-700 truncate">{item.label}</p><p className="text-xs text-slate-400">{item.sub}</p></a>
               <div className="flex items-center gap-2 ml-3 flex-shrink-0">
@@ -236,7 +236,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           {familySearching && <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />}
         </div>
         {familyQuery.length >= 2 && (<div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-20 animate-slide-down">
-          {familyResults.length === 0 ? <p className="px-4 py-4 text-sm text-slate-400 text-center">{familySearching ? "Searching..." : `No families matching "${familyQuery}"`}</p>
+          {familyResults.length === 0 ? <div className="px-4 py-6 text-center">{familySearching ? <p className="text-sm text-slate-400">Searching...</p> : <><Users size={20} className="mx-auto text-slate-200 mb-2" /><p className="text-sm text-slate-500">No families found</p><p className="text-xs text-slate-400 mt-1">Try a different name or check your Salesforce households.</p></>}</div>
           : <div className="stagger-list">{familyResults.map((f, i) => (<button key={i} onClick={() => openFamily(f)} className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
             <div className="flex items-center justify-between"><p className="font-medium text-slate-800">{f.name}</p><ChevronRight size={16} className="text-slate-300" /></div>
             <p className="text-sm text-slate-500">{f.contactNames ? `${f.contactNames} · ` : ""}Created {f.createdDate}</p>
