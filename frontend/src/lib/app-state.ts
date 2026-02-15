@@ -3,6 +3,7 @@ import { useReducer, useEffect, useCallback, useRef } from "react";
 import { callSF } from "@/lib/salesforce";
 import { buildHomeStats } from "@/lib/home-stats";
 import { log } from "@/lib/logger";
+import { trackEvent } from "@/lib/analytics";
 import type { HomeStats, SFTask, SFHousehold } from "@/lib/home-stats";
 import type { Screen, ClientInfo, WorkflowContext, UserRole } from "@/lib/types";
 
@@ -201,6 +202,13 @@ export function useAppState() {
       if (res.success) {
         const stats = buildHomeStats(res.tasks as SFTask[], res.households as SFHousehold[], res.instanceUrl as string, filterAdv === "all" ? undefined : filterAdv);
         dispatch({ type: "STATS_LOADED", stats, tasks: res.tasks as SFTask[], households: res.households as SFHousehold[], instanceUrl: res.instanceUrl as string });
+        // Persist snapshot (fire-and-forget)
+        fetch("/api/analytics/snapshot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stats, advisorFilter: filterAdv }),
+        }).catch(() => {});
+        trackEvent("stats_loaded", { advisorFilter: filterAdv });
       } else {
         log.error("AppState", "Failed to load stats", { error: res.error, errorCode: res.errorCode });
         dispatch({ type: "STATS_FAILED" });
@@ -214,6 +222,7 @@ export function useAppState() {
   // ── Navigation helpers ──
   const goTo = useCallback((screen: Screen, ctx?: WorkflowContext) => {
     dispatch({ type: "NAVIGATE", screen, ctx });
+    trackEvent("screen_view", { screen });
   }, []);
 
   const goBack = useCallback(() => {
