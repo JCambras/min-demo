@@ -179,7 +179,15 @@ export default function Home() {
   // SCREEN ROUTER
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const tourOverlay = <DemoMode active={tourActive} onEnd={() => { dispatch({ type: "SET_TOUR", active: false }); if (screen !== "home") goHome(); }} screen={screen} />;
+  const tourOverlay = (
+    <DemoMode
+      active={tourActive}
+      onEnd={() => { dispatch({ type: "SET_TOUR", active: false }); if (screen !== "home") goHome(); }}
+      screen={screen}
+      navigateTo={goTo}
+      stats={state.stats}
+    />
+  );
   const wrap = (el: React.ReactNode, label: string, withTour = true) => <>{withTour && tourOverlay}<ErrorBoundary fallbackLabel={`${label} error.`}>{el}</ErrorBoundary></>;
 
   switch (screen) {
@@ -206,6 +214,7 @@ export default function Home() {
   return (
     <>
       <HomeScreen state={state} dispatch={dispatch} goTo={goTo} goHome={goHome} loadStats={loadStats} showToast={showToast} />
+      {tourOverlay}
       {toast && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl bg-slate-900 text-white text-sm font-medium shadow-lg animate-fade-in z-50 flex items-center gap-2"><CheckCircle size={16} className="text-green-400" />{toast}</div>}
     </>
   );
