@@ -227,7 +227,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       </div>
 
       {/* Tour Button */}
-      {!tourActive && sfConnected && stats && (
+      {!tourActive && (
         <div className="mb-6"><TourButton onClick={() => dispatch({ type: "SET_TOUR", active: true })} hasData={!!stats && stats.readyForReviewItems.length > 0} /></div>
       )}
 

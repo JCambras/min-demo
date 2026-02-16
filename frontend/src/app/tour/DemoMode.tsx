@@ -30,7 +30,6 @@ export const GOLDEN_PATH: TourStep[] = [
     position: "bottom",
     screen: "home",
     navigateTo: { screen: "compliance", ctxSource: "firstHousehold" },
-    requiresData: true,
     buttonLabel: "See Compliance →",
   },
   {
@@ -103,13 +102,14 @@ export const GOLDEN_PATH: TourStep[] = [
 
 // ─── Tooltip ────────────────────────────────────────────────────────────────
 
-function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect }: {
+function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect, hasData }: {
   step: TourStep;
   stepIndex: number;
   totalSteps: number;
   onNext: () => void;
   onSkip: () => void;
   rect: DOMRect | null;
+  hasData: boolean;
 }) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -146,8 +146,9 @@ function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect }: {
     : { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
 
   const isLast = stepIndex === totalSteps - 1;
-  const buttonText = step.advance === "navigate" && step.buttonLabel
-    ? step.buttonLabel
+  const showNavLabel = step.advance === "navigate" && step.buttonLabel && hasData;
+  const buttonText = showNavLabel
+    ? step.buttonLabel!
     : isLast ? "Finish" : "Next";
 
   return (
@@ -236,10 +237,13 @@ export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
       return;
     }
 
-    // If this step navigates somewhere, do it
+    // If this step navigates somewhere, do it (skip if context required but unavailable)
     if (step.advance === "navigate" && step.navigateTo) {
-      const ctx = step.navigateTo.ctxSource === "firstHousehold" ? resolveContext() : undefined;
-      navigateTo(step.navigateTo.screen, ctx);
+      const needsCtx = step.navigateTo.ctxSource === "firstHousehold";
+      const ctx = needsCtx ? resolveContext() : undefined;
+      if (!needsCtx || ctx) {
+        navigateTo(step.navigateTo.screen, ctx);
+      }
     }
 
     setStepIndex(prev => prev + 1);
@@ -365,6 +369,7 @@ export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
         onNext={advance}
         onSkip={onEnd}
         rect={rect}
+        hasData={hasData}
       />
     </>
   );
