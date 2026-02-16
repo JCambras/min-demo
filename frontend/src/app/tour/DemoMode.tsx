@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Play, X, ChevronRight, Sparkles } from "lucide-react";
+import type { Screen, WorkflowContext } from "@/lib/types";
+import type { HomeStats } from "@/lib/home-stats";
 
 // ─── Tour Step Definitions ─────────────────────────────────────────────────
 
@@ -9,9 +11,13 @@ export interface TourStep {
   target: string;
   title: string;
   body: string;
-  advance: "click" | "next" | "auto";
+  advance: "next" | "navigate";
   position: "top" | "bottom" | "left" | "right";
   screen?: string;
+  navigateTo?: { screen: Screen; ctxSource?: "firstHousehold" };
+  waitFor?: string;
+  requiresData?: boolean;
+  buttonLabel?: string;
 }
 
 export const GOLDEN_PATH: TourStep[] = [
@@ -19,43 +25,36 @@ export const GOLDEN_PATH: TourStep[] = [
     id: "welcome",
     target: "[data-tour='stat-cards']",
     title: "Your morning dashboard",
-    body: "These cards show your entire practice at a glance. See which households need attention right now.",
-    advance: "next",
+    body: "These cards show your entire practice at a glance — overdue tasks, compliance reviews, unsigned documents.",
+    advance: "navigate",
     position: "bottom",
-  },
-  {
-    id: "ready-for-review",
-    target: "[data-tour='stat-readyForReview']",
-    title: "Households need a compliance review",
-    body: "Click this card to see which families are missing a review.",
-    advance: "click",
-    position: "bottom",
-  },
-  {
-    id: "run-check",
-    target: "[data-tour='run-check-btn']",
-    title: "One click to launch a full review",
-    body: "Pick any household and hit Run Check. Min runs 12 regulatory checks in under 30 seconds.",
-    advance: "click",
-    position: "left",
+    screen: "home",
+    navigateTo: { screen: "compliance", ctxSource: "firstHousehold" },
+    requiresData: true,
+    buttonLabel: "See Compliance →",
   },
   {
     id: "compliance-running",
     target: "[data-tour='compliance-progress']",
     title: "12 checks. 30 seconds.",
-    body: "KYC, suitability, Reg BI, FINRA 4512, PTE 2020-02 — the full regulatory sweep. Watch it work.",
-    advance: "auto",
+    body: "One click launches a full compliance review — KYC, suitability, Reg BI, FINRA 4512. Watch it work.",
+    advance: "next",
     position: "bottom",
     screen: "compliance",
+    waitFor: "[data-tour='compliance-actions']",
+    requiresData: true,
   },
   {
     id: "compliance-done",
     target: "[data-tour='compliance-actions']",
     title: "Review complete. What's next?",
-    body: "Download the PDF for your records, or click View Family to see everything about this household.",
-    advance: "click",
+    body: "Download the PDF, view the family, or log a meeting. Every next step is one click away.",
+    advance: "navigate",
     position: "top",
     screen: "compliance",
+    navigateTo: { screen: "family", ctxSource: "firstHousehold" },
+    requiresData: true,
+    buttonLabel: "See Family →",
   },
   {
     id: "family-overview",
@@ -65,30 +64,37 @@ export const GOLDEN_PATH: TourStep[] = [
     advance: "next",
     position: "bottom",
     screen: "family",
+    requiresData: true,
   },
   {
     id: "family-actions",
     target: "[data-tour='family-actions']",
     title: "Every workflow, one click away",
-    body: "Jump to briefing, compliance, meeting logs, or account opening — all with context pre-loaded.",
-    advance: "click",
+    body: "Briefing, compliance, meeting logs, planning — all with context pre-loaded.",
+    advance: "navigate",
     position: "bottom",
     screen: "family",
+    navigateTo: { screen: "briefing", ctxSource: "firstHousehold" },
+    requiresData: true,
+    buttonLabel: "See Briefing →",
   },
   {
     id: "briefing",
     target: "[data-tour='briefing-summary']",
     title: "15 minutes of prep, done in 5 seconds",
-    body: "Structured summary replaces digging through your CRM. Read this before every client call.",
-    advance: "next",
+    body: "A structured summary replaces digging through your CRM. Read this before every client call.",
+    advance: "navigate",
     position: "bottom",
     screen: "briefing",
+    navigateTo: { screen: "home" },
+    requiresData: true,
+    buttonLabel: "Back to Home →",
   },
   {
     id: "finale",
     target: "[data-tour='home-greeting']",
     title: "This is your practice. Every morning.",
-    body: "Stat cards, family search, one-click workflows. Min replaces the spreadsheets, the context switching, and the 60-hour weeks.",
+    body: "Stat cards, family search, one-click workflows. Min replaces the spreadsheets and the 60-hour weeks.",
     advance: "next",
     position: "bottom",
     screen: "home",
@@ -139,6 +145,11 @@ function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect }: {
     ? { top: `${pos.top}px`, left: `${pos.left}px` }
     : { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
 
+  const isLast = stepIndex === totalSteps - 1;
+  const buttonText = step.advance === "navigate" && step.buttonLabel
+    ? step.buttonLabel
+    : isLast ? "Finish" : "Next";
+
   return (
     <div ref={tooltipRef} className="fixed z-[10003] w-[340px] animate-fade-in" style={style}>
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
@@ -168,25 +179,9 @@ function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect }: {
             ))}
           </div>
 
-          {step.advance === "click" ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-amber-500 font-medium">Try it →</span>
-              <button onClick={onNext} className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 transition-colors px-2 py-1 rounded-lg hover:bg-slate-100">
-                Next <ChevronRight size={10} />
-              </button>
-            </div>
-          ) : step.advance === "auto" ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 italic">Watching...</span>
-              <button onClick={onNext} className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 transition-colors px-2 py-1 rounded-lg hover:bg-slate-100">
-                Next <ChevronRight size={10} />
-              </button>
-            </div>
-          ) : (
-            <button onClick={onNext} className="flex items-center gap-1 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 transition-colors px-3 py-1.5 rounded-lg">
-              {stepIndex === totalSteps - 1 ? "Finish" : "Next"} <ChevronRight size={12} />
-            </button>
-          )}
+          <button onClick={onNext} className="flex items-center gap-1 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 transition-colors px-3 py-1.5 rounded-lg">
+            {buttonText} <ChevronRight size={12} />
+          </button>
         </div>
       </div>
     </div>
@@ -195,25 +190,61 @@ function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect }: {
 
 // ─── Main DemoMode Component ──────────────────────────────────────────────
 
-export function DemoMode({ active, onEnd, screen }: {
+export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
   active: boolean;
   onEnd: () => void;
   screen: string;
+  navigateTo: (screen: Screen, ctx?: WorkflowContext) => void;
+  stats: HomeStats | null;
 }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
-  const prevScreen = useRef(screen);
+  const [waitSatisfied, setWaitSatisfied] = useState(false);
 
-  const step = GOLDEN_PATH[stepIndex];
-  const isLastStep = stepIndex === GOLDEN_PATH.length - 1;
+  const hasData = !!(stats && stats.readyForReviewItems.length > 0);
+
+  const activeSteps = GOLDEN_PATH.filter(s => !s.requiresData || hasData);
+  const step = activeSteps[stepIndex];
+  const isLastStep = stepIndex === activeSteps.length - 1;
+
+  // ─── Resolve household context from stats ───
+  const resolveContext = useCallback((): WorkflowContext | undefined => {
+    if (!stats) return undefined;
+    const lists = [
+      stats.readyForReviewItems,
+      stats.overdueTaskItems,
+      stats.openTaskItems,
+      stats.unsignedItems,
+      stats.upcomingMeetingItems,
+    ];
+    for (const list of lists) {
+      const item = list.find(it => it.householdId);
+      if (item) {
+        return {
+          householdId: item.householdId!,
+          familyName: (item.householdName || "").replace(" Household", ""),
+        };
+      }
+    }
+    return undefined;
+  }, [stats]);
 
   const advance = useCallback(() => {
+    if (!step) return;
     if (isLastStep) {
       onEnd();
-    } else {
-      setStepIndex(prev => prev + 1);
+      return;
     }
-  }, [isLastStep, onEnd]);
+
+    // If this step navigates somewhere, do it
+    if (step.advance === "navigate" && step.navigateTo) {
+      const ctx = step.navigateTo.ctxSource === "firstHousehold" ? resolveContext() : undefined;
+      navigateTo(step.navigateTo.screen, ctx);
+    }
+
+    setStepIndex(prev => prev + 1);
+    setWaitSatisfied(false);
+  }, [step, isLastStep, onEnd, navigateTo, resolveContext]);
 
   // ─── Rect tracking (poll for target element) ───
   const updateRect = useCallback(() => {
@@ -239,75 +270,46 @@ export function DemoMode({ active, onEnd, screen }: {
     };
   }, [active, stepIndex, updateRect]);
 
-  // ─── Screen change → advance or jump ───
+  // ─── waitFor polling ───
   useEffect(() => {
-    if (!active || !step) return;
-    if (prevScreen.current === screen) return;
-
-    if (step.advance === "auto") {
-      const timer = setTimeout(() => advance(), 500);
-      prevScreen.current = screen;
-      return () => clearTimeout(timer);
-    }
-
-    // Jump to matching step for this screen
-    if (step.screen && step.screen !== screen) {
-      const matchingStep = GOLDEN_PATH.findIndex((s, i) => i >= stepIndex && s.screen === screen);
-      if (matchingStep !== -1 && matchingStep !== stepIndex) {
-        setStepIndex(matchingStep);
-      }
-    }
-
-    prevScreen.current = screen;
-  }, [screen, active, step, stepIndex, advance]);
-
-  // ─── Compliance scan auto-advance ───
-  // Watch for compliance-actions element to appear (scan finished)
-  useEffect(() => {
-    if (!active || !step || step.id !== "compliance-running") return;
+    if (!active || !step || !step.waitFor || waitSatisfied) return;
 
     const check = setInterval(() => {
-      const doneEl = document.querySelector("[data-tour='compliance-actions']");
-      if (doneEl) {
+      const el = document.querySelector(step.waitFor!);
+      if (el) {
         clearInterval(check);
-        setTimeout(() => advance(), 500);
+        setWaitSatisfied(true);
       }
-    }, 500);
+    }, 300);
 
-    // Failsafe: auto-advance after 45 seconds
+    // Failsafe: stop waiting after 35 seconds
     const failsafe = setTimeout(() => {
       clearInterval(check);
-      advance();
-    }, 45000);
+      setWaitSatisfied(true);
+    }, 35000);
 
     return () => { clearInterval(check); clearTimeout(failsafe); };
-  }, [active, step, advance]);
+  }, [active, step, waitSatisfied]);
 
-  // ─── Click detection for "click" steps ───
-  // ALL overlay layers are pointer-events-none, so clicks reach the real page.
-  // We listen in capture phase to detect when user clicks the target.
+  // When waitFor is satisfied, auto-advance to next step
   useEffect(() => {
-    if (!active || !step || step.advance !== "click") return;
-
-    const handler = (e: MouseEvent) => {
-      const targetEl = document.querySelector(step.target);
-      if (!targetEl) return;
-
-      // Check if the clicked element is inside the target
-      if (targetEl.contains(e.target as Node) || targetEl === e.target) {
-        setTimeout(() => advance(), 400);
+    if (!waitSatisfied || !step?.waitFor) return;
+    const timer = setTimeout(() => {
+      if (isLastStep) {
+        onEnd();
+      } else {
+        setStepIndex(prev => prev + 1);
+        setWaitSatisfied(false);
       }
-    };
-
-    document.addEventListener("click", handler, true);
-    return () => document.removeEventListener("click", handler, true);
-  }, [active, step, stepIndex, advance]);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [waitSatisfied, step, isLastStep, onEnd]);
 
   // ─── Reset on tour start ───
   useEffect(() => {
     if (active) {
       setStepIndex(0);
-      prevScreen.current = screen;
+      setWaitSatisfied(false);
     }
   }, [active]);
 
@@ -315,12 +317,6 @@ export function DemoMode({ active, onEnd, screen }: {
 
   return (
     <>
-      {/* 
-        KEY DESIGN: Everything is pointer-events-none.
-        The user clicks THROUGH the overlay directly onto page elements.
-        The overlay is purely visual — dim + spotlight + amber ring.
-      */}
-
       {/* Dim overlay with spotlight cutout */}
       <div className="fixed inset-0 z-[10000] pointer-events-none">
         {rect ? (
@@ -361,11 +357,11 @@ export function DemoMode({ active, onEnd, screen }: {
         />
       )}
 
-      {/* Tooltip — this IS interactive (buttons work) */}
+      {/* Tooltip */}
       <TooltipCard
         step={step}
         stepIndex={stepIndex}
-        totalSteps={GOLDEN_PATH.length}
+        totalSteps={activeSteps.length}
         onNext={advance}
         onSkip={onEnd}
         rect={rect}
@@ -376,7 +372,7 @@ export function DemoMode({ active, onEnd, screen }: {
 
 // ─── Tour Launcher Button ────────────────────────────────────────────────
 
-export function TourButton({ onClick }: { onClick: () => void }) {
+export function TourButton({ onClick, hasData }: { onClick: () => void; hasData: boolean }) {
   return (
     <button
       onClick={onClick}
@@ -385,7 +381,7 @@ export function TourButton({ onClick }: { onClick: () => void }) {
     >
       <Play size={14} className="text-amber-600 group-hover:scale-110 transition-transform" />
       Take a tour
-      <span className="text-[10px] text-amber-500 font-normal ml-1">2 min</span>
+      <span className="text-[10px] text-amber-500 font-normal ml-1">{hasData ? "90 sec" : "30 sec"}</span>
     </button>
   );
 }

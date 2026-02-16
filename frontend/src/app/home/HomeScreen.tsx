@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap } from "lucide-react";
-import { DemoMode, TourButton } from "../tour/DemoMode";
+import { TourButton } from "../tour/DemoMode";
 import { callSF } from "@/lib/salesforce";
 import { log } from "@/lib/logger";
 import { formatDate } from "@/lib/format";
@@ -208,9 +208,6 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     );
   }
 
-  // ── Tour overlay ──
-  const tourOverlay = <DemoMode active={tourActive} onEnd={() => { dispatch({ type: "SET_TOUR", active: false }); }} screen="home" />;
-
   return (
     <div className="flex h-screen bg-surface"><div className="flex-1 overflow-y-auto"><div className="max-w-3xl w-full mx-auto px-6 py-10">
 
@@ -231,7 +228,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
 
       {/* Tour Button */}
       {!tourActive && sfConnected && stats && (
-        <div className="mb-6"><TourButton onClick={() => dispatch({ type: "SET_TOUR", active: true })} /></div>
+        <div className="mb-6"><TourButton onClick={() => dispatch({ type: "SET_TOUR", active: true })} hasData={!!stats && stats.readyForReviewItems.length > 0} /></div>
       )}
 
       {/* Zero-data welcome state */}
@@ -346,7 +343,6 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       </div>
 
     </div></div>
-    {tourOverlay}
     </div>
   );
 }
