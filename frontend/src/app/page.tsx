@@ -188,7 +188,7 @@ export default function Home() {
       stats={state.stats}
     />
   );
-  const wrap = (el: React.ReactNode, label: string, withTour = true) => <>{withTour && tourOverlay}<ErrorBoundary fallbackLabel={`${label} error.`}>{el}</ErrorBoundary></>;
+  const wrap = (el: React.ReactNode, label: string, withTour = true) => <><ErrorBoundary fallbackLabel={`${label} error.`}>{el}</ErrorBoundary>{withTour && tourOverlay}</>;
 
   switch (screen) {
     case "flow": return wrap(<FlowScreen onExit={goHome} initialClient={handoff || undefined} onNavigate={goTo} />, "Account opening");
