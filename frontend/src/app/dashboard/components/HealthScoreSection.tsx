@@ -127,7 +127,7 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
                   <div className="space-y-1.5">
                     {data.unsignedItems.map(t => (
                       <div key={t.id} className="flex items-center justify-between">
-                        <span className="text-xs text-slate-700 truncate">{t.subject.replace("SEND DOCU — ", "")}</span>
+                        <span className="text-xs text-slate-700 truncate">{t.subject.replace(/^SEND DOCU — /, "DocuSign: ")}</span>
                         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                           <span className="text-[10px] text-slate-400">{t.household}</span>
                           <span className={`text-[10px] font-medium ${t.daysOld > 7 ? "text-red-500" : "text-slate-400"}`}>{t.daysOld}d</span>

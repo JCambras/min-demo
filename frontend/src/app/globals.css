@@ -26,12 +26,12 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
-  /* Slightly darker slate text shades for better readability */
-  --color-slate-300: oklch(0.84 0.022 252.894);
-  --color-slate-400: oklch(0.67 0.04 256.788);
-  --color-slate-500: oklch(0.53 0.046 257.417);
-  --color-slate-600: oklch(0.43 0.043 257.281);
-  --color-slate-700: oklch(0.35 0.044 257.287);
+  /* Darker slate text shades for better readability */
+  --color-slate-300: oklch(0.78 0.022 252.894);
+  --color-slate-400: oklch(0.60 0.04 256.788);
+  --color-slate-500: oklch(0.48 0.046 257.417);
+  --color-slate-600: oklch(0.39 0.043 257.281);
+  --color-slate-700: oklch(0.31 0.044 257.287);
 }
 
 :root {

@@ -3,7 +3,7 @@
 // Single source of truth for stat card types and the buildHomeStats computation.
 // Imported by: page.tsx, TaskManager, and any future component that needs stats.
 
-import { isMeetingNote, isComplianceReview, isDocuSignSend, classifyTask, DOCUSIGN_SEND } from "./task-subjects";
+import { isMeetingNote, isComplianceReview, isDocuSignSend, classifyTask, DOCUSIGN_SEND, COMPLIANCE_REVIEW, MEETING_NOTE, FOLLOW_UP } from "./task-subjects";
 import { formatDate } from "./format";
 
 export interface StatDetailItem {
@@ -59,6 +59,51 @@ function daysSince(date: string): number {
   return Math.max(1, Math.floor((Date.now() - new Date(date).getTime()) / 86400000));
 }
 
+/** Strip internal prefixes from task subjects for display */
+function humanizeSubject(subject: string, householdName?: string): string {
+  const hh = (householdName || "").replace(" Household", "");
+  let s = subject;
+  // DocuSign tasks: "SEND DOCU — Smith IRA" → "DocuSign: Smith IRA"
+  if (s.includes(DOCUSIGN_SEND)) {
+    s = s.replace(`${DOCUSIGN_SEND} — `, "").replace(householdName || "___", "").trim();
+    return `DocuSign: ${hh ? `${hh} ` : ""}${s}`.trim();
+  }
+  // Compliance: "COMPLIANCE REVIEW PASSED — Smith" → "Compliance review passed — Smith"
+  if (s.includes(COMPLIANCE_REVIEW)) {
+    return s.replace(COMPLIANCE_REVIEW, "Compliance review");
+  }
+  // Meeting notes: "MEETING NOTE — Jones (Annual)" → "Meeting note — Jones (Annual)"
+  if (s.includes(MEETING_NOTE)) {
+    return s.replace(MEETING_NOTE, "Meeting note");
+  }
+  // Follow-ups: "FOLLOW-UP: Call Jones" → "Follow-up: Call Jones"
+  if (s.includes(FOLLOW_UP)) {
+    return s.replace(FOLLOW_UP, "Follow-up");
+  }
+  return s;
+}
+
+/** Describe a recent activity item in plain language */
+function describeActivity(subject: string, householdName?: string): string {
+  const hh = (householdName || "").replace(" Household", "");
+  if (subject.includes(COMPLIANCE_REVIEW)) {
+    const passed = subject.toUpperCase().includes("PASSED");
+    return `${hh ? `${hh}: ` : ""}Compliance review ${passed ? "passed" : "flagged"}`;
+  }
+  if (subject.includes(MEETING_NOTE)) {
+    return `${hh ? `${hh}: ` : ""}Meeting notes recorded`;
+  }
+  if (subject.includes(DOCUSIGN_SEND)) {
+    const doc = subject.replace(`${DOCUSIGN_SEND} — `, "").replace(householdName || "___", "").trim();
+    return `${hh ? `${hh}: ` : ""}DocuSign completed${doc ? ` — ${doc}` : ""}`;
+  }
+  if (subject.includes(FOLLOW_UP)) {
+    const detail = subject.replace(`${FOLLOW_UP}: `, "").trim();
+    return `${hh ? `${hh}: ` : ""}${detail} completed`;
+  }
+  return humanizeSubject(subject, householdName);
+}
+
 export function getHouseholdAdvisor(desc?: string): string | null {
   if (!desc) return null;
   const match = desc.match(/Assigned Advisor:\s*(.+)/i);
@@ -103,8 +148,8 @@ export function buildHomeStats(
   const upMeetings = meetings.filter(t => thisWeek(t.createdAt));
 
   const taskToItem = (t: SFTask): StatDetailItem => ({
-    label: t.subject,
-    sub: `${t.householdName || ""}${t.dueDate ? ` · Due ${formatDate(t.dueDate)}` : ""}`,
+    label: humanizeSubject(t.subject, t.householdName),
+    sub: `${(t.householdName || "").replace(" Household", "")}${t.dueDate ? ` · Due ${formatDate(t.dueDate)}` : ""}`,
     url: `${instanceUrl}/${t.id}`,
     priority: t.priority,
     due: t.dueDate ? formatDate(t.dueDate) : "",
@@ -134,13 +179,13 @@ export function buildHomeStats(
       daysOutstanding: daysSince(t.createdAt),
     })),
     upcomingMeetingItems: upMeetings.slice(0, 20).map(t => ({
-      label: t.subject,
-      sub: `${t.householdName || ""} · ${formatDate(t.createdAt)}`,
+      label: humanizeSubject(t.subject, t.householdName),
+      sub: `${(t.householdName || "").replace(" Household", "")} · ${formatDate(t.createdAt)}`,
       url: `${instanceUrl}/${t.id}`,
     })),
     recentItems: completed.slice(0, 5).map(t => ({
-      subject: t.subject,
-      household: t.householdName || "",
+      subject: describeActivity(t.subject, t.householdName),
+      household: formatDate(t.createdAt),
       url: `${instanceUrl}/${t.id}`,
       type: classifyTask(t.subject),
     })),
