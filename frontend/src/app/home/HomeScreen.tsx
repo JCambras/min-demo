@@ -318,7 +318,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       </div>
 
       {/* Action Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+      <div className={`grid grid-cols-2 ${actions.length > 4 ? "sm:grid-cols-3" : ""} gap-3 mb-8`}>
         {actions.map(a => (<button key={a.id} onClick={() => handleAction(a.id)}
           className="group flex flex-col items-start gap-3 p-5 rounded-2xl bg-white border border-slate-200/80 hover:border-slate-400 hover:shadow-md transition-all text-left">
           <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-slate-100 text-slate-500 group-hover:bg-slate-900 group-hover:text-white transition-all"><a.Icon size={22} strokeWidth={1.5} /></div>
