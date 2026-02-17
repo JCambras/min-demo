@@ -19,9 +19,9 @@ export const DEMO_ADVISORS = [
 ];
 
 export const ROLES: { id: UserRole; label: string; desc: string }[] = [
-  { id: "advisor", label: "Advisor", desc: "Client meetings, briefings, compliance, and queries" },
-  { id: "operations", label: "Operations", desc: "Onboarding, account opening, compliance, and dashboards" },
-  { id: "principal", label: "Principal", desc: "Full practice visibility across all workflows" },
+  { id: "operations", label: "Operators", desc: "Onboarding, account opening, compliance, and dashboards" },
+  { id: "advisor", label: "Advisors", desc: "Client meetings, briefings, compliance, and queries" },
+  { id: "principal", label: "Principals", desc: "Full practice visibility across all workflows" },
 ];
 
 const ALL_ACTIONS: { id: string; label: string; desc: string; Icon: React.ElementType; roles: UserRole[] }[] = [
@@ -63,8 +63,8 @@ function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClic
     <button data-tour={`stat-${tourKey}`} onClick={onClick}
       className={`border rounded-2xl p-4 text-left transition-all hover:shadow-md ${tierStyles} ${expanded ? "border-slate-900 shadow-md" : tierStyles ? "" : "bg-white border-slate-200"}`}>
       <div className="flex items-center gap-1.5 mb-2">
-        <Icon size={14} className={color} />
-        <span className="text-[11px] text-slate-400 truncate">{label}</span>
+        <Icon size={16} className={color} />
+        <span className="text-sm font-semibold text-slate-600 truncate">{label}</span>
       </div>
       <p className={`text-2xl font-light ${vColor || "text-slate-900"}`}>{value}</p>
       {subtitle && <p className="text-[10px] text-slate-400">{subtitle}</p>}
@@ -318,13 +318,13 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       </div>
 
       {/* Action Grid */}
-      <div className={`grid gap-3 mb-8 ${actions.length <= 4 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3"}`}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
         {actions.map(a => (<button key={a.id} onClick={() => handleAction(a.id)}
-          className="group flex flex-col items-start gap-3 p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-slate-400 hover:shadow-md transition-all text-left">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-100 text-slate-500 group-hover:bg-slate-900 group-hover:text-white transition-all"><a.Icon size={20} strokeWidth={1.5} /></div>
+          className="group flex flex-col items-start gap-3 p-5 rounded-2xl bg-white border border-slate-200/80 hover:border-slate-400 hover:shadow-md transition-all text-left">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-slate-100 text-slate-500 group-hover:bg-slate-900 group-hover:text-white transition-all"><a.Icon size={22} strokeWidth={1.5} /></div>
           <div>
-            <p className="text-sm font-medium text-slate-700 group-hover:text-slate-900">{a.label}</p>
-            <p className="text-xs text-slate-400">{a.desc}</p>
+            <p className="text-base font-semibold text-slate-700 group-hover:text-slate-900">{a.label}</p>
+            <p className="text-sm text-slate-400 mt-0.5">{a.desc}</p>
           </div>
         </button>))}
       </div>
