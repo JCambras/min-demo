@@ -51,18 +51,23 @@ interface HomeScreenProps {
 
 // ─── Extracted Sub-Components ────────────────────────────────────────────────
 
-function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClick, peekItems }: {
+function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClick, peekItems, subtitle, tier }: {
   label: string; value: number; Icon: React.ElementType; color: string; vColor: string;
   expanded: boolean; tourKey: string; onClick: () => void; peekItems?: { label: string }[];
+  subtitle?: string; tier?: "good" | "ok" | "bad";
 }) {
+  const tierStyles = tier === "bad" ? "border-l-4 border-l-red-400 bg-red-50/40"
+    : tier === "ok" ? "border-l-4 border-l-amber-400 bg-amber-50/40"
+    : tier === "good" ? "border-l-4 border-l-green-400 bg-green-50/40" : "";
   return (
     <button data-tour={`stat-${tourKey}`} onClick={onClick}
-      className={`bg-white border rounded-2xl p-4 text-left transition-all hover:shadow-md ${expanded ? "border-slate-900 shadow-md" : "border-slate-200"}`}>
+      className={`border rounded-2xl p-4 text-left transition-all hover:shadow-md ${tierStyles} ${expanded ? "border-slate-900 shadow-md" : tierStyles ? "" : "bg-white border-slate-200"}`}>
       <div className="flex items-center gap-1.5 mb-2">
         <Icon size={14} className={color} />
         <span className="text-[11px] text-slate-400 truncate">{label}</span>
       </div>
       <p className={`text-2xl font-light ${vColor || "text-slate-900"}`}>{value}</p>
+      {subtitle && <p className="text-[10px] text-slate-400">{subtitle}</p>}
       {peekItems && peekItems.length > 0 && !expanded && (
         <div className="mt-2 pt-2 border-t border-slate-100 space-y-0.5">
           {peekItems.slice(0, 2).map((item, i) => (
@@ -248,15 +253,16 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {(isAdvisor || role === "principal") && sfConnected && stats && (<div className="mb-8" data-tour="stat-cards">
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {([
-            { key: "overdueTasks", label: "Overdue", value: stats.overdueTasks, Icon: Clock, color: stats.overdueTasks > 0 ? "text-red-500" : "text-green-500", vColor: stats.overdueTasks > 0 ? "text-red-600" : "text-green-600", peek: stats.overdueTaskItems },
-            { key: "openTasks", label: "Open Tasks", value: stats.openTasks, Icon: CheckCircle, color: "text-amber-500", vColor: stats.openTasks > 0 ? "text-amber-600" : "", peek: stats.openTaskItems },
-            { key: "readyForReview", label: "Ready for Review", value: stats.readyForReview, Icon: Shield, color: stats.readyForReview > 0 ? "text-amber-500" : "text-green-500", vColor: stats.readyForReview > 0 ? "text-amber-600" : "", peek: stats.readyForReviewItems },
-            { key: "unsignedEnvelopes", label: "Unsigned", value: stats.unsignedEnvelopes, Icon: Send, color: stats.unsignedEnvelopes > 0 ? "text-blue-500" : "text-slate-400", vColor: stats.unsignedEnvelopes > 0 ? "text-blue-600" : "", peek: stats.unsignedItems },
-            { key: "upcomingMeetings", label: "Meetings (7d)", value: stats.upcomingMeetings, Icon: MessageSquare, color: "text-purple-500", vColor: "", peek: stats.upcomingMeetingItems },
+            { key: "overdueTasks", label: "Overdue", value: stats.overdueTasks, Icon: Clock, color: stats.overdueTasks > 0 ? "text-red-500" : "text-green-500", vColor: stats.overdueTasks > 0 ? "text-red-600" : "text-green-600", peek: stats.overdueTaskItems, subtitle: "past due", tier: (stats.overdueTasks === 0 ? "good" : stats.overdueTasks <= 3 ? "ok" : "bad") as "good" | "ok" | "bad" },
+            { key: "openTasks", label: "Open Tasks", value: stats.openTasks, Icon: CheckCircle, color: "text-amber-500", vColor: stats.openTasks > 0 ? "text-amber-600" : "", peek: stats.openTaskItems, subtitle: "in progress", tier: (stats.openTasks === 0 ? "good" : stats.openTasks <= 5 ? "ok" : "bad") as "good" | "ok" | "bad" },
+            { key: "readyForReview", label: "Ready for Review", value: stats.readyForReview, Icon: Shield, color: stats.readyForReview > 0 ? "text-amber-500" : "text-green-500", vColor: stats.readyForReview > 0 ? "text-amber-600" : "", peek: stats.readyForReviewItems, subtitle: "need review", tier: (stats.readyForReview === 0 ? "good" : stats.readyForReview <= 3 ? "ok" : "bad") as "good" | "ok" | "bad" },
+            { key: "unsignedEnvelopes", label: "Unsigned", value: stats.unsignedEnvelopes, Icon: Send, color: stats.unsignedEnvelopes > 0 ? "text-blue-500" : "text-slate-400", vColor: stats.unsignedEnvelopes > 0 ? "text-blue-600" : "", peek: stats.unsignedItems, subtitle: "awaiting signature", tier: (stats.unsignedEnvelopes === 0 ? "good" : stats.unsignedEnvelopes <= 2 ? "ok" : "bad") as "good" | "ok" | "bad" },
+            { key: "upcomingMeetings", label: "Meetings (7d)", value: stats.upcomingMeetings, Icon: MessageSquare, color: "text-purple-500", vColor: "", peek: stats.upcomingMeetingItems, subtitle: "this week", tier: "good" as const },
           ] as const).map(s => (
             <StatCard key={s.key} tourKey={s.key} label={s.label} value={s.value} Icon={s.Icon}
               color={s.color} vColor={s.vColor} expanded={expandedStat === s.key}
               peekItems={s.value > 0 ? s.peek : undefined}
+              subtitle={s.subtitle} tier={s.tier}
               onClick={() => { setExpandedStat(expandedStat === s.key ? null : s.key); setPanelFilter(""); setPanelSort("alpha"); }}
             />))}
         </div>

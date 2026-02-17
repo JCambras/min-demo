@@ -15,6 +15,7 @@ export interface StatDetailItem {
   priority?: string;
   due?: string;
   type?: string;
+  daysOutstanding?: number;
 }
 
 export interface HomeStats {
@@ -53,6 +54,10 @@ export type SFHousehold = {
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+function daysSince(date: string): number {
+  return Math.max(1, Math.floor((Date.now() - new Date(date).getTime()) / 86400000));
+}
 
 export function getHouseholdAdvisor(desc?: string): string | null {
   if (!desc) return null;
@@ -123,9 +128,10 @@ export function buildHomeStats(
       householdName: h.name,
     })),
     unsignedItems: unsigned.slice(0, 20).map(t => ({
-      label: t.subject.replace(`${DOCUSIGN_SEND} — `, ""),
-      sub: `${t.householdName || ""} · Awaiting signature`,
+      label: `${(t.householdName || "").replace(" Household", "")} ${t.subject.replace(`${DOCUSIGN_SEND} — `, "").replace(t.householdName || "___", "").trim()} — DocuSign outstanding ${daysSince(t.createdAt)} days`,
+      sub: `Created ${formatDate(t.createdAt)}`,
       url: `${instanceUrl}/${t.id}`,
+      daysOutstanding: daysSince(t.createdAt),
     })),
     upcomingMeetingItems: upMeetings.slice(0, 20).map(t => ({
       label: t.subject,
