@@ -22,6 +22,9 @@ function makeField(overrides: Partial<FieldDescribe> & { name: string; type: str
     length: overrides.length || 255,
     nillable: overrides.nillable ?? true,
     updateable: overrides.updateable ?? true,
+    defaultedOnCreate: overrides.defaultedOnCreate ?? false,
+    accessible: overrides.accessible ?? true,
+    createable: overrides.createable ?? true,
     ...overrides,
   };
 }
@@ -61,12 +64,14 @@ function makeBundle(overrides?: Partial<OrgMetadataBundle>): OrgMetadataBundle {
     financialAccountDescribe: null,
     fscObjectsFound: [],
     personAccountsEnabled: false,
+    managedPackagesDetected: [],
     candidateCustomObjects: [],
     activeFlows: [],
     activeTriggers: [],
     activeValidationRules: [],
     recordCounts: { accounts: 35, accountsByRecordType: {}, contacts: 47, financialAccounts: 0, opportunities: 1, recentTasks: 92 },
     accountTypeValues: [],
+    accountHierarchyDetected: false,
     apiCallsMade: 11,
     durationMs: 3400,
     errors: [],
@@ -345,5 +350,156 @@ describe("Integration: FSC AUM via TotalFinancialAccounts field", () => {
     // Pipeline works end-to-end
     setOrgMapping(mapping);
     expect(mapping.household.totalAumField).toBe("FinServ__TotalFinancialAccounts__c");
+  });
+});
+
+// ─── Integration: Practifi Org ──────────────────────────────────────────────
+
+describe("Integration: Practifi Org Pipeline", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("full pipeline: discover → classify → set mapping → query against cloupra__Household__c", () => {
+    const bundle = makeBundle({
+      managedPackagesDetected: [
+        { prefix: "cloupra__", platform: "Practifi", objectsFound: ["cloupra__Household__c", "cloupra__Client_Group_Member__c"] },
+      ],
+      candidateCustomObjects: [
+        {
+          name: "cloupra__Household__c",
+          label: "Household",
+          fields: [
+            { name: "Name", label: "Name", type: "string", referenceTo: [] },
+            { name: "cloupra__Advisor__c", label: "Advisor", type: "reference", referenceTo: ["User"] },
+            { name: "cloupra__AUM__c", label: "AUM", type: "currency", referenceTo: [] },
+          ],
+          childRelationships: [],
+        },
+        {
+          name: "cloupra__Client_Group_Member__c",
+          label: "Client Group Member",
+          fields: [
+            { name: "cloupra__Contact__c", label: "Contact", type: "reference", referenceTo: ["Contact"] },
+            { name: "cloupra__Household__c", label: "Household", type: "reference", referenceTo: ["cloupra__Household__c"] },
+          ],
+          childRelationships: [],
+        },
+      ],
+    });
+
+    // Classify
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.household.object).toBe("cloupra__Household__c");
+    expect(mapping.managedPackage.platform).toBe("Practifi");
+    expect(mapping.contact.junction).not.toBeNull();
+    expect(mapping.contact.junction!.object).toBe("cloupra__Client_Group_Member__c");
+
+    // Store and query
+    setOrgMapping(mapping);
+    expect(orgQuery.householdObject()).toBe("cloupra__Household__c");
+
+    const soql = orgQuery.listHouseholds("Id, Name", 50);
+    expect(soql).toContain("FROM cloupra__Household__c");
+    expect(soql).not.toContain("Type =");
+
+    // Contact junction is accessible
+    const j = orgQuery.contactJunction();
+    expect(j).not.toBeNull();
+    expect(j!.object).toBe("cloupra__Client_Group_Member__c");
+  });
+});
+
+// ─── Integration: Hybrid Org Pipeline ──────────────────────────────────────
+
+describe("Integration: Hybrid Org Pipeline", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("full pipeline: multiple patterns → compound filter in SOQL", () => {
+    const bundle = makeBundle({
+      accountDescribe: {
+        name: "Account", label: "Account", custom: false,
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({
+            name: "Type", type: "picklist", custom: false,
+            picklistValues: [{ value: "Household", label: "Household", active: true }],
+          }),
+        ],
+        recordTypeInfos: [
+          { recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
+          { recordTypeId: "012000000000001AAA", name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
+        ],
+        childRelationships: [{ childSObject: "Contact", field: "AccountId", relationshipName: "Contacts" }],
+      },
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.isHybrid).toBe(true);
+    expect(mapping.householdPatterns.length).toBeGreaterThanOrEqual(2);
+
+    setOrgMapping(mapping);
+
+    // Compound filter
+    const filter = orgQuery.householdFilter();
+    expect(filter).toContain("OR");
+    expect(filter).toContain("RecordType.DeveloperName = 'IndustriesHousehold'");
+    expect(filter).toContain("Type = 'Household'");
+  });
+});
+
+// ─── Integration: Required Field Gaps Flow Through ──────────────────────────
+
+describe("Integration: Required Field Gaps Pipeline", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("required field gaps flow through pipeline", () => {
+    const bundle = makeBundle({
+      accountDescribe: {
+        name: "Account", label: "Account", custom: false,
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({ name: "Industry", type: "picklist", custom: false, nillable: false, createable: true, defaultedOnCreate: false }),
+        ],
+        recordTypeInfos: [{ recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: true }],
+        childRelationships: [],
+      },
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    setOrgMapping(mapping);
+
+    expect(orgQuery.requiredFieldGaps().length).toBeGreaterThan(0);
+    expect(orgQuery.hasBlockingFieldGaps()).toBe(true);
+  });
+});
+
+// ─── Integration: FLS Warnings Flow Through ─────────────────────────────────
+
+describe("Integration: FLS Warnings Pipeline", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("FLS warnings flow through pipeline", () => {
+    const bundle = makeBundle({
+      accountDescribe: {
+        name: "Account", label: "Account", custom: false,
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({ name: "Total_AUM__c", type: "currency", custom: true, label: "Total AUM", accessible: false }),
+        ],
+        recordTypeInfos: [{ recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: true }],
+        childRelationships: [],
+      },
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    setOrgMapping(mapping);
+
+    expect(orgQuery.flsWarnings().length).toBeGreaterThan(0);
+    expect(orgQuery.hasFlsWarnings()).toBe(true);
+    expect(orgQuery.flsWarnings()[0].field).toBe("Total_AUM__c");
   });
 });

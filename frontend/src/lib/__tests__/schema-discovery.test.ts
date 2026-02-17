@@ -21,6 +21,9 @@ function makeField(overrides: Partial<FieldDescribe> & { name: string; type: str
     length: overrides.length || 255,
     nillable: overrides.nillable ?? true,
     updateable: overrides.updateable ?? true,
+    defaultedOnCreate: overrides.defaultedOnCreate ?? false,
+    accessible: overrides.accessible ?? true,
+    createable: overrides.createable ?? true,
     ...overrides,
   };
 }
@@ -72,6 +75,7 @@ function makeBundle(overrides?: Partial<OrgMetadataBundle>): OrgMetadataBundle {
     financialAccountDescribe: null,
     fscObjectsFound: [],
     personAccountsEnabled: false,
+    managedPackagesDetected: [],
     candidateCustomObjects: [],
     activeFlows: [],
     activeTriggers: [],
@@ -88,6 +92,7 @@ function makeBundle(overrides?: Partial<OrgMetadataBundle>): OrgMetadataBundle {
     durationMs: 3200,
     errors: [],
     accountTypeValues: [],
+    accountHierarchyDetected: false,
     ...overrides,
   };
 }
@@ -621,5 +626,402 @@ describe("AUM Detection — FinServ__TotalFinancialAccounts__c", () => {
     const mapping = classifyOrgHeuristic(bundle);
     // FA rollup is higher priority than the account field
     expect(mapping.aum.source).toBe("financial_account_rollup");
+  });
+});
+
+// ─── Phase 2: Managed Package Detection (Practifi) ──────────────────────────
+
+describe("Managed Package Detection (Practifi)", () => {
+  it("detects Practifi household object via managed package", () => {
+    const bundle = makeBundle({
+      managedPackagesDetected: [
+        { prefix: "cloupra__", platform: "Practifi", objectsFound: ["cloupra__Household__c", "cloupra__Client_Group_Member__c"] },
+      ],
+      candidateCustomObjects: [
+        {
+          name: "cloupra__Household__c",
+          label: "Household",
+          fields: [
+            { name: "Name", label: "Name", type: "string", referenceTo: [] },
+            { name: "cloupra__Advisor__c", label: "Advisor", type: "reference", referenceTo: ["User"] },
+            { name: "cloupra__AUM__c", label: "AUM", type: "currency", referenceTo: [] },
+          ],
+          childRelationships: [],
+        },
+      ],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.household.object).toBe("cloupra__Household__c");
+    expect(mapping.household.primaryAdvisorField).toBe("cloupra__Advisor__c");
+    expect(mapping.household.totalAumField).toBe("cloupra__AUM__c");
+    expect(mapping.household.confidence).toBeGreaterThanOrEqual(0.90);
+    expect(mapping.household.usesAccountHierarchy).toBe(false);
+  });
+
+  it("sets managedPackage in OrgMapping", () => {
+    const bundle = makeBundle({
+      managedPackagesDetected: [
+        { prefix: "cloupra__", platform: "Practifi", objectsFound: ["cloupra__Household__c"] },
+      ],
+      candidateCustomObjects: [
+        {
+          name: "cloupra__Household__c",
+          label: "Household",
+          fields: [{ name: "Name", label: "Name", type: "string", referenceTo: [] }],
+          childRelationships: [],
+        },
+      ],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.managedPackage.platform).toBe("Practifi");
+    expect(mapping.managedPackage.prefix).toBe("cloupra__");
+    expect(mapping.managedPackage.confidence).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it("falls through to standard patterns when no managed package detected", () => {
+    const bundle = makeBundle({
+      managedPackagesDetected: [],
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.household.object).toBe("Account");
+    expect(mapping.managedPackage.platform).toBeNull();
+  });
+});
+
+// ─── Phase 2: Junction Object Detection ─────────────────────────────────────
+
+describe("Junction Object Detection", () => {
+  it("detects Practifi junction via managed package", () => {
+    const bundle = makeBundle({
+      managedPackagesDetected: [
+        { prefix: "cloupra__", platform: "Practifi", objectsFound: ["cloupra__Household__c", "cloupra__Client_Group_Member__c"] },
+      ],
+      candidateCustomObjects: [
+        {
+          name: "cloupra__Household__c",
+          label: "Household",
+          fields: [{ name: "Name", label: "Name", type: "string", referenceTo: [] }],
+          childRelationships: [],
+        },
+        {
+          name: "cloupra__Client_Group_Member__c",
+          label: "Client Group Member",
+          fields: [
+            { name: "cloupra__Contact__c", label: "Contact", type: "reference", referenceTo: ["Contact"] },
+            { name: "cloupra__Household__c", label: "Household", type: "reference", referenceTo: ["cloupra__Household__c"] },
+          ],
+          childRelationships: [],
+        },
+      ],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.contact.junction).not.toBeNull();
+    expect(mapping.contact.junction!.object).toBe("cloupra__Client_Group_Member__c");
+    expect(mapping.contact.junction!.contactLookup).toBe("cloupra__Contact__c");
+    expect(mapping.contact.junction!.householdLookup).toBe("cloupra__Household__c");
+  });
+
+  it("detects generic junction for custom household objects", () => {
+    const bundle = makeBundle({
+      candidateCustomObjects: [
+        {
+          name: "HH_Group__c",
+          label: "Household Group",
+          fields: [{ name: "Name", label: "Name", type: "string", referenceTo: [] }],
+          childRelationships: [{ childSObject: "Contact", field: "HH_Group__c" }],
+        },
+        {
+          name: "HH_Member__c",
+          label: "HH Member",
+          fields: [
+            { name: "Contact__c", label: "Contact", type: "reference", referenceTo: ["Contact"] },
+            { name: "HH_Group__c", label: "Household Group", type: "reference", referenceTo: ["HH_Group__c"] },
+          ],
+          childRelationships: [],
+        },
+      ],
+      contactDescribe: {
+        name: "Contact", label: "Contact", custom: false,
+        fields: [
+          makeField({ name: "FirstName", type: "string", custom: false }),
+          makeField({ name: "LastName", type: "string", custom: false }),
+          makeField({ name: "Email", type: "email", custom: false }),
+          makeField({ name: "Phone", type: "phone", custom: false }),
+          makeField({ name: "AccountId", type: "reference", custom: false, referenceTo: ["Account"] }),
+          makeField({ name: "HH_Group__c", type: "reference", custom: true, referenceTo: ["HH_Group__c"] }),
+        ],
+        recordTypeInfos: [],
+        childRelationships: [],
+      },
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.contact.junction).not.toBeNull();
+    expect(mapping.contact.junction!.object).toBe("HH_Member__c");
+  });
+
+  it("returns null junction for standard Account household", () => {
+    const bundle = makeBundle({
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.contact.junction).toBeNull();
+  });
+});
+
+// ─── Phase 2: Account Hierarchy Detection ──────────────────────────────────
+
+describe("Account Hierarchy Detection", () => {
+  it("sets usesAccountHierarchy from bundle signal", () => {
+    const bundle = makeBundle({
+      accountHierarchyDetected: true,
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.household.usesAccountHierarchy).toBe(true);
+  });
+
+  it("usesAccountHierarchy is false by default", () => {
+    const bundle = makeBundle({
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.household.usesAccountHierarchy).toBe(false);
+  });
+
+  it("custom objects always have usesAccountHierarchy = false", () => {
+    const bundle = makeBundle({
+      accountHierarchyDetected: true,
+      candidateCustomObjects: [
+        {
+          name: "HH_Group__c",
+          label: "Household Group",
+          fields: [{ name: "Name", label: "Name", type: "string", referenceTo: [] }],
+          childRelationships: [],
+        },
+      ],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.household.object).toBe("HH_Group__c");
+    expect(mapping.household.usesAccountHierarchy).toBe(false);
+  });
+});
+
+// ─── Phase 2: Required Field Gap Detection ──────────────────────────────────
+
+describe("Required Field Gap Detection", () => {
+  it("detects required non-nillable fields Min doesn't populate", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({ name: "Industry", type: "picklist", custom: false, nillable: false, createable: true, defaultedOnCreate: false }),
+        ],
+      }),
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.requiredFieldGaps.length).toBeGreaterThan(0);
+    expect(mapping.requiredFieldGaps[0].object).toBe("Account");
+    expect(mapping.requiredFieldGaps[0].fields.some(f => f.name === "Industry")).toBe(true);
+    expect(mapping.requiredFieldGaps[0].severity).toBe("blocking");
+  });
+
+  it("ignores fields Min knows how to populate", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false, nillable: false, createable: true, defaultedOnCreate: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"], nillable: false, createable: true, defaultedOnCreate: true }),
+        ],
+      }),
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    // Name is known, OwnerId is defaulted, so no gaps expected
+    expect(mapping.requiredFieldGaps.filter(g => g.object === "Account")).toHaveLength(0);
+  });
+
+  it("ignores nillable fields", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "Custom_Field__c", type: "string", custom: true, nillable: true, createable: true }),
+        ],
+      }),
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.requiredFieldGaps.filter(g => g.object === "Account")).toHaveLength(0);
+  });
+
+  it("returns empty array when no gaps", () => {
+    const bundle = makeBundle();
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.requiredFieldGaps).toEqual([]);
+  });
+});
+
+// ─── Phase 2: FLS Check ────────────────────────────────────────────────────
+
+describe("Field-Level Security (FLS) Checks", () => {
+  it("warns when AUM field is not accessible", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({ name: "Total_AUM__c", type: "currency", custom: true, label: "Total AUM", accessible: false }),
+        ],
+      }),
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.flsWarnings.some(w => w.field === "Total_AUM__c" && w.issue === "not_readable")).toBe(true);
+  });
+
+  it("no warning when AUM field is accessible", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({ name: "Total_AUM__c", type: "currency", custom: true, label: "Total AUM", accessible: true }),
+        ],
+      }),
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.flsWarnings.filter(w => w.field === "Total_AUM__c")).toHaveLength(0);
+  });
+
+  it("warns when advisor field is not accessible", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({ name: "Primary_Advisor__c", type: "reference", custom: true, label: "Primary Advisor", referenceTo: ["User"], accessible: false }),
+        ],
+      }),
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.flsWarnings.some(w => w.field === "Primary_Advisor__c" && w.issue === "not_readable")).toBe(true);
+  });
+
+  it("warns when Contact Email is not accessible", () => {
+    const bundle = makeBundle({
+      contactDescribe: {
+        name: "Contact", label: "Contact", custom: false,
+        fields: [
+          makeField({ name: "FirstName", type: "string", custom: false }),
+          makeField({ name: "LastName", type: "string", custom: false }),
+          makeField({ name: "Email", type: "email", custom: false, accessible: false }),
+          makeField({ name: "Phone", type: "phone", custom: false }),
+          makeField({ name: "AccountId", type: "reference", custom: false, referenceTo: ["Account"] }),
+        ],
+        recordTypeInfos: [],
+        childRelationships: [],
+      },
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.flsWarnings.some(w => w.field === "Email" && w.object === "Contact")).toBe(true);
+  });
+
+  it("returns empty array when all fields accessible", () => {
+    const bundle = makeBundle();
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.flsWarnings).toEqual([]);
+  });
+});
+
+// ─── Phase 2: Hybrid/Multi-Pattern Detection ──────────────────────────────
+
+describe("Hybrid/Multi-Pattern Detection", () => {
+  it("detects multiple patterns as hybrid", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        recordTypeInfos: [
+          { recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
+          { recordTypeId: "012000000000001AAA", name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
+        ],
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({
+            name: "Type", type: "picklist", custom: false,
+            picklistValues: [{ value: "Household", label: "Household", active: true }],
+          }),
+        ],
+      }),
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.isHybrid).toBe(true);
+    expect(mapping.householdPatterns.length).toBeGreaterThan(1);
+    expect(mapping.warnings.some(w => /hybrid/i.test(w))).toBe(true);
+  });
+
+  it("single pattern is not flagged as hybrid", () => {
+    const bundle = makeBundle({
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.isHybrid).toBe(false);
+    expect(mapping.householdPatterns.length).toBe(1);
+  });
+
+  it("managed package + standard pattern is hybrid", () => {
+    const bundle = makeBundle({
+      managedPackagesDetected: [
+        { prefix: "cloupra__", platform: "Practifi", objectsFound: ["cloupra__Household__c"] },
+      ],
+      candidateCustomObjects: [
+        {
+          name: "cloupra__Household__c",
+          label: "Household",
+          fields: [{ name: "Name", label: "Name", type: "string", referenceTo: [] }],
+          childRelationships: [],
+        },
+      ],
+      accountTypeValues: [{ value: "Household", count: 10 }],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.isHybrid).toBe(true);
+    expect(mapping.householdPatterns.length).toBeGreaterThan(1);
+  });
+
+  it("no patterns (fallback) means householdPatterns is empty", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        fields: [makeField({ name: "Name", type: "string", custom: false })],
+        recordTypeInfos: [{ recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: true }],
+      }),
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.householdPatterns).toEqual([]);
+    expect(mapping.isHybrid).toBe(false);
   });
 });

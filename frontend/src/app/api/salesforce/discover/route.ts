@@ -63,10 +63,17 @@ export async function POST() {
       recentTaskCount: bundle.recordCounts.recentTasks,
       fscInstalled: bundle.fscObjectsFound.length > 0,
       personAccountsEnabled: bundle.personAccountsEnabled,
+      managedPackage: mapping.managedPackage?.platform || null,
       customObjectsFound: bundle.candidateCustomObjects.map(o => o.name),
       automationRiskLevel: mapping.automationRisks.riskLevel,
       taskFlowCount: mapping.automationRisks.taskFlowCount,
       validationRuleCount: mapping.automationRisks.blockingValidationRules.length,
+      requiredFieldGaps: mapping.requiredFieldGaps,
+      flsWarnings: mapping.flsWarnings,
+      isHybrid: mapping.isHybrid || false,
+      householdPatterns: mapping.householdPatterns || [],
+      junctionObject: mapping.contact.junction?.object || null,
+      usesAccountHierarchy: mapping.household.usesAccountHierarchy || false,
       overallConfidence: mapping.confidence,
       apiCallsMade: bundle.apiCallsMade,
       discoveryDurationMs: bundle.durationMs,
@@ -88,6 +95,7 @@ export async function POST() {
       _debug: {
         recordTypeInfos: bundle.accountDescribe?.recordTypeInfos.filter(rt => rt.active),
         fscObjects: bundle.fscObjectsFound,
+        managedPackagesDetected: bundle.managedPackagesDetected,
         accountTypeValues: bundle.accountTypeValues,
         candidateObjects: bundle.candidateCustomObjects.map(o => ({
           name: o.name,
@@ -156,6 +164,10 @@ export async function GET() {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function detectOrgType(bundle: OrgMetadataBundle): string {
+  // Check managed packages first
+  if (bundle.managedPackagesDetected?.some(mp => mp.platform === "Practifi")) {
+    return "Practifi";
+  }
   if (bundle.fscObjectsFound.length > 0 && bundle.personAccountsEnabled) {
     return "FSC with Person Accounts";
   }

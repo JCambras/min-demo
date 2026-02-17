@@ -15,6 +15,9 @@ function makeMapping(overrides?: Partial<OrgMapping>): OrgMapping {
     version: 1,
     confidence: 0.85,
     personAccountsEnabled: false,
+    managedPackage: { platform: null, prefix: null, confidence: 0 },
+    householdPatterns: [],
+    isHybrid: false,
     household: {
       object: "Account",
       recordTypeDeveloperName: null,
@@ -26,6 +29,7 @@ function makeMapping(overrides?: Partial<OrgMapping>): OrgMapping {
       totalAumField: null,
       serviceTierField: null,
       clientStatusField: null,
+      usesAccountHierarchy: false,
       confidence: 0.85,
     },
     contact: {
@@ -36,6 +40,7 @@ function makeMapping(overrides?: Partial<OrgMapping>): OrgMapping {
       emailField: "Email",
       phoneField: "Phone",
       isPrimaryField: null,
+      junction: null,
       confidence: 0.90,
     },
     financialAccount: { available: false, object: null, householdLookup: null, balanceField: null, accountTypeField: null, statusField: null, confidence: 0.90 },
@@ -43,6 +48,8 @@ function makeMapping(overrides?: Partial<OrgMapping>): OrgMapping {
     complianceReview: { type: "task_pattern", object: "Task", confidence: 0.60 },
     pipeline: { type: "opportunity", object: "Opportunity", stageField: "StageName", amountField: "Amount", confidence: 0.90 },
     automationRisks: { riskLevel: "low", taskFlowCount: 0, accountTriggerCount: 0, blockingValidationRules: [] },
+    requiredFieldGaps: [],
+    flsWarnings: [],
     warnings: [],
     ...overrides,
   };
@@ -110,6 +117,7 @@ describe("orgQuery — RecordType Mapping (FSC)", () => {
         totalAumField: "Total_AUM__c",
         serviceTierField: "Service_Tier__c",
         clientStatusField: null,
+        usesAccountHierarchy: false,
         confidence: 0.95,
       },
     }));
@@ -152,6 +160,7 @@ describe("orgQuery — Custom Object Mapping", () => {
         totalAumField: "AUM__c",
         serviceTierField: null,
         clientStatusField: null,
+        usesAccountHierarchy: false,
         confidence: 0.65,
       },
       contact: {
@@ -162,6 +171,7 @@ describe("orgQuery — Custom Object Mapping", () => {
         emailField: "Email",
         phoneField: "Phone",
         isPrimaryField: null,
+        junction: null,
         confidence: 0.75,
       },
     }));
@@ -209,7 +219,7 @@ describe("orgQuery — newHouseholdFields", () => {
         recordTypeId: "012000000000001AAA",
         filterField: null, filterValue: null,
         nameField: "Name", primaryAdvisorField: null, totalAumField: null,
-        serviceTierField: null, clientStatusField: null, confidence: 0.95,
+        serviceTierField: null, clientStatusField: null, usesAccountHierarchy: false, confidence: 0.95,
       },
     }));
     const fields = orgQuery.newHouseholdFields("Smith Household", "Created by Min");
@@ -224,7 +234,7 @@ describe("orgQuery — newHouseholdFields", () => {
         recordTypeId: "012000000000001AAA",
         filterField: null, filterValue: null,
         nameField: "Name", primaryAdvisorField: null, totalAumField: null,
-        serviceTierField: null, clientStatusField: null, confidence: 0.95,
+        serviceTierField: null, clientStatusField: null, usesAccountHierarchy: false, confidence: 0.95,
       },
     }));
     const fields = orgQuery.newHouseholdFields("Smith Household", "Created by Min");
@@ -278,9 +288,158 @@ describe("orgQuery — householdRecordTypeId", () => {
         recordTypeId: "012000000000001AAA",
         filterField: null, filterValue: null,
         nameField: "Name", primaryAdvisorField: null, totalAumField: null,
-        serviceTierField: null, clientStatusField: null, confidence: 0.95,
+        serviceTierField: null, clientStatusField: null, usesAccountHierarchy: false, confidence: 0.95,
       },
     }));
     expect(orgQuery.householdRecordTypeId()).toBe("012000000000001AAA");
+  });
+});
+
+// ─── Phase 2: New Accessor Tests ─────────────────────────────────────────────
+
+describe("orgQuery — contactJunction", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("returns null when no mapping is set", () => {
+    expect(orgQuery.contactJunction()).toBeNull();
+  });
+
+  it("returns null when mapping has no junction", () => {
+    setOrgMapping(makeMapping());
+    expect(orgQuery.contactJunction()).toBeNull();
+  });
+
+  it("returns junction when mapping has one", () => {
+    setOrgMapping(makeMapping({
+      contact: {
+        object: "Contact",
+        householdLookup: "AccountId",
+        firstNameField: "FirstName",
+        lastNameField: "LastName",
+        emailField: "Email",
+        phoneField: "Phone",
+        isPrimaryField: null,
+        junction: { object: "cloupra__Client_Group_Member__c", contactLookup: "cloupra__Contact__c", householdLookup: "cloupra__Household__c" },
+        confidence: 0.80,
+      },
+    }));
+    const j = orgQuery.contactJunction();
+    expect(j).not.toBeNull();
+    expect(j!.object).toBe("cloupra__Client_Group_Member__c");
+    expect(j!.contactLookup).toBe("cloupra__Contact__c");
+  });
+});
+
+describe("orgQuery — usesAccountHierarchy", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("returns false when no mapping is set", () => {
+    expect(orgQuery.usesAccountHierarchy()).toBe(false);
+  });
+
+  it("returns false when mapping has hierarchy disabled", () => {
+    setOrgMapping(makeMapping());
+    expect(orgQuery.usesAccountHierarchy()).toBe(false);
+  });
+
+  it("returns true when mapping has hierarchy enabled", () => {
+    setOrgMapping(makeMapping({
+      household: {
+        ...makeMapping().household,
+        usesAccountHierarchy: true,
+      },
+    }));
+    expect(orgQuery.usesAccountHierarchy()).toBe(true);
+  });
+});
+
+describe("orgQuery — isHybridOrg", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("returns false when no mapping is set", () => {
+    expect(orgQuery.isHybridOrg()).toBe(false);
+  });
+
+  it("returns false when single pattern", () => {
+    setOrgMapping(makeMapping({ isHybrid: false }));
+    expect(orgQuery.isHybridOrg()).toBe(false);
+  });
+
+  it("returns true when hybrid", () => {
+    setOrgMapping(makeMapping({ isHybrid: true }));
+    expect(orgQuery.isHybridOrg()).toBe(true);
+  });
+});
+
+describe("orgQuery — compound householdFilter (hybrid)", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("generates compound OR filter when multiple same-object patterns exist", () => {
+    setOrgMapping(makeMapping({
+      isHybrid: true,
+      householdPatterns: [
+        { type: "recordType", filter: "RecordType.DeveloperName = 'IndustriesHousehold'", confidence: 0.95 },
+        { type: "typePicklist", filter: "Type = 'Household'", confidence: 0.85 },
+      ],
+    }));
+    expect(orgQuery.householdFilter()).toBe("(RecordType.DeveloperName = 'IndustriesHousehold' OR Type = 'Household')");
+  });
+
+  it("falls through to single-pattern logic when only one filterable pattern", () => {
+    setOrgMapping(makeMapping({
+      householdPatterns: [
+        { type: "recordType", filter: "RecordType.DeveloperName = 'IndustriesHousehold'", confidence: 0.95 },
+        { type: "managed_package", filter: "", confidence: 0.95 },
+      ],
+      household: {
+        ...makeMapping().household,
+        recordTypeDeveloperName: "IndustriesHousehold",
+        filterField: null,
+        filterValue: null,
+      },
+    }));
+    expect(orgQuery.householdFilter()).toBe("RecordType.DeveloperName = 'IndustriesHousehold'");
+  });
+
+  it("falls through to single-pattern logic when empty householdPatterns", () => {
+    setOrgMapping(makeMapping({
+      householdPatterns: [],
+    }));
+    expect(orgQuery.householdFilter()).toBe("Type = 'Household'");
+  });
+});
+
+describe("orgQuery — requiredFieldGaps and FLS", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("returns empty arrays when no mapping", () => {
+    expect(orgQuery.requiredFieldGaps()).toEqual([]);
+    expect(orgQuery.flsWarnings()).toEqual([]);
+    expect(orgQuery.hasBlockingFieldGaps()).toBe(false);
+    expect(orgQuery.hasFlsWarnings()).toBe(false);
+  });
+
+  it("returns gaps and warnings from mapping", () => {
+    setOrgMapping(makeMapping({
+      requiredFieldGaps: [
+        { object: "Account", fields: [{ name: "Industry", label: "Industry", type: "picklist" }], severity: "blocking" },
+      ],
+      flsWarnings: [
+        { field: "Total_AUM__c", object: "Account", issue: "not_readable", impact: "AUM will show as $0" },
+      ],
+    }));
+    expect(orgQuery.requiredFieldGaps()).toHaveLength(1);
+    expect(orgQuery.hasBlockingFieldGaps()).toBe(true);
+    expect(orgQuery.flsWarnings()).toHaveLength(1);
+    expect(orgQuery.hasFlsWarnings()).toBe(true);
+  });
+
+  it("hasBlockingFieldGaps returns false for warning-level gaps only", () => {
+    setOrgMapping(makeMapping({
+      requiredFieldGaps: [
+        { object: "Contact", fields: [{ name: "Birthdate", label: "Birthdate", type: "date" }], severity: "warning" },
+      ],
+    }));
+    expect(orgQuery.hasBlockingFieldGaps()).toBe(false);
   });
 });

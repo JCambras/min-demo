@@ -134,10 +134,18 @@ export const orgQuery = {
    * Examples:
    *   "RecordType.DeveloperName = 'IndustriesHousehold'"
    *   "Type = 'Household'"
+   *   "(RecordType.DeveloperName = 'X' OR Type = 'Y')" (hybrid)
    *   "" (empty = all records of the object)
    */
   householdFilter(): string {
     if (!cachedMapping) return DEMO_DEFAULTS.householdFilter;
+
+    // Hybrid: compound filter when multiple same-object patterns exist
+    const patterns = cachedMapping.householdPatterns || [];
+    const accountPatterns = patterns.filter(p => p.filter && p.type !== "customObject" && p.type !== "managed_package");
+    if (accountPatterns.length > 1) {
+      return `(${accountPatterns.map(p => p.filter).join(" OR ")})`;
+    }
 
     const hh = cachedMapping.household;
 
@@ -224,6 +232,63 @@ export const orgQuery = {
    */
   personAccountsEnabled(): boolean {
     return cachedMapping?.personAccountsEnabled || false;
+  },
+
+  /**
+   * Junction object for Contact-to-Household membership (e.g., Practifi).
+   * Returns null when Contacts relate directly to the household object.
+   */
+  contactJunction(): OrgMapping["contact"]["junction"] {
+    return cachedMapping?.contact.junction || null;
+  },
+
+  /**
+   * Whether the org uses Account hierarchy (ParentId) for household grouping.
+   */
+  usesAccountHierarchy(): boolean {
+    return cachedMapping?.household.usesAccountHierarchy || false;
+  },
+
+  /**
+   * Whether this org has multiple overlapping household patterns.
+   */
+  isHybridOrg(): boolean {
+    return cachedMapping?.isHybrid || false;
+  },
+
+  /**
+   * All detected household patterns (for diagnostic/health report use).
+   */
+  householdPatterns(): OrgMapping["householdPatterns"] {
+    return cachedMapping?.householdPatterns || [];
+  },
+
+  /**
+   * Required fields Min doesn't populate, grouped by object.
+   */
+  requiredFieldGaps(): OrgMapping["requiredFieldGaps"] {
+    return cachedMapping?.requiredFieldGaps || [];
+  },
+
+  /**
+   * Whether any required field gaps are blocking (will cause DML errors).
+   */
+  hasBlockingFieldGaps(): boolean {
+    return (cachedMapping?.requiredFieldGaps || []).some(g => g.severity === "blocking");
+  },
+
+  /**
+   * Field-level security warnings (fields the API user can't read/write).
+   */
+  flsWarnings(): OrgMapping["flsWarnings"] {
+    return cachedMapping?.flsWarnings || [];
+  },
+
+  /**
+   * Whether any FLS warnings exist.
+   */
+  hasFlsWarnings(): boolean {
+    return (cachedMapping?.flsWarnings || []).length > 0;
   },
 
   /**

@@ -273,6 +273,46 @@ export class SalesforceAdapter implements CRMPort {
       ]);
       let contacts = contactRecords.map(mapContact);
 
+      // Junction Object Path (e.g., Practifi cloupra__Client_Group_Member__c)
+      const junction = orgQuery.contactJunction();
+      if (junction) {
+        const junctionRecords = await query(sfCtx(ctx),
+          `SELECT ${junction.contactLookup} FROM ${junction.object} WHERE ${junction.householdLookup} = '${safeId}' LIMIT 200`
+        );
+        const contactIds = junctionRecords
+          .map(r => r[junction.contactLookup] as string)
+          .filter(Boolean);
+        if (contactIds.length > 0) {
+          const idList = contactIds.map(cid => `'${sanitizeSOQL(cid)}'`).join(",");
+          const junctionContacts = await query(sfCtx(ctx),
+            `SELECT Id, FirstName, LastName, Email, Phone, CreatedDate FROM Contact WHERE Id IN (${idList}) ORDER BY CreatedDate ASC LIMIT 200`
+          );
+          const seen = new Set(contacts.map(c => c.id));
+          for (const raw of junctionContacts) {
+            const mapped = mapContact(raw);
+            if (!seen.has(mapped.id)) {
+              contacts.push(mapped);
+              seen.add(mapped.id);
+            }
+          }
+        }
+      }
+
+      // Account Hierarchy Path (contacts on child Accounts)
+      if (orgQuery.usesAccountHierarchy() && !junction) {
+        const childContacts = await query(sfCtx(ctx),
+          `SELECT Id, FirstName, LastName, Email, Phone, CreatedDate FROM Contact WHERE Account.ParentId = '${safeId}' ORDER BY CreatedDate ASC LIMIT 200`
+        );
+        const seen = new Set(contacts.map(c => c.id));
+        for (const raw of childContacts) {
+          const mapped = mapContact(raw);
+          if (!seen.has(mapped.id)) {
+            contacts.push(mapped);
+            seen.add(mapped.id);
+          }
+        }
+      }
+
       // Person Account orgs: also find Person Account children via ParentId
       if (orgQuery.personAccountsEnabled()) {
         const paRecords = await query(sfCtx(ctx),

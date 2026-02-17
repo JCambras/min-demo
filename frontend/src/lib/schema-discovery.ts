@@ -34,6 +34,9 @@ export interface FieldDescribe {
   length: number;
   nillable: boolean;
   updateable: boolean;
+  defaultedOnCreate: boolean;
+  accessible: boolean;
+  createable: boolean;
 }
 
 export interface RecordTypeInfo {
@@ -102,6 +105,9 @@ export interface OrgMetadataBundle {
   fscObjectsFound: string[];
   personAccountsEnabled: boolean;
 
+  // Managed package detection
+  managedPackagesDetected: { prefix: string; platform: string; objectsFound: string[] }[];
+
   // Custom objects that might map to RIA concepts
   candidateCustomObjects: CandidateCustomObject[];
 
@@ -123,6 +129,9 @@ export interface OrgMetadataBundle {
   // Actual Type values found in Account data (for orgs with unrestricted picklists)
   accountTypeValues: { value: string; count: number }[];
 
+  // Account hierarchy detection
+  accountHierarchyDetected: boolean;
+
   // Discovery metadata
   apiCallsMade: number;
   durationMs: number;
@@ -141,6 +150,18 @@ const FSC_OBJECT_PREFIXES = [
   "FinServ__AccountAccountRelation__c",
   "FinServ__Revenue__c",
   "FinServ__Securities__c",
+];
+
+// Known managed package object prefixes for RIA-specific platforms.
+// Objects with these prefixes get first-class detection, not heuristic matching.
+const MANAGED_PACKAGE_PREFIXES = [
+  {
+    prefix: "cloupra__",
+    platform: "Practifi",
+    householdObject: "cloupra__Household__c",
+    junctionObject: "cloupra__Client_Group_Member__c",
+    aumFields: ["cloupra__AUM__c", "cloupra__Total_Assets__c"],
+  },
 ];
 
 // Keywords that suggest a custom object might model an RIA concept
@@ -237,6 +258,9 @@ async function fetchObjectDescribe(
     length: (f.length as number) || 0,
     nillable: (f.nillable as boolean) || false,
     updateable: (f.updateable as boolean) || false,
+    defaultedOnCreate: (f.defaultedOnCreate as boolean) || false,
+    accessible: (f.accessible as boolean) ?? true,
+    createable: (f.createable as boolean) ?? true,
   }));
 
   const recordTypeInfos = ((raw.recordTypeInfos as Record<string, unknown>[]) || []).map(rt => ({
@@ -374,6 +398,8 @@ function identifyCandidateObjects(
       if (o.name.startsWith("FinServ__")) return false;
       // Skip common non-RIA managed packages
       if (o.name.startsWith("npsp__") || o.name.startsWith("npe")) return false;
+      // Skip known RIA managed packages (handled separately)
+      if (MANAGED_PACKAGE_PREFIXES.some(mp => o.name.startsWith(mp.prefix))) return false;
       // Check if name or label contains RIA-related keywords
       const nameLower = o.name.toLowerCase();
       const labelLower = o.label.toLowerCase();
@@ -423,6 +449,34 @@ export async function discoverOrg(ctx: SFContext): Promise<OrgMetadataBundle> {
   // Person Account detection
   const personAccountsEnabled = detectPersonAccounts(accountDescribe);
 
+  // ── Step 2b: Managed Package Detection ───────────────────────────────────
+  const managedPackagesDetected: OrgMetadataBundle["managedPackagesDetected"] = [];
+  for (const mp of MANAGED_PACKAGE_PREFIXES) {
+    const mpObjects = allObjects.filter(o => o.name.startsWith(mp.prefix));
+    if (mpObjects.length > 0) {
+      managedPackagesDetected.push({
+        prefix: mp.prefix,
+        platform: mp.platform,
+        objectsFound: mpObjects.map(o => o.name),
+      });
+    }
+  }
+
+  // Describe managed package household/junction objects (added to candidates later)
+  const mpDescribes: ObjectDescribe[] = [];
+  for (const mp of managedPackagesDetected) {
+    const mpDef = MANAGED_PACKAGE_PREFIXES.find(d => d.prefix === mp.prefix);
+    if (!mpDef) continue;
+    const objectsToDescribe = [mpDef.householdObject, mpDef.junctionObject].filter(
+      (name): name is string => !!name && mp.objectsFound.includes(name)
+    );
+    for (const objName of objectsToDescribe) {
+      const desc = await fetchObjectDescribe(ctx, objName);
+      apiCallsMade++;
+      if (desc) mpDescribes.push(desc);
+    }
+  }
+
   // ── Step 3: Candidate Custom Objects ──────────────────────────────────────
   const candidateNames = identifyCandidateObjects(allObjects);
   const candidateDescribes = await Promise.all(
@@ -430,9 +484,10 @@ export async function discoverOrg(ctx: SFContext): Promise<OrgMetadataBundle> {
   );
   apiCallsMade += candidateNames.length;
 
-  const candidateCustomObjects: CandidateCustomObject[] = candidateDescribes
-    .filter((d): d is ObjectDescribe => d !== null)
-    .map(d => ({
+  const candidateCustomObjects: CandidateCustomObject[] = [
+    ...candidateDescribes.filter((d): d is ObjectDescribe => d !== null),
+    ...mpDescribes,
+  ].map(d => ({
       name: d.name,
       label: d.label,
       fields: d.fields
@@ -521,12 +576,14 @@ export async function discoverOrg(ctx: SFContext): Promise<OrgMetadataBundle> {
     financialAccountDescribe,
     fscObjectsFound,
     personAccountsEnabled,
+    managedPackagesDetected,
     candidateCustomObjects,
     activeFlows,
     activeTriggers,
     activeValidationRules,
     recordCounts,
     accountTypeValues,
+    accountHierarchyDetected: false, // populated in Step 5c when implemented
     apiCallsMade,
     durationMs,
     errors,
@@ -544,6 +601,19 @@ export interface OrgMapping {
   confidence: number;
   personAccountsEnabled: boolean;
 
+  managedPackage: {
+    platform: string | null;
+    prefix: string | null;
+    confidence: number;
+  };
+
+  householdPatterns: {
+    type: "managed_package" | "recordType" | "typePicklist" | "dataTypeValue" | "customObject";
+    filter: string;
+    confidence: number;
+  }[];
+  isHybrid: boolean;
+
   household: {
     object: string;
     recordTypeDeveloperName: string | null;
@@ -555,6 +625,7 @@ export interface OrgMapping {
     totalAumField: string | null;
     serviceTierField: string | null;
     clientStatusField: string | null;
+    usesAccountHierarchy: boolean;
     confidence: number;
   };
 
@@ -566,6 +637,11 @@ export interface OrgMapping {
     emailField: string;
     phoneField: string;
     isPrimaryField: string | null;
+    junction: {
+      object: string;
+      contactLookup: string;
+      householdLookup: string;
+    } | null;
     confidence: number;
   };
 
@@ -607,6 +683,19 @@ export interface OrgMapping {
     blockingValidationRules: string[];
   };
 
+  requiredFieldGaps: {
+    object: string;
+    fields: { name: string; label: string; type: string }[];
+    severity: "blocking" | "warning";
+  }[];
+
+  flsWarnings: {
+    field: string;
+    object: string;
+    issue: "not_readable" | "not_writable";
+    impact: string;
+  }[];
+
   warnings: string[];
 }
 
@@ -639,6 +728,26 @@ export function classifyOrgHeuristic(bundle: OrgMetadataBundle): OrgMapping {
   // ── Automation Risk Assessment ──────────────────────────────────────────
   const automationRisks = assessAutomationRisks(bundle);
 
+  // ── Managed Package Detection ──────────────────────────────────────────
+  const managedPackage = (() => {
+    const mp = bundle.managedPackagesDetected?.find(d => d.objectsFound.length > 0);
+    if (mp) return { platform: mp.platform, prefix: mp.prefix, confidence: 0.90 };
+    return { platform: null, prefix: null, confidence: 0 };
+  })();
+
+  // ── Hybrid/Multi-Pattern Detection ─────────────────────────────────────
+  const householdPatterns = detectAllHouseholdPatterns(bundle);
+  const isHybrid = householdPatterns.length > 1;
+  if (isHybrid) {
+    warnings.push(`Hybrid org: ${householdPatterns.length} household patterns detected. Some households may use a different model.`);
+  }
+
+  // ── Required Field Gaps ──────────────────────────────────────────────
+  const requiredFieldGaps = detectRequiredFieldGaps(bundle);
+
+  // ── FLS Checks ───────────────────────────────────────────────────────
+  const flsWarnings = checkFieldLevelSecurity(bundle, household, aum);
+
   // ── Overall Confidence ──────────────────────────────────────────────────
   const confidences = [
     household.confidence,
@@ -656,6 +765,9 @@ export function classifyOrgHeuristic(bundle: OrgMetadataBundle): OrgMapping {
     version: 1,
     confidence: overallConfidence,
     personAccountsEnabled: bundle.personAccountsEnabled,
+    managedPackage,
+    householdPatterns,
+    isHybrid,
     household,
     contact,
     financialAccount,
@@ -663,6 +775,8 @@ export function classifyOrgHeuristic(bundle: OrgMetadataBundle): OrgMapping {
     complianceReview,
     pipeline,
     automationRisks,
+    requiredFieldGaps,
+    flsWarnings,
     warnings,
   };
 }
@@ -674,6 +788,31 @@ function detectHousehold(
   warnings: string[],
 ): OrgMapping["household"] {
   const acct = bundle.accountDescribe;
+  const usesAccountHierarchy = bundle.accountHierarchyDetected || false;
+
+  // Pattern 0: Known managed package household (e.g., Practifi cloupra__Household__c)
+  for (const mp of MANAGED_PACKAGE_PREFIXES) {
+    const detected = bundle.managedPackagesDetected?.find(d => d.prefix === mp.prefix);
+    if (detected && detected.objectsFound.includes(mp.householdObject)) {
+      const mpDescribe = bundle.candidateCustomObjects.find(o => o.name === mp.householdObject);
+      if (mpDescribe) {
+        return {
+          object: mp.householdObject,
+          recordTypeDeveloperName: null,
+          recordTypeId: null,
+          filterField: null,
+          filterValue: null,
+          nameField: "Name",
+          primaryAdvisorField: findFieldByPattern(mpDescribe.fields, /advisor|rm|planner|rep/i, "reference"),
+          totalAumField: findFieldByPattern(mpDescribe.fields, /aum|asset|balance|total/i, "currency"),
+          serviceTierField: findFieldByPattern(mpDescribe.fields, /tier|service|level|segment/i, "picklist"),
+          clientStatusField: findFieldByPattern(mpDescribe.fields, /status|stage|lifecycle/i, "picklist"),
+          usesAccountHierarchy: false, // managed package objects don't use Account hierarchy
+          confidence: 0.95,
+        };
+      }
+    }
+  }
 
   // Pattern 1: Account with RecordType 'Household' (most common FSC pattern)
   const householdRT = acct?.recordTypeInfos.find(
@@ -691,6 +830,7 @@ function detectHousehold(
       totalAumField: findAumField(acct),
       serviceTierField: findServiceTierField(acct),
       clientStatusField: findStatusField(acct),
+      usesAccountHierarchy,
       confidence: 0.95,
     };
   }
@@ -713,6 +853,7 @@ function detectHousehold(
       totalAumField: findAumField(acct),
       serviceTierField: findServiceTierField(acct),
       clientStatusField: findStatusField(acct),
+      usesAccountHierarchy,
       confidence: 0.85,
     };
   }
@@ -734,6 +875,7 @@ function detectHousehold(
       totalAumField: findAumField(acct),
       serviceTierField: findServiceTierField(acct),
       clientStatusField: findStatusField(acct),
+      usesAccountHierarchy,
       confidence: 0.90,
     };
   }
@@ -755,6 +897,7 @@ function detectHousehold(
       totalAumField: findFieldByPattern(hhCandidate.fields, /aum|asset|balance|book|portfolio/i, "currency"),
       serviceTierField: findFieldByPattern(hhCandidate.fields, /tier|service|level|segment/i, "picklist"),
       clientStatusField: findFieldByPattern(hhCandidate.fields, /status|stage|lifecycle/i, "picklist"),
+      usesAccountHierarchy: false, // custom objects don't use Account hierarchy
       confidence: 0.65,
     };
   }
@@ -772,8 +915,46 @@ function detectHousehold(
     totalAumField: findAumField(acct),
     serviceTierField: findServiceTierField(acct),
     clientStatusField: findStatusField(acct),
+    usesAccountHierarchy,
     confidence: 0.40,
   };
+}
+
+function detectJunctionObject(
+  bundle: OrgMetadataBundle,
+  householdObject: string,
+): OrgMapping["contact"]["junction"] {
+  // Check managed package predefined junctions first
+  for (const mp of MANAGED_PACKAGE_PREFIXES) {
+    if (householdObject === mp.householdObject && mp.junctionObject) {
+      const detected = bundle.managedPackagesDetected?.find(d => d.prefix === mp.prefix);
+      if (detected?.objectsFound.includes(mp.junctionObject)) {
+        const jDesc = bundle.candidateCustomObjects.find(o => o.name === mp.junctionObject);
+        if (jDesc) {
+          const contactField = jDesc.fields.find(f => f.type === "reference" && f.referenceTo.includes("Contact"));
+          const hhField = jDesc.fields.find(f => f.type === "reference" && f.referenceTo.includes(householdObject));
+          if (contactField && hhField) {
+            return { object: mp.junctionObject, contactLookup: contactField.name, householdLookup: hhField.name };
+          }
+        }
+      }
+    }
+  }
+
+  // Generic junction detection: search candidateCustomObjects for objects with
+  // reference fields to both Contact and the household object
+  if (householdObject !== "Account") {
+    for (const obj of bundle.candidateCustomObjects) {
+      if (obj.name === householdObject) continue;
+      const contactRef = obj.fields.find(f => f.type === "reference" && f.referenceTo.includes("Contact"));
+      const hhRef = obj.fields.find(f => f.type === "reference" && f.referenceTo.includes(householdObject));
+      if (contactRef && hhRef) {
+        return { object: obj.name, contactLookup: contactRef.name, householdLookup: hhRef.name };
+      }
+    }
+  }
+
+  return null;
 }
 
 function detectContact(
@@ -792,6 +973,7 @@ function detectContact(
       emailField: "Email",
       phoneField: "Phone",
       isPrimaryField: null,
+      junction: null,
       confidence: 0.50,
     };
   }
@@ -815,6 +997,9 @@ function detectContact(
     f => f.custom && /primary|main|head/i.test(f.name) && (f.type === "boolean" || f.type === "checkbox")
   )?.name || null;
 
+  // Junction object detection
+  const junction = detectJunctionObject(bundle, householdObject);
+
   return {
     object: "Contact",
     householdLookup,
@@ -823,7 +1008,8 @@ function detectContact(
     emailField: "Email",
     phoneField: "Phone",
     isPrimaryField,
-    confidence: householdLookup === "AccountId" ? 0.90 : 0.75,
+    junction,
+    confidence: junction ? 0.80 : (householdLookup === "AccountId" ? 0.90 : 0.75),
   };
 }
 
@@ -1018,6 +1204,140 @@ function assessAutomationRisks(bundle: OrgMetadataBundle): OrgMapping["automatio
     accountTriggerCount: accountTriggers.length,
     blockingValidationRules: blockingRules,
   };
+}
+
+// ─── Required Field Gap Detection ───────────────────────────────────────────
+// Fields Min knows how to populate per object. Any required field NOT in this
+// list represents a gap that may block record creation.
+
+const MIN_KNOWN_FIELDS: Record<string, string[]> = {
+  Account: ["Name", "Description", "Type", "RecordTypeId", "OwnerId"],
+  Contact: ["FirstName", "LastName", "Email", "Phone", "AccountId"],
+  Task: ["Subject", "WhatId", "WhoId", "Status", "Priority", "ActivityDate", "Description", "OwnerId"],
+};
+
+function detectRequiredFieldGaps(
+  bundle: OrgMetadataBundle,
+): OrgMapping["requiredFieldGaps"] {
+  const gaps: OrgMapping["requiredFieldGaps"] = [];
+
+  const checks: { describe: ObjectDescribe | null; object: string; severity: "blocking" | "warning" }[] = [
+    { describe: bundle.accountDescribe, object: "Account", severity: "blocking" },
+    { describe: bundle.contactDescribe, object: "Contact", severity: "blocking" },
+  ];
+
+  for (const { describe, object, severity } of checks) {
+    if (!describe) continue;
+    const known = MIN_KNOWN_FIELDS[object] || [];
+    const missing = describe.fields.filter(f =>
+      !f.nillable && f.createable && !f.defaultedOnCreate && !known.includes(f.name)
+    );
+    if (missing.length > 0) {
+      gaps.push({
+        object,
+        fields: missing.map(f => ({ name: f.name, label: f.label, type: f.type })),
+        severity,
+      });
+    }
+  }
+
+  return gaps;
+}
+
+// ─── Field-Level Security Checks ────────────────────────────────────────────
+// Checks key fields for accessibility. Missing FLS causes silent data loss
+// (fields return null instead of throwing errors).
+
+function checkFieldLevelSecurity(
+  bundle: OrgMetadataBundle,
+  household: OrgMapping["household"],
+  aum: OrgMapping["aum"],
+): OrgMapping["flsWarnings"] {
+  const warnings: OrgMapping["flsWarnings"] = [];
+
+  // Check AUM field accessibility
+  if (aum.field && aum.object === "Account") {
+    const field = bundle.accountDescribe?.fields.find(f => f.name === aum.field);
+    if (field && !field.accessible) {
+      warnings.push({
+        field: aum.field, object: "Account",
+        issue: "not_readable",
+        impact: "AUM will show as $0 for all households",
+      });
+    }
+  }
+
+  // Check advisor field
+  if (household.primaryAdvisorField && household.object === "Account") {
+    const field = bundle.accountDescribe?.fields.find(f => f.name === household.primaryAdvisorField);
+    if (field && !field.accessible) {
+      warnings.push({
+        field: household.primaryAdvisorField, object: "Account",
+        issue: "not_readable",
+        impact: "Advisor name will be blank on all households",
+      });
+    }
+  }
+
+  // Check Contact email/phone
+  const emailField = bundle.contactDescribe?.fields.find(f => f.name === "Email");
+  if (emailField && !emailField.accessible) {
+    warnings.push({ field: "Email", object: "Contact", issue: "not_readable", impact: "Contact emails will be blank" });
+  }
+
+  return warnings;
+}
+
+// ─── Hybrid/Multi-Pattern Detection ─────────────────────────────────────────
+// Runs ALL pattern checks (non-early-return) and returns all matches.
+// Used to detect hybrid orgs where multiple household models coexist.
+
+function detectAllHouseholdPatterns(
+  bundle: OrgMetadataBundle,
+): OrgMapping["householdPatterns"] {
+  const patterns: OrgMapping["householdPatterns"] = [];
+  const acct = bundle.accountDescribe;
+
+  // Check managed packages
+  for (const mp of MANAGED_PACKAGE_PREFIXES) {
+    const detected = bundle.managedPackagesDetected?.find(d => d.prefix === mp.prefix);
+    if (detected?.objectsFound.includes(mp.householdObject)) {
+      patterns.push({ type: "managed_package", filter: "", confidence: 0.95 });
+    }
+  }
+
+  // Check RecordType
+  const householdRT = acct?.recordTypeInfos.find(rt => rt.active && /household/i.test(rt.developerName));
+  if (householdRT) {
+    patterns.push({
+      type: "recordType",
+      filter: `RecordType.DeveloperName = '${householdRT.developerName}'`,
+      confidence: 0.95,
+    });
+  }
+
+  // Check Type picklist
+  const typeField = acct?.fields.find(f => f.name === "Type");
+  const hhPicklist = typeField?.picklistValues.find(p => /household/i.test(p.value));
+  if (hhPicklist) {
+    patterns.push({ type: "typePicklist", filter: `Type = '${hhPicklist.value}'`, confidence: 0.85 });
+  }
+
+  // Check data-level Type
+  const dataType = bundle.accountTypeValues.find(tv => /household/i.test(tv.value));
+  if (dataType && dataType.count > 0 && !hhPicklist) {
+    patterns.push({ type: "dataTypeValue", filter: `Type = '${dataType.value}'`, confidence: 0.90 });
+  }
+
+  // Check custom objects
+  const hhCandidate = bundle.candidateCustomObjects.find(o =>
+    /household|hh_|family|client_group|relationship_group/i.test(o.name)
+  );
+  if (hhCandidate) {
+    patterns.push({ type: "customObject", filter: "", confidence: 0.65 });
+  }
+
+  return patterns.filter(p => p.confidence > 0.5);
 }
 
 // ─── Field Finder Helpers ───────────────────────────────────────────────────
