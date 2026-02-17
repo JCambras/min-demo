@@ -35,8 +35,11 @@ vi.mock("@/lib/org-query", () => ({
     householdFilterWhere: () => " WHERE Type = 'Household'",
     householdFilterAnd: () => " AND Type = 'Household'",
     householdTypeValue: () => "Household",
+    householdRecordTypeDeveloperName: () => null,
+    householdRecordTypeId: () => null,
     contactHouseholdLookup: () => "AccountId",
     advisorField: () => "OwnerId",
+    personAccountsEnabled: () => false,
     listHouseholds: (fields: string, limit: number, offset?: number) =>
       `SELECT ${fields} FROM Account WHERE Type = 'Household' ORDER BY CreatedDate DESC LIMIT ${limit}${offset ? ` OFFSET ${offset}` : ""}`,
     searchHouseholds: (fields: string, q: string, limit: number, offset?: number) =>

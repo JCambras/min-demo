@@ -197,6 +197,14 @@ export const orgQuery = {
   },
 
   /**
+   * The RecordTypeId to set when CREATING a new household.
+   * Returns null if the org doesn't use RecordType-based filtering.
+   */
+  householdRecordTypeId(): string | null {
+    return cachedMapping?.household.recordTypeId || null;
+  },
+
+  /**
    * The field on Contact that points to the household.
    */
   contactHouseholdLookup(): string {
@@ -208,6 +216,14 @@ export const orgQuery = {
    */
   advisorField(): string {
     return cachedMapping?.household.primaryAdvisorField || DEMO_DEFAULTS.advisorField;
+  },
+
+  /**
+   * Whether the org has Person Accounts enabled.
+   * When true, queries must also search Account WHERE IsPersonAccount = true.
+   */
+  personAccountsEnabled(): boolean {
+    return cachedMapping?.personAccountsEnabled || false;
   },
 
   /**
@@ -240,7 +256,8 @@ export const orgQuery = {
     const fields: Record<string, unknown> = { Name: name, Description: description };
     const typeValue = orgQuery.householdTypeValue();
     if (typeValue) fields.Type = typeValue;
-    // RecordType would need Id resolution — left for caller
+    const rtId = orgQuery.householdRecordTypeId();
+    if (rtId) fields.RecordTypeId = rtId;
     return fields;
   },
 };

@@ -95,6 +95,19 @@ function mapContact(raw: Record<string, unknown>): CRMContact {
   };
 }
 
+function mapPersonAccount(raw: Record<string, unknown>): CRMContact {
+  return {
+    id: raw.Id as string,
+    firstName: (raw.FirstName as string) || "",
+    lastName: (raw.LastName as string) || "",
+    email: (raw.PersonEmail as string) || "",
+    phone: (raw.Phone as string) || "",
+    householdId: (raw.Id as string) || null,
+    householdName: (raw.Name as string) || null,
+    createdAt: (raw.CreatedDate as string) || null,
+  };
+}
+
 function mapHousehold(raw: Record<string, unknown>): CRMHousehold {
   const owner = raw["Owner.Name"] ?? (raw.Owner as Record<string, unknown>)?.Name;
   return {
@@ -163,7 +176,23 @@ export class SalesforceAdapter implements CRMPort {
       const records = await query(sfCtx(ctx),
         `SELECT Id, FirstName, LastName, Email, Phone, AccountId, Account.Name, CreatedDate FROM Contact WHERE FirstName LIKE '%${q}%' OR LastName LIKE '%${q}%' OR Email LIKE '%${q}%' OR Account.Name LIKE '%${q}%' ORDER BY LastName ASC LIMIT ${limit}`
       );
-      return records.map(mapContact);
+      let contacts = records.map(mapContact);
+
+      // Person Account orgs: also search Account WHERE IsPersonAccount = true
+      if (orgQuery.personAccountsEnabled()) {
+        const paRecords = await query(sfCtx(ctx),
+          `SELECT Id, FirstName, LastName, PersonEmail, Phone, Name, CreatedDate FROM Account WHERE IsPersonAccount = true AND (FirstName LIKE '%${q}%' OR LastName LIKE '%${q}%' OR PersonEmail LIKE '%${q}%' OR Name LIKE '%${q}%') ORDER BY LastName ASC LIMIT ${limit}`
+        );
+        const paContacts = paRecords.map(mapPersonAccount);
+        // Deduplicate by Id and respect limit
+        const seen = new Set(contacts.map(c => c.id));
+        for (const pa of paContacts) {
+          if (!seen.has(pa.id)) contacts.push(pa);
+        }
+        contacts = contacts.slice(0, limit);
+      }
+
+      return contacts;
     } catch (err) {
       wrapError(err);
     }
@@ -239,12 +268,26 @@ export class SalesforceAdapter implements CRMPort {
       const contactLookup = orgQuery.contactHouseholdLookup();
       const [hhRecords, contactRecords, taskRecords] = await Promise.all([
         query(sfCtx(ctx), `SELECT Id, Name, Description, CreatedDate FROM ${obj} WHERE Id = '${safeId}' LIMIT 1`),
-        query(sfCtx(ctx), `SELECT Id, FirstName, LastName, Email, Phone, CreatedDate FROM Contact WHERE ${contactLookup} = '${safeId}' ORDER BY CreatedDate ASC`),
-        query(sfCtx(ctx), `SELECT Id, Subject, Status, Priority, Description, CreatedDate, ActivityDate FROM Task WHERE WhatId = '${safeId}' ORDER BY CreatedDate ASC`),
+        query(sfCtx(ctx), `SELECT Id, FirstName, LastName, Email, Phone, CreatedDate FROM Contact WHERE ${contactLookup} = '${safeId}' ORDER BY CreatedDate ASC LIMIT 200`),
+        query(sfCtx(ctx), `SELECT Id, Subject, Status, Priority, Description, CreatedDate, ActivityDate FROM Task WHERE WhatId = '${safeId}' ORDER BY CreatedDate ASC LIMIT 500`),
       ]);
+      let contacts = contactRecords.map(mapContact);
+
+      // Person Account orgs: also find Person Account children via ParentId
+      if (orgQuery.personAccountsEnabled()) {
+        const paRecords = await query(sfCtx(ctx),
+          `SELECT Id, FirstName, LastName, PersonEmail, Phone, CreatedDate FROM Account WHERE IsPersonAccount = true AND ParentId = '${safeId}' ORDER BY CreatedDate ASC LIMIT 200`
+        );
+        const paContacts = paRecords.map(mapPersonAccount);
+        const seen = new Set(contacts.map(c => c.id));
+        for (const pa of paContacts) {
+          if (!seen.has(pa.id)) contacts.push(pa);
+        }
+      }
+
       return {
         household: hhRecords[0] ? mapHousehold(hhRecords[0]) : null,
-        contacts: contactRecords.map(mapContact),
+        contacts,
         tasks: taskRecords.map(mapTask),
       };
     } catch (err) {

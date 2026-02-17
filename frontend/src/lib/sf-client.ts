@@ -9,7 +9,7 @@
 // 3. SOQL sanitization is centralized and mandatory
 // 4. Salesforce ID validation prevents injection via record IDs
 
-const SF_API_VERSION = "v59.0";
+export const SF_API_VERSION = process.env.SF_API_VERSION || "v59.0";
 const SF_FETCH_TIMEOUT_MS = 30_000;  // 30s timeout for all SF API calls
 const SF_MAX_RETRIES = 2;            // Max retries for transient failures
 const SF_RETRY_BASE_MS = 500;        // Base delay for exponential backoff

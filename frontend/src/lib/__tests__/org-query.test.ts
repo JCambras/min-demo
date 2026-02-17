@@ -14,9 +14,11 @@ function makeMapping(overrides?: Partial<OrgMapping>): OrgMapping {
     discoveredAt: new Date().toISOString(),
     version: 1,
     confidence: 0.85,
+    personAccountsEnabled: false,
     household: {
       object: "Account",
       recordTypeDeveloperName: null,
+      recordTypeId: null,
       filterField: "Type",
       filterValue: "Household",
       nameField: "Name",
@@ -100,6 +102,7 @@ describe("orgQuery — RecordType Mapping (FSC)", () => {
       household: {
         object: "Account",
         recordTypeDeveloperName: "IndustriesHousehold",
+        recordTypeId: "012000000000001AAA",
         filterField: null,
         filterValue: null,
         nameField: "Name",
@@ -141,6 +144,7 @@ describe("orgQuery — Custom Object Mapping", () => {
       household: {
         object: "HH_Group__c",
         recordTypeDeveloperName: null,
+        recordTypeId: null,
         filterField: null,
         filterValue: null,
         nameField: "Name",
@@ -202,6 +206,7 @@ describe("orgQuery — newHouseholdFields", () => {
       household: {
         object: "Account",
         recordTypeDeveloperName: "IndustriesHousehold",
+        recordTypeId: "012000000000001AAA",
         filterField: null, filterValue: null,
         nameField: "Name", primaryAdvisorField: null, totalAumField: null,
         serviceTierField: null, clientStatusField: null, confidence: 0.95,
@@ -209,5 +214,73 @@ describe("orgQuery — newHouseholdFields", () => {
     }));
     const fields = orgQuery.newHouseholdFields("Smith Household", "Created by Min");
     expect(fields.Type).toBeUndefined();
+  });
+
+  it("includes RecordTypeId when mapping has recordTypeId", () => {
+    setOrgMapping(makeMapping({
+      household: {
+        object: "Account",
+        recordTypeDeveloperName: "IndustriesHousehold",
+        recordTypeId: "012000000000001AAA",
+        filterField: null, filterValue: null,
+        nameField: "Name", primaryAdvisorField: null, totalAumField: null,
+        serviceTierField: null, clientStatusField: null, confidence: 0.95,
+      },
+    }));
+    const fields = orgQuery.newHouseholdFields("Smith Household", "Created by Min");
+    expect(fields.RecordTypeId).toBe("012000000000001AAA");
+    expect(fields.Type).toBeUndefined();
+  });
+
+  it("excludes RecordTypeId when mapping has no recordTypeId", () => {
+    setOrgMapping(makeMapping());
+    const fields = orgQuery.newHouseholdFields("Smith Household", "Created by Min");
+    expect(fields.RecordTypeId).toBeUndefined();
+    expect(fields.Type).toBe("Household");
+  });
+});
+
+describe("orgQuery — personAccountsEnabled", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("returns false when no mapping is set", () => {
+    expect(orgQuery.personAccountsEnabled()).toBe(false);
+  });
+
+  it("returns false when mapping has personAccountsEnabled = false", () => {
+    setOrgMapping(makeMapping({ personAccountsEnabled: false }));
+    expect(orgQuery.personAccountsEnabled()).toBe(false);
+  });
+
+  it("returns true when mapping has personAccountsEnabled = true", () => {
+    setOrgMapping(makeMapping({ personAccountsEnabled: true }));
+    expect(orgQuery.personAccountsEnabled()).toBe(true);
+  });
+});
+
+describe("orgQuery — householdRecordTypeId", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("returns null when no mapping is set", () => {
+    expect(orgQuery.householdRecordTypeId()).toBeNull();
+  });
+
+  it("returns null when mapping has no recordTypeId", () => {
+    setOrgMapping(makeMapping());
+    expect(orgQuery.householdRecordTypeId()).toBeNull();
+  });
+
+  it("returns Id when mapping has recordTypeId", () => {
+    setOrgMapping(makeMapping({
+      household: {
+        object: "Account",
+        recordTypeDeveloperName: "IndustriesHousehold",
+        recordTypeId: "012000000000001AAA",
+        filterField: null, filterValue: null,
+        nameField: "Name", primaryAdvisorField: null, totalAumField: null,
+        serviceTierField: null, clientStatusField: null, confidence: 0.95,
+      },
+    }));
+    expect(orgQuery.householdRecordTypeId()).toBe("012000000000001AAA");
   });
 });

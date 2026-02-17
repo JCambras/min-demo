@@ -43,7 +43,7 @@ function makeBundle(overrides?: Partial<OrgMetadataBundle>): OrgMetadataBundle {
         makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
         makeField({ name: "Type", type: "picklist", custom: false }),
       ],
-      recordTypeInfos: [{ name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: true }],
+      recordTypeInfos: [{ recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: true }],
       childRelationships: [{ childSObject: "Contact", field: "AccountId", relationshipName: "Contacts" }],
     },
     contactDescribe: {
@@ -132,9 +132,9 @@ describe("Integration: FSC Org (RecordType detection)", () => {
           makeField({ name: "Total_AUM__c", type: "currency", custom: true, label: "Total AUM" }),
         ],
         recordTypeInfos: [
-          { name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
-          { name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
-          { name: "Individual", developerName: "IndustriesIndividual", active: true, defaultRecordTypeMapping: false },
+          { recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
+          { recordTypeId: "012000000000001AAA", name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
+          { recordTypeId: "012000000000002AAA", name: "Individual", developerName: "IndustriesIndividual", active: true, defaultRecordTypeMapping: false },
         ],
         childRelationships: [{ childSObject: "Contact", field: "AccountId", relationshipName: "Contacts" }],
       },
@@ -247,14 +247,50 @@ describe("Integration: Mapping Cache Lifecycle", () => {
     expect(orgQuery.householdFilter()).toBe("Type = 'Household'");
   });
 
+  it("personAccountsEnabled flows through pipeline", () => {
+    const bundle = makeBundle({ personAccountsEnabled: true });
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.personAccountsEnabled).toBe(true);
+
+    setOrgMapping(mapping);
+    expect(orgQuery.personAccountsEnabled()).toBe(true);
+  });
+
+  it("recordTypeId flows through pipeline for FSC org", () => {
+    const bundle = makeBundle({
+      accountDescribe: {
+        name: "Account", label: "Account", custom: false,
+        fields: [makeField({ name: "Name", type: "string", custom: false })],
+        recordTypeInfos: [
+          { recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
+          { recordTypeId: "012000000000001AAA", name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
+        ],
+        childRelationships: [],
+      },
+      fscObjectsFound: ["FinServ__FinancialAccount__c"],
+      recordCounts: { accounts: 340, accountsByRecordType: { IndustriesHousehold: 280 }, contacts: 600, financialAccounts: 0, opportunities: 0, recentTasks: 800 },
+      accountTypeValues: [],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.household.recordTypeId).toBe("012000000000001AAA");
+
+    setOrgMapping(mapping);
+    expect(orgQuery.householdRecordTypeId()).toBe("012000000000001AAA");
+
+    const fields = orgQuery.newHouseholdFields("Smith Household", "Test");
+    expect(fields.RecordTypeId).toBe("012000000000001AAA");
+    expect(fields.Type).toBeUndefined();
+  });
+
   it("reverts to defaults after clear", () => {
     const bundle = makeBundle({
       accountDescribe: {
         name: "Account", label: "Account", custom: false,
         fields: [makeField({ name: "Name", type: "string", custom: false })],
         recordTypeInfos: [
-          { name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
-          { name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
+          { recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
+          { recordTypeId: "012000000000001AAA", name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
         ],
         childRelationships: [],
       },
@@ -271,5 +307,43 @@ describe("Integration: Mapping Cache Lifecycle", () => {
 
     // Should revert to demo default
     expect(orgQuery.householdFilter()).toBe("Type = 'Household'");
+  });
+});
+
+// ─── Integration: FSC Org with FinServ__TotalFinancialAccounts__c ────────
+
+describe("Integration: FSC AUM via TotalFinancialAccounts field", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("detects AUM from FinServ__TotalFinancialAccounts__c without Financial Accounts", () => {
+    const bundle = makeBundle({
+      accountDescribe: {
+        name: "Account", label: "Account", custom: false,
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({ name: "FinServ__TotalFinancialAccounts__c", type: "currency", custom: true, label: "Total Financial Accounts" }),
+        ],
+        recordTypeInfos: [
+          { recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
+          { recordTypeId: "012000000000001AAA", name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
+        ],
+        childRelationships: [{ childSObject: "Contact", field: "AccountId", relationshipName: "Contacts" }],
+      },
+      fscObjectsFound: ["FinServ__FinancialAccount__c"],
+      recordCounts: { accounts: 200, accountsByRecordType: { IndustriesHousehold: 180 }, contacts: 400, financialAccounts: 0, opportunities: 0, recentTasks: 500 },
+      accountTypeValues: [],
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+
+    // AUM detected from the account field
+    expect(mapping.aum.source).toBe("account_field");
+    expect(mapping.aum.field).toBe("FinServ__TotalFinancialAccounts__c");
+    expect(mapping.aum.confidence).toBeGreaterThanOrEqual(0.90);
+
+    // Pipeline works end-to-end
+    setOrgMapping(mapping);
+    expect(mapping.household.totalAumField).toBe("FinServ__TotalFinancialAccounts__c");
   });
 });

@@ -36,7 +36,7 @@ function makeAccountDescribe(overrides?: Partial<ObjectDescribe>): ObjectDescrib
       makeField({ name: "Type", type: "picklist", custom: false }),
       makeField({ name: "CreatedDate", type: "datetime", custom: false }),
     ],
-    recordTypeInfos: [{ name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: true }],
+    recordTypeInfos: [{ recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: true }],
     childRelationships: [
       { childSObject: "Contact", field: "AccountId", relationshipName: "Contacts" },
     ],
@@ -98,9 +98,9 @@ describe("Pattern 1: FSC Household RecordType", () => {
   const bundle = makeBundle({
     accountDescribe: makeAccountDescribe({
       recordTypeInfos: [
-        { name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
-        { name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
-        { name: "Individual", developerName: "IndustriesIndividual", active: true, defaultRecordTypeMapping: false },
+        { recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
+        { recordTypeId: "012000000000001AAA", name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
+        { recordTypeId: "012000000000002AAA", name: "Individual", developerName: "IndustriesIndividual", active: true, defaultRecordTypeMapping: false },
       ],
       fields: [
         makeField({ name: "Name", type: "string", custom: false }),
@@ -521,5 +521,105 @@ describe("Overall Mapping Quality", () => {
     const mapping = classifyOrgHeuristic(makeBundle());
     expect(mapping.automationRisks).toBeDefined();
     expect(["high", "medium", "low"]).toContain(mapping.automationRisks.riskLevel);
+  });
+});
+
+// ─── Person Accounts ──────────────────────────────────────────────────────
+
+describe("Person Account Flag in OrgMapping", () => {
+  it("sets personAccountsEnabled = false when bundle has it false", () => {
+    const mapping = classifyOrgHeuristic(makeBundle({ personAccountsEnabled: false }));
+    expect(mapping.personAccountsEnabled).toBe(false);
+  });
+
+  it("sets personAccountsEnabled = true when bundle has it true", () => {
+    const mapping = classifyOrgHeuristic(makeBundle({ personAccountsEnabled: true }));
+    expect(mapping.personAccountsEnabled).toBe(true);
+  });
+});
+
+// ─── RecordTypeId in OrgMapping ──────────────────────────────────────────
+
+describe("RecordTypeId in Household Detection", () => {
+  it("captures recordTypeId from Pattern 1 (FSC RecordType)", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        recordTypeInfos: [
+          { recordTypeId: "012000000000000AAA", name: "Master", developerName: "Master", active: true, defaultRecordTypeMapping: false },
+          { recordTypeId: "012000000000001AAA", name: "Household", developerName: "IndustriesHousehold", active: true, defaultRecordTypeMapping: true },
+        ],
+      }),
+      fscObjectsFound: ["FinServ__FinancialAccount__c"],
+      recordCounts: { accounts: 340, accountsByRecordType: { IndustriesHousehold: 280 }, contacts: 600, financialAccounts: 0, opportunities: 0, recentTasks: 800 },
+    });
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.household.recordTypeId).toBe("012000000000001AAA");
+  });
+
+  it("sets recordTypeId to null for Pattern 2 (Type picklist)", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({
+            name: "Type", type: "picklist", custom: false,
+            picklistValues: [
+              { value: "Household", label: "Household", active: true },
+              { value: "Business", label: "Business", active: true },
+            ],
+          }),
+        ],
+      }),
+    });
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.household.recordTypeId).toBeNull();
+  });
+});
+
+// ─── FSC Rollup AUM Detection ────────────────────────────────────────────
+
+describe("AUM Detection — FinServ__TotalFinancialAccounts__c", () => {
+  it("detects FinServ__TotalFinancialAccounts__c as AUM when present on Account", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "OwnerId", type: "reference", custom: false, referenceTo: ["User"] }),
+          makeField({ name: "FinServ__TotalFinancialAccounts__c", type: "currency", custom: true, label: "Total Financial Accounts" }),
+        ],
+      }),
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    expect(mapping.aum.source).toBe("account_field");
+    expect(mapping.aum.field).toBe("FinServ__TotalFinancialAccounts__c");
+    expect(mapping.aum.confidence).toBeGreaterThanOrEqual(0.90);
+  });
+
+  it("prefers financial_account_rollup over FinServ__TotalFinancialAccounts__c when FAs exist", () => {
+    const bundle = makeBundle({
+      accountDescribe: makeAccountDescribe({
+        fields: [
+          makeField({ name: "Name", type: "string", custom: false }),
+          makeField({ name: "FinServ__TotalFinancialAccounts__c", type: "currency", custom: true, label: "Total Financial Accounts" }),
+        ],
+      }),
+      financialAccountDescribe: {
+        name: "FinServ__FinancialAccount__c", label: "Financial Account", custom: true,
+        fields: [
+          makeField({ name: "FinServ__Balance__c", type: "currency", custom: true, label: "Balance" }),
+          makeField({ name: "FinServ__PrimaryOwner__c", type: "reference", custom: true, referenceTo: ["Account"] }),
+        ],
+        recordTypeInfos: [],
+        childRelationships: [],
+      },
+      fscObjectsFound: ["FinServ__FinancialAccount__c"],
+      recordCounts: { accounts: 100, accountsByRecordType: {}, contacts: 200, financialAccounts: 500, opportunities: 0, recentTasks: 300 },
+    });
+
+    const mapping = classifyOrgHeuristic(bundle);
+    // FA rollup is higher priority than the account field
+    expect(mapping.aum.source).toBe("financial_account_rollup");
   });
 });

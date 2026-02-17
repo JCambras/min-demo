@@ -20,8 +20,7 @@
 //   8. SELECT COUNT() FROM Account (+ per RecordType) → record counts
 
 import type { SFContext } from "./sf-client";
-
-const SF_API_VERSION = "v59.0";
+import { SF_API_VERSION } from "./sf-client";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -38,6 +37,7 @@ export interface FieldDescribe {
 }
 
 export interface RecordTypeInfo {
+  recordTypeId: string;
   name: string;
   developerName: string;
   active: boolean;
@@ -240,6 +240,7 @@ async function fetchObjectDescribe(
   }));
 
   const recordTypeInfos = ((raw.recordTypeInfos as Record<string, unknown>[]) || []).map(rt => ({
+    recordTypeId: (rt.recordTypeId as string) || "",
     name: rt.name as string,
     developerName: rt.developerName as string,
     active: (rt.active as boolean) || false,
@@ -541,10 +542,12 @@ export interface OrgMapping {
   discoveredAt: string;
   version: number;
   confidence: number;
+  personAccountsEnabled: boolean;
 
   household: {
     object: string;
     recordTypeDeveloperName: string | null;
+    recordTypeId: string | null;
     filterField: string | null;
     filterValue: string | null;
     nameField: string;
@@ -652,6 +655,7 @@ export function classifyOrgHeuristic(bundle: OrgMetadataBundle): OrgMapping {
     discoveredAt: bundle.discoveredAt,
     version: 1,
     confidence: overallConfidence,
+    personAccountsEnabled: bundle.personAccountsEnabled,
     household,
     contact,
     financialAccount,
@@ -679,6 +683,7 @@ function detectHousehold(
     return {
       object: "Account",
       recordTypeDeveloperName: householdRT.developerName,
+      recordTypeId: householdRT.recordTypeId || null,
       filterField: null,
       filterValue: null,
       nameField: "Name",
@@ -700,6 +705,7 @@ function detectHousehold(
     return {
       object: "Account",
       recordTypeDeveloperName: null,
+      recordTypeId: null,
       filterField: "Type",
       filterValue: hhValue,
       nameField: "Name",
@@ -720,6 +726,7 @@ function detectHousehold(
     return {
       object: "Account",
       recordTypeDeveloperName: null,
+      recordTypeId: null,
       filterField: "Type",
       filterValue: dataHouseholdType.value,
       nameField: "Name",
@@ -740,6 +747,7 @@ function detectHousehold(
     return {
       object: hhCandidate.name,
       recordTypeDeveloperName: null,
+      recordTypeId: null,
       filterField: null,
       filterValue: null,
       nameField: "Name",
@@ -756,6 +764,7 @@ function detectHousehold(
   return {
     object: "Account",
     recordTypeDeveloperName: null,
+    recordTypeId: null,
     filterField: null,
     filterValue: null,
     nameField: "Name",
@@ -895,6 +904,19 @@ function detectAum(
     };
   }
 
+  // Check for standard FSC rollup field on Account (common in FSC orgs without FA records)
+  const fscRollupField = bundle.accountDescribe?.fields.find(
+    f => f.name === "FinServ__TotalFinancialAccounts__c" && f.type === "currency"
+  );
+  if (fscRollupField) {
+    return {
+      source: "account_field",
+      object: "Account",
+      field: "FinServ__TotalFinancialAccounts__c",
+      confidence: 0.90,
+    };
+  }
+
   // Check for AUM field directly on Account/household object
   const acct = bundle.accountDescribe;
   const aumField = findAumField(acct);
@@ -1015,7 +1037,7 @@ function findAumField(describe: ObjectDescribe | null): string | null {
   if (!describe) return null;
   return describe.fields.find(f =>
     f.custom && f.type === "currency" &&
-    /aum|asset.*under|total.*asset|total.*aum|book.*size|portfolio.*value/i.test(f.label)
+    /aum|asset.*under|total.*asset|total.*aum|total.*financial|book.*size|portfolio.*value/i.test(f.label)
   )?.name || null;
 }
 
