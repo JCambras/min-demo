@@ -87,7 +87,7 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
       </div>
 
       {/* Quick Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {[
           { label: "Households", value: data.totalHouseholds, Icon: Users, color: "text-slate-600", id: "stat-hh" },
           { label: "Open Tasks", value: data.openTasks, Icon: Clock, color: data.openTasks > 0 ? "text-amber-600" : "text-slate-600", id: "stat-open" },
@@ -99,7 +99,7 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
             <button onClick={() => toggleDetail(s.id)} className="w-full bg-white border border-slate-200 rounded-xl p-4 text-center hover:border-slate-300 hover:shadow-sm transition-all">
               <s.Icon size={16} className={`${s.color} mx-auto mb-2`} />
               <p className={`text-2xl font-light ${s.color}`}>{s.value}</p>
-              <p className="text-[10px] text-slate-400 mt-1">{s.label}<span className="text-slate-300 ml-0.5">▾</span></p>
+              <p className="text-sm font-semibold text-slate-600 mt-1">{s.label}<span className="text-slate-300 ml-0.5">▾</span></p>
             </button>
             <DetailDrawer id={s.id} activeId={detailPanel}>
               {s.id === "stat-open" && data.openTaskItems.length > 0 ? (

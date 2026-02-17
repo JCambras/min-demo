@@ -19,7 +19,7 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
       </div>
 
       {/* Revenue headline cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
         <button onClick={() => toggleDetail("rev-aum")} className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
           <p className="text-[10px] text-emerald-600 font-medium uppercase tracking-wider">Est. <abbr title="Assets Under Management" className="no-underline cursor-help">AUM</abbr><span className="text-emerald-400 ml-0.5">▾</span></p>
           <p className="text-2xl font-light text-emerald-700 mt-1">${(data.revenue.estimatedAum / 1_000_000).toFixed(0)}M</p>

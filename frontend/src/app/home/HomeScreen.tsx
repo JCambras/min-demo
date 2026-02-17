@@ -251,7 +251,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
 
       {/* Stat Cards (Advisor + Principal only) */}
       {(isAdvisor || role === "principal") && sfConnected && stats && (<div className="mb-8" data-tour="stat-cards">
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {([
             { key: "overdueTasks", label: "Overdue", value: stats.overdueTasks, Icon: Clock, color: stats.overdueTasks > 0 ? "text-red-500" : "text-green-500", vColor: stats.overdueTasks > 0 ? "text-red-600" : "text-green-600", peek: stats.overdueTaskItems, subtitle: "past due", tier: (stats.overdueTasks === 0 ? "good" : stats.overdueTasks <= 3 ? "ok" : "bad") as "good" | "ok" | "bad" },
             { key: "openTasks", label: "Open Tasks", value: stats.openTasks, Icon: CheckCircle, color: "text-amber-500", vColor: stats.openTasks > 0 ? "text-amber-600" : "", peek: stats.openTaskItems, subtitle: "in progress", tier: (stats.openTasks === 0 ? "good" : stats.openTasks <= 5 ? "ok" : "bad") as "good" | "ok" | "bad" },
