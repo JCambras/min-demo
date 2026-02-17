@@ -215,7 +215,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       <div className="flex items-center justify-between mb-8">
         <div data-tour="home-greeting">
           <h1 className="text-4xl font-light tracking-tight text-slate-900">Hi, {firstName}</h1>
-          <p className="text-sm text-slate-400 font-light mt-1">{role === "principal" && principalAdvisor !== "all" ? `Viewing ${principalAdvisor}'s households` : "Your practice, simplified."}</p>
+          <p className="text-sm text-slate-400 font-light mt-1">{role === "principal" && principalAdvisor !== "all" ? `Viewing ${principalAdvisor}'s households` : role === "advisor" ? "Your day, simplified." : role === "operations" ? "Your workflows, simplified." : "Your practice, simplified."}</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => { cycleRole(); setExpandedStat(null); }}
