@@ -96,12 +96,35 @@ export default function Home() {
 
   if (setupStep === "name") return <NamePicker advisorName={advisorName} onSelect={n => dispatch({ type: "SET_ADVISOR_NAME", name: n })} onContinue={() => dispatch({ type: "SET_SETUP_STEP", step: "crm" })} onBack={() => dispatch({ type: "SET_SETUP_STEP", step: "role" })} role={role} />;
 
+  const handleCrmSelect = async () => {
+    // If we already know SF is connected, skip straight to ready
+    if (sfConnected) {
+      dispatch({ type: "SET_SETUP_STEP", step: "ready" });
+      return;
+    }
+    // sfConnected is null (still loading) or false — check fresh
+    try {
+      const res = await fetch("/api/salesforce/connection");
+      const d = await res.json();
+      if (d.connected) {
+        const inst = d.instanceUrl?.replace("https://", "").split(".")[0]
+          .replace(/-[a-f0-9]{10,}-dev-ed$/i, "").replace(/-/g, " ") || "";
+        dispatch({ type: "SF_STATUS", connected: true, instance: inst });
+        dispatch({ type: "SET_SETUP_STEP", step: "ready" });
+      } else {
+        dispatch({ type: "SET_SETUP_STEP", step: "connect" });
+      }
+    } catch {
+      dispatch({ type: "SET_SETUP_STEP", step: "connect" });
+    }
+  };
+
   if (setupStep === "crm") return (
     <div className="flex h-screen bg-surface"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">
       <div className="text-center mb-10"><h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1><p className="text-lg text-slate-400 font-light">Connect your CRM</p></div>
       <p className="text-sm text-slate-500 text-center mb-6">Which CRM does your firm use?</p>
       <div className="grid grid-cols-3 gap-4">
-        {CRMS.map(c => (<button key={c.id} onClick={() => c.live && (sfConnected ? dispatch({ type: "SET_SETUP_STEP", step: "ready" }) : dispatch({ type: "SET_SETUP_STEP", step: "connect" }))} disabled={!c.live}
+        {CRMS.map(c => (<button key={c.id} onClick={() => c.live && handleCrmSelect()} disabled={!c.live}
           className={`group flex flex-col items-center text-center gap-4 p-6 pt-10 pb-8 rounded-2xl bg-white border border-slate-200/80 transition-all ${c.live ? "hover:border-slate-400 hover:shadow-lg hover:scale-[1.02] cursor-pointer" : "opacity-60 cursor-default"}`}>
           <div className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all ${c.live ? "bg-slate-100 text-slate-500 group-hover:bg-slate-900 group-hover:text-white" : "bg-slate-50 text-slate-300"}`}><c.Icon size={26} strokeWidth={1.5} /></div>
           <div><p className={`text-lg transition-all mb-1 ${c.live ? "text-slate-600 group-hover:text-slate-900 group-hover:font-bold" : "text-slate-400"}`}>{c.label}</p><p className="text-xs text-slate-400 leading-relaxed">{c.desc}</p></div>
