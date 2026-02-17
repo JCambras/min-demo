@@ -9,6 +9,7 @@
 // restart, the mapping is restored from the cookie automatically.
 
 import type { OrgMapping } from "./schema-discovery";
+import { sanitizeSOQL } from "./sf-client";
 
 // ─── In-Memory Mapping Cache ────────────────────────────────────────────────
 // Hot cache for the current process. Backed by encrypted cookie.
@@ -102,8 +103,11 @@ async function clearPersistedMapping(): Promise<void> {
 }
 
 function deriveKey(crypto: typeof import("crypto")): Buffer {
-  const secret = process.env.SF_COOKIE_SECRET || "min-demo-dev-key-change-in-prod!!";
-  return crypto.scryptSync(secret, "min-mapping-salt", 32);
+  const secret = process.env.SF_COOKIE_SECRET;
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("SF_COOKIE_SECRET must be set in production");
+  }
+  return crypto.scryptSync(secret || "min-demo-dev-key-change-in-prod!!", "min-mapping-salt", 32);
 }
 
 // ─── Default Mapping (Demo Fallback) ────────────────────────────────────────
@@ -151,12 +155,13 @@ export const orgQuery = {
 
     // Pattern 1: RecordType-based filtering
     if (hh.recordTypeDeveloperName) {
-      return `RecordType.DeveloperName = '${hh.recordTypeDeveloperName}'`;
+      return `RecordType.DeveloperName = '${sanitizeSOQL(hh.recordTypeDeveloperName)}'`;
     }
 
     // Pattern 2: Field-based filtering (e.g., Type = 'Household')
     if (hh.filterField && hh.filterValue) {
-      return `${hh.filterField} = '${hh.filterValue}'`;
+      const safeField = /^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(hh.filterField) ? hh.filterField : "Type";
+      return `${safeField} = '${sanitizeSOQL(hh.filterValue)}'`;
     }
 
     // Pattern 3: No filter (all records in the object are households)
@@ -308,7 +313,8 @@ export const orgQuery = {
   searchHouseholds(fields: string, nameQuery: string, limit: number, offset?: number): string {
     const obj = orgQuery.householdObject();
     const baseFilter = orgQuery.householdFilter();
-    const nameClause = `Name LIKE '%${nameQuery}%'`;
+    const safeName = sanitizeSOQL(nameQuery);
+    const nameClause = `Name LIKE '%${safeName}%'`;
     const where = baseFilter ? `WHERE ${baseFilter} AND ${nameClause}` : `WHERE ${nameClause}`;
     const offsetClause = offset ? ` OFFSET ${offset}` : "";
     return `SELECT ${fields} FROM ${obj} ${where} ORDER BY CreatedDate DESC LIMIT ${limit}${offsetClause}`;

@@ -256,6 +256,13 @@ export async function exchangeCodeForTokens(code: string, sfDomain: string): Pro
   return conn;
 }
 
+// ─── Connection Source ───────────────────────────────────────────────────────
+
+export async function getConnectionSource(): Promise<"oauth" | "env"> {
+  const stored = await getStoredConnection();
+  return stored ? "oauth" : "env";
+}
+
 // ─── Connection Status ───────────────────────────────────────────────────────
 
 export async function getConnectionStatus(): Promise<SFConnectionStatus> {

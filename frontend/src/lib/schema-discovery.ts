@@ -20,7 +20,7 @@
 //   8. SELECT COUNT() FROM Account (+ per RecordType) → record counts
 
 import type { SFContext } from "./sf-client";
-import { SF_API_VERSION } from "./sf-client";
+import { SF_API_VERSION, sanitizeSOQL } from "./sf-client";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -171,6 +171,12 @@ const RIA_CONCEPT_KEYWORDS = [
   "portfolio", "compliance", "review", "prospect", "pipeline", "aum",
   "advisor", "planner", "rm_", "book", "wealth",
 ];
+
+// Word-boundary regex patterns built from keywords to prevent partial matches
+// (e.g., "aum" should not match "maximum")
+const RIA_CONCEPT_PATTERNS = RIA_CONCEPT_KEYWORDS.map(kw =>
+  new RegExp(`(?:^|[^a-zA-Z])${kw.replace(/_/g, "[_]")}`, "i")
+);
 
 // ─── Low-Level Fetchers ─────────────────────────────────────────────────────
 // Each function makes exactly one API call and returns typed results.
@@ -351,11 +357,17 @@ async function fetchRecordCounts(
   const recordTypes = (accountDescribe?.recordTypeInfos || [])
     .filter(rt => rt.active && rt.developerName !== "Master");
 
-  for (const rt of recordTypes) {
-    const count = await soqlCount(ctx,
-      `SELECT COUNT() FROM Account WHERE RecordType.DeveloperName = '${rt.developerName}'`
-    );
-    counts.accountsByRecordType[rt.developerName] = count;
+  const rtResults = await Promise.all(
+    recordTypes.map(async rt => {
+      const safeName = sanitizeSOQL(rt.developerName);
+      const count = await soqlCount(ctx,
+        `SELECT COUNT() FROM Account WHERE RecordType.DeveloperName = '${safeName}'`
+      );
+      return { name: rt.developerName, count };
+    })
+  );
+  for (const { name, count } of rtResults) {
+    counts.accountsByRecordType[name] = count;
   }
 
   // Contacts, Opportunities, recent Tasks
@@ -381,7 +393,7 @@ async function fetchRecordCounts(
 
 function detectPersonAccounts(accountDescribe: ObjectDescribe | null): boolean {
   if (!accountDescribe) return false;
-  return accountDescribe.fields.some(f => f.name === "IsPersonAccount");
+  return accountDescribe.fields.some(f => f.name === "PersonEmail" || f.name === "PersonContactId");
 }
 
 // ─── Candidate Custom Object Detection ──────────────────────────────────────
@@ -400,11 +412,11 @@ function identifyCandidateObjects(
       if (o.name.startsWith("npsp__") || o.name.startsWith("npe")) return false;
       // Skip known RIA managed packages (handled separately)
       if (MANAGED_PACKAGE_PREFIXES.some(mp => o.name.startsWith(mp.prefix))) return false;
-      // Check if name or label contains RIA-related keywords
+      // Check if name or label contains RIA-related keywords (word-boundary matching)
       const nameLower = o.name.toLowerCase();
       const labelLower = o.label.toLowerCase();
-      return RIA_CONCEPT_KEYWORDS.some(kw =>
-        nameLower.includes(kw) || labelLower.includes(kw)
+      return RIA_CONCEPT_PATTERNS.some(pattern =>
+        pattern.test(nameLower) || pattern.test(labelLower)
       );
     })
     .map(o => o.name)
@@ -541,7 +553,7 @@ export async function discoverOrg(ctx: SFContext): Promise<OrgMetadataBundle> {
   try {
     const typeResults = await sfFetch(ctx,
       "/query?q=" + encodeURIComponent(
-        "SELECT Type, COUNT(Id) cnt FROM Account WHERE Type != null GROUP BY Type ORDER BY COUNT(Id) DESC LIMIT 20"
+        "SELECT Type, COUNT(Id) cnt FROM Account WHERE Type != null GROUP BY Type ORDER BY COUNT(Id) DESC LIMIT 50"
       )
     );
     apiCallsMade++;
@@ -551,6 +563,20 @@ export async function discoverOrg(ctx: SFContext): Promise<OrgMetadataBundle> {
     }
   } catch {
     errors.push("Failed to query Account Type values");
+  }
+
+  // ── Step 5c: Account hierarchy detection ──────────────────────────────────
+  let accountHierarchyDetected = false;
+  if (accountDescribe?.fields.some(f => f.name === "ParentId")) {
+    try {
+      const count = await soqlCount(ctx,
+        "SELECT COUNT() FROM Account WHERE ParentId != null"
+      );
+      apiCallsMade++;
+      accountHierarchyDetected = count > 0;
+    } catch {
+      errors.push("Failed to check Account hierarchy");
+    }
   }
 
   // ── Assemble Bundle ───────────────────────────────────────────────────────
@@ -583,7 +609,7 @@ export async function discoverOrg(ctx: SFContext): Promise<OrgMetadataBundle> {
     activeValidationRules,
     recordCounts,
     accountTypeValues,
-    accountHierarchyDetected: false, // populated in Step 5c when implemented
+    accountHierarchyDetected,
     apiCallsMade,
     durationMs,
     errors,

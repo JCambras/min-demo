@@ -47,16 +47,18 @@ function optionalSfId(data: Record<string, unknown>, field: string): string | un
   return val;
 }
 
-function requireArray(data: Record<string, unknown>, field: string): unknown[] {
+function requireArray(data: Record<string, unknown>, field: string, maxLength = 100): unknown[] {
   const val = data[field];
   if (!Array.isArray(val)) throw new SFValidationError(`Missing required array: ${field}`);
+  if (val.length > maxLength) throw new SFValidationError(`Array ${field} exceeds maximum of ${maxLength} items`);
   return val;
 }
 
-function optionalArray(data: Record<string, unknown>, field: string): unknown[] {
+function optionalArray(data: Record<string, unknown>, field: string, maxLength = 100): unknown[] {
   const val = data[field];
   if (val === undefined || val === null) return [];
   if (!Array.isArray(val)) throw new SFValidationError(`Field ${field} must be an array`);
+  if (val.length > maxLength) throw new SFValidationError(`Array ${field} exceeds maximum of ${maxLength} items`);
   return val;
 }
 
@@ -181,11 +183,11 @@ export const validate = {
 
   confirmIntent(raw: unknown): ConfirmIntentInput {
     const d = asRecord(raw);
-    const accounts = requireArray(d, "accounts").map(a => {
+    const accounts = requireArray(d, "accounts", 20).map(a => {
       const acc = asRecord(a);
       return { type: requireString(acc, "type"), owner: requireString(acc, "owner") };
     });
-    const members = requireArray(d, "members").map(m => {
+    const members = requireArray(d, "members", 50).map(m => {
       const mem = asRecord(m);
       return {
         firstName: requireString(mem, "firstName"),
@@ -247,7 +249,7 @@ export const validate = {
 
   recordPaperwork(raw: unknown): RecordPaperworkInput {
     const d = asRecord(raw);
-    const envelopes = requireArray(d, "envelopes").map(e => {
+    const envelopes = requireArray(d, "envelopes", 25).map(e => {
       const env = asRecord(e);
       const docs = requireArray(env, "documents").map(doc => {
         if (typeof doc !== "string") throw new SFValidationError("Each document must be a string");
@@ -274,7 +276,7 @@ export const validate = {
 
   sendDocusign(raw: unknown): SendDocusignInput {
     const d = asRecord(raw);
-    const envelopes = requireArray(d, "envelopes").map(e => {
+    const envelopes = requireArray(d, "envelopes", 25).map(e => {
       const env = asRecord(e);
       const signers = requireArray(env, "signers").map(s => {
         if (typeof s !== "string") throw new SFValidationError("Each signer must be a string");
@@ -307,7 +309,7 @@ export const validate = {
 
   recordComplianceReview(raw: unknown): RecordComplianceReviewInput {
     const d = asRecord(raw);
-    const checks = requireArray(d, "checks").map(c => {
+    const checks = requireArray(d, "checks", 100).map(c => {
       const ch = asRecord(c);
       return {
         label: requireString(ch, "label"),
@@ -338,7 +340,7 @@ export const validate = {
 
   recordMeetingNote(raw: unknown): RecordMeetingNoteInput {
     const d = asRecord(raw);
-    const followUps = optionalArray(d, "followUps").map(f => {
+    const followUps = optionalArray(d, "followUps", 50).map(f => {
       if (typeof f !== "string") throw new SFValidationError("Each follow-up must be a string");
       return f;
     });

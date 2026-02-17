@@ -598,3 +598,82 @@ describe("CRM Error Types", () => {
     expect(err.name).toBe("CRMMutationError");
   });
 });
+
+// ─── Phase 3: getHouseholdDetail Partial Data ─────────────────────────────
+
+describe("getHouseholdDetail — partial data (Phase 3)", () => {
+  let adapter: SalesforceAdapter;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    adapter = new SalesforceAdapter();
+  });
+
+  it("returns household + tasks when contacts query fails", async () => {
+    (query as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([{ Id: VALID_HH_ID, Name: "Doe Household", Description: "Test", CreatedDate: "2024-01-01T00:00:00Z" }])
+      .mockRejectedValueOnce(new SFQueryError("Contact query failed", 500))
+      .mockResolvedValueOnce([{ Id: VALID_TASK_ID, Subject: "Follow up", Status: "Not Started", Priority: "High", Description: "", CreatedDate: "2024-01-05T00:00:00Z", ActivityDate: "2024-02-01" }]);
+
+    const result = await adapter.getHouseholdDetail(crmCtx, VALID_HH_ID);
+    expect(result.household).not.toBeNull();
+    expect(result.household!.name).toBe("Doe Household");
+    expect(result.contacts).toHaveLength(0); // contacts failed gracefully
+    expect(result.tasks).toHaveLength(1);
+  });
+
+  it("returns household + contacts when tasks query fails", async () => {
+    (query as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([{ Id: VALID_HH_ID, Name: "Doe Household", Description: "Test", CreatedDate: "2024-01-01T00:00:00Z" }])
+      .mockResolvedValueOnce([{ Id: VALID_CONTACT_ID, FirstName: "Jane", LastName: "Doe", Email: "jane@test.com", Phone: "555", CreatedDate: "2024-01-01T00:00:00Z" }])
+      .mockRejectedValueOnce(new SFQueryError("Task query failed", 500));
+
+    const result = await adapter.getHouseholdDetail(crmCtx, VALID_HH_ID);
+    expect(result.household).not.toBeNull();
+    expect(result.contacts).toHaveLength(1);
+    expect(result.tasks).toHaveLength(0); // tasks failed gracefully
+  });
+});
+
+// ─── Phase 3: Advisor Lookup Resolution ────────────────────────────────────
+
+describe("Advisor Lookup — custom __c field (Phase 3)", () => {
+  let adapter: SalesforceAdapter;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    adapter = new SalesforceAdapter();
+  });
+
+  it("resolves custom __c advisor field to __r.Name in SOQL", async () => {
+    // Override advisorField to return a custom field
+    const orgQueryMock = await import("@/lib/org-query");
+    (orgQueryMock.orgQuery.advisorField as unknown) = () => "Primary_Advisor__c";
+
+    (query as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([]) // tasks
+      .mockResolvedValueOnce([   // households
+        {
+          Id: VALID_HH_ID,
+          Name: "Doe HH",
+          CreatedDate: "2024-01-01T00:00:00Z",
+          Description: "",
+          Primary_Advisor__r: { Name: "John Smith" },
+        },
+      ]);
+
+    const result = await adapter.queryTasks(crmCtx, 10, 0);
+
+    // Check that the SOQL for households uses __r.Name
+    const hhSoql = (query as ReturnType<typeof vi.fn>).mock.calls[1][1] as string;
+    expect(hhSoql).toContain("Primary_Advisor__r.Name");
+    expect(hhSoql).not.toContain("Primary_Advisor__c");
+
+    // Check that mapHousehold resolves the advisor name from __r
+    expect(result.households).toHaveLength(1);
+    expect(result.households[0].advisorName).toBe("John Smith");
+
+    // Restore
+    (orgQueryMock.orgQuery.advisorField as unknown) = () => "OwnerId";
+  });
+});

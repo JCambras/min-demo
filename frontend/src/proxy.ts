@@ -16,6 +16,23 @@ import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "@/lib/csrf";
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 
+// ─── Rate Limiting ──────────────────────────────────────────────────────────
+// In-memory sliding window rate limiter per IP. Resets on server restart.
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 100;
+const rateCounts = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateCounts.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    rateCounts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT_MAX;
+}
+
 // Routes exempt from CSRF (OAuth callbacks, connection checks)
 const CSRF_EXEMPT = new Set([
   "/api/salesforce/callback",   // OAuth redirect from Salesforce
@@ -30,6 +47,40 @@ export function proxy(request: NextRequest) {
   // Only apply to API routes
   if (!pathname.startsWith("/api/")) {
     return NextResponse.next();
+  }
+
+  // ── Rate Limiting ──
+  const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!checkRateLimit(clientIp)) {
+    return NextResponse.json(
+      { success: false, error: "Rate limit exceeded", errorCode: "RATE_LIMITED" },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
+
+  // ── Session Gate ──
+  // Require a valid Salesforce connection (OAuth cookie or env credentials)
+  // for all API routes except auth flow endpoints.
+  const SESSION_EXEMPT = new Set([
+    "/api/salesforce/auth",
+    "/api/salesforce/callback",
+    "/api/salesforce/connection",
+    "/api/csrf",
+  ]);
+
+  if (!SESSION_EXEMPT.has(pathname)) {
+    const sfCookie = request.cookies.get("min_sf_connection")?.value;
+    const hasEnvCreds = !!(
+      process.env.SALESFORCE_CLIENT_ID &&
+      process.env.SALESFORCE_CLIENT_SECRET &&
+      process.env.SALESFORCE_INSTANCE_URL
+    );
+    if (!sfCookie && !hasEnvCreds) {
+      return NextResponse.json(
+        { success: false, error: "Not authenticated", errorCode: "AUTH_REQUIRED" },
+        { status: 401 },
+      );
+    }
   }
 
   // ── Origin Check ──
@@ -73,6 +124,12 @@ export function proxy(request: NextRequest) {
 
   // Prevent referrer leakage
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+
+  // PDF responses should not be cached (contain sensitive client data)
+  if (pathname.startsWith("/api/pdf/")) {
+    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    response.headers.set("Pragma", "no-cache");
+  }
 
   return response;
 }

@@ -38,10 +38,10 @@ describe("sanitizeSOQL", () => {
     expect(sanitizeSOQL("a\\'b")).toBe("a\\\\\\'b");
   });
 
-  it("strips LIKE wildcards", () => {
-    expect(sanitizeSOQL("test%")).toBe("test");
-    expect(sanitizeSOQL("test_value")).toBe("testvalue");
-    expect(sanitizeSOQL("%admin%")).toBe("admin");
+  it("escapes LIKE wildcards", () => {
+    expect(sanitizeSOQL("test%")).toBe("test\\%");
+    expect(sanitizeSOQL("test_value")).toBe("test\\_value");
+    expect(sanitizeSOQL("%admin%")).toBe("\\%admin\\%");
   });
 
   it("strips control characters", () => {

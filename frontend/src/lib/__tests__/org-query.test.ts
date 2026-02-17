@@ -443,3 +443,63 @@ describe("orgQuery — requiredFieldGaps and FLS", () => {
     expect(orgQuery.hasBlockingFieldGaps()).toBe(false);
   });
 });
+
+// ─── Phase 3: SOQL Injection Prevention ──────────────────────────────────────
+
+describe("orgQuery — SOQL injection prevention (Phase 3)", () => {
+  beforeEach(() => clearOrgMapping());
+
+  it("escapes malicious recordTypeDeveloperName", () => {
+    setOrgMapping(makeMapping({
+      household: {
+        ...makeMapping().household,
+        recordTypeDeveloperName: "Household' OR 1=1--",
+        filterField: null,
+        filterValue: null,
+      },
+    }));
+    const filter = orgQuery.householdFilter();
+    // The single quote in the value should be escaped with backslash
+    expect(filter).toContain("\\'");
+    // The injection cannot break out of the string literal because the quote is escaped
+    expect(filter).toBe("RecordType.DeveloperName = 'Household\\' OR 1=1--'");
+  });
+
+  it("escapes malicious filterValue", () => {
+    setOrgMapping(makeMapping({
+      household: {
+        ...makeMapping().household,
+        recordTypeDeveloperName: null,
+        filterField: "Type",
+        filterValue: "Household'; DELETE--",
+      },
+    }));
+    const filter = orgQuery.householdFilter();
+    // The single quote should be escaped, preventing breakout
+    expect(filter).toContain("\\'");
+    // The value stays inside the SOQL string literal (escaped quote prevents breakout)
+    expect(filter).toBe("Type = 'Household\\'; DELETE--'");
+  });
+
+  it("sanitizes filterField against invalid characters", () => {
+    setOrgMapping(makeMapping({
+      household: {
+        ...makeMapping().household,
+        recordTypeDeveloperName: null,
+        filterField: "Type'; DROP TABLE--",
+        filterValue: "Household",
+      },
+    }));
+    const filter = orgQuery.householdFilter();
+    // Invalid field name should fall back to "Type"
+    expect(filter).toMatch(/^Type =/);
+  });
+
+  it("sanitizes nameQuery in searchHouseholds", () => {
+    const soql = orgQuery.searchHouseholds("Id, Name", "Smith'; DROP--", 10);
+    // The single quote in the search term should be escaped
+    expect(soql).toContain("\\'");
+    // The injection stays inside the LIKE string literal
+    expect(soql).toContain("Name LIKE '%Smith\\'; DROP--%'");
+  });
+});

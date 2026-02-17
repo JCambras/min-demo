@@ -10,7 +10,7 @@
 //   handlers/compliance-meetings.ts — recordComplianceReview, recordMeetingNote
 
 import { NextResponse } from "next/server";
-import { getAccessToken } from "@/lib/sf-connection";
+import { getAccessToken, getConnectionSource } from "@/lib/sf-connection";
 import { SFValidationError, SFQueryError, SFMutationError, SFTimeoutError } from "@/lib/sf-client";
 import { CRMAuthError, CRMQueryError, CRMMutationError, CRMNotSupportedError } from "@/lib/crm/errors";
 import type { SFContext } from "@/lib/sf-client";
@@ -25,6 +25,16 @@ import { onboardingHandlers } from "./handlers/onboarding";
 import { complianceHandlers, meetingHandlers } from "./handlers/compliance-meetings";
 import { financialAccountHandlers } from "./handlers/financial-accounts";
 import { ensureMappingLoaded } from "@/lib/org-query";
+
+// ─── Error Sanitization ──────────────────────────────────────────────────────
+// Strip Salesforce instance URLs and custom field names from error messages
+// sent to the client to prevent information leakage.
+
+function sanitizeErrorMessage(msg: string): string {
+  return msg
+    .replace(/https?:\/\/[a-zA-Z0-9.-]+\.(salesforce|force)\.com[^\s]*/g, "[salesforce]")
+    .replace(/\b\w+__[cr]\b/g, "[field]");
+}
 
 // ─── Merged Handler Map ──────────────────────────────────────────────────────
 // Single lookup table assembled from domain modules.
@@ -68,6 +78,11 @@ export async function POST(request: Request) {
     // Restore OrgMapping from cookie if server restarted
     await ensureMappingLoaded();
 
+    // AuthZ: log when using env fallback (client_credentials bypasses sharing rules)
+    if (await getConnectionSource() === "env") {
+      console.warn(`[authz] "${action}" using client_credentials — sharing rules NOT enforced`);
+    }
+
     const start = Date.now();
     const response = await handlers[action](data, adapter, crmCtx);
     const durationMs = Date.now() - start;
@@ -98,7 +113,7 @@ export async function POST(request: Request) {
     if (error instanceof SFTimeoutError) {
       console.error(`[SF Timeout] requestId=${requestId}: ${error.message}`);
       return NextResponse.json(
-        { success: false, error: { code: error.code, message: error.message }, requestId },
+        { success: false, error: { code: error.code, message: sanitizeErrorMessage(error.message) }, requestId },
         { status: 504 }
       );
     }
@@ -152,7 +167,7 @@ export async function POST(request: Request) {
 
     console.error(`[Salesforce Error] requestId=${requestId}`, error);
     return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: error instanceof Error ? error.message : "Failed to connect to Salesforce" }, requestId },
+      { success: false, error: { code: "INTERNAL_ERROR", message: sanitizeErrorMessage(error instanceof Error ? error.message : "Failed to connect to Salesforce") }, requestId },
       { status: 500 }
     );
   }

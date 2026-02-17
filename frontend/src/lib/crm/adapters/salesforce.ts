@@ -109,13 +109,26 @@ function mapPersonAccount(raw: Record<string, unknown>): CRMContact {
 }
 
 function mapHousehold(raw: Record<string, unknown>): CRMHousehold {
-  const owner = raw["Owner.Name"] ?? (raw.Owner as Record<string, unknown>)?.Name;
+  // Try Owner.Name first, then any __r.Name relationship
+  let advisorName: string | null = null;
+  const owner = raw.Owner as Record<string, unknown> | undefined;
+  if (owner?.Name) {
+    advisorName = owner.Name as string;
+  } else {
+    for (const key of Object.keys(raw)) {
+      if (key.endsWith("__r") && typeof raw[key] === "object" && raw[key] !== null) {
+        const rel = raw[key] as Record<string, unknown>;
+        if (rel.Name) { advisorName = rel.Name as string; break; }
+      }
+    }
+  }
+
   return {
     id: raw.Id as string,
     name: (raw.Name as string) || "",
     description: (raw.Description as string) || "",
     createdAt: (raw.CreatedDate as string) || null,
-    advisorName: (owner as string) || null,
+    advisorName,
   };
 }
 
@@ -266,11 +279,22 @@ export class SalesforceAdapter implements CRMPort {
       const safeId = sanitizeSOQL(id);
       const obj = orgQuery.householdObject();
       const contactLookup = orgQuery.contactHouseholdLookup();
-      const [hhRecords, contactRecords, taskRecords] = await Promise.all([
+      const results = await Promise.allSettled([
         query(sfCtx(ctx), `SELECT Id, Name, Description, CreatedDate FROM ${obj} WHERE Id = '${safeId}' LIMIT 1`),
         query(sfCtx(ctx), `SELECT Id, FirstName, LastName, Email, Phone, CreatedDate FROM Contact WHERE ${contactLookup} = '${safeId}' ORDER BY CreatedDate ASC LIMIT 200`),
         query(sfCtx(ctx), `SELECT Id, Subject, Status, Priority, Description, CreatedDate, ActivityDate FROM Task WHERE WhatId = '${safeId}' ORDER BY CreatedDate ASC LIMIT 500`),
       ]);
+
+      const hhRecords = results[0].status === "fulfilled" ? results[0].value : [];
+      const contactRecords = results[1].status === "fulfilled" ? results[1].value : [];
+      const taskRecords = results[2].status === "fulfilled" ? results[2].value : [];
+
+      for (const [i, label] of (["household", "contacts", "tasks"] as const).entries()) {
+        if (results[i].status === "rejected") {
+          console.warn(`[getHouseholdDetail] ${label} query failed:`, (results[i] as PromiseRejectedResult).reason?.message);
+        }
+      }
+
       let contacts = contactRecords.map(mapContact);
 
       // Junction Object Path (e.g., Practifi cloupra__Client_Group_Member__c)
@@ -386,7 +410,11 @@ export class SalesforceAdapter implements CRMPort {
       const fetchLimit = limit + 1;
       const offsetClause = offset ? ` OFFSET ${offset}` : "";
       const advisorField = orgQuery.advisorField();
-      const advisorSelect = advisorField === "OwnerId" ? "Owner.Name" : advisorField;
+      const advisorSelect = advisorField === "OwnerId"
+        ? "Owner.Name"
+        : advisorField.endsWith("__c")
+          ? advisorField.replace(/__c$/, "__r") + ".Name"
+          : advisorField;
       const hhFields = `Id, Name, CreatedDate, Description, ${advisorSelect}`;
       const householdSoql = orgQuery.listHouseholds(hhFields, fetchLimit, offset);
 

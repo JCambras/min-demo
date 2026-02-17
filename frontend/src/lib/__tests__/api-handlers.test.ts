@@ -29,6 +29,7 @@ vi.mock("@/lib/sf-connection", () => ({
     accessToken: "mock-token",
     instanceUrl: "https://test.salesforce.com",
   }),
+  getConnectionSource: vi.fn().mockResolvedValue("env"),
 }));
 
 vi.mock("@/lib/org-query", () => ({
@@ -75,6 +76,7 @@ import { taskHandlers } from "@/app/api/salesforce/handlers/tasks";
 import { householdHandlers } from "@/app/api/salesforce/handlers/households";
 import { query, update, createTask } from "@/lib/sf-client";
 import { validate } from "@/lib/sf-validation";
+import { SFValidationError } from "@/lib/sf-client";
 import { SalesforceAdapter } from "@/lib/crm/adapters/salesforce";
 import type { CRMContext } from "@/lib/crm/port";
 
@@ -569,5 +571,84 @@ describe("Advisor Assignment", () => {
     // Both households should be assigned to advisors from the KNOWN_ADVISORS list
     const advisorNames = data.advisors.map(a => a.name);
     expect(advisorNames.some(n => KNOWN_ADVISORS.includes(n))).toBe(true);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PHASE 3: ARRAY LENGTH LIMITS
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("Array length limits (Phase 3)", () => {
+  it("confirmIntent rejects > 50 members", () => {
+    const members = Array.from({ length: 51 }, (_, i) => ({
+      firstName: `F${i}`, lastName: `L${i}`, email: `e${i}@test.com`, phone: "555",
+    }));
+    expect(() => validate.confirmIntent({
+      familyName: "Test",
+      accounts: [{ type: "IRA", owner: "Test" }],
+      members,
+    })).toThrow(SFValidationError);
+  });
+
+  it("confirmIntent rejects > 20 accounts", () => {
+    const accounts = Array.from({ length: 21 }, () => ({ type: "IRA", owner: "Test" }));
+    expect(() => validate.confirmIntent({
+      familyName: "Test",
+      accounts,
+      members: [{ firstName: "A", lastName: "B", email: "a@b.com", phone: "555" }],
+    })).toThrow(SFValidationError);
+  });
+
+  it("recordPaperwork rejects > 25 envelopes", () => {
+    const envelopes = Array.from({ length: 26 }, (_, i) => ({
+      name: `Env ${i}`, documents: ["doc.pdf"],
+    }));
+    expect(() => validate.recordPaperwork({
+      householdId: "0011234567890ABCDE",
+      envelopes,
+    })).toThrow(SFValidationError);
+  });
+
+  it("sendDocusign rejects > 25 envelopes", () => {
+    const envelopes = Array.from({ length: 26 }, (_, i) => ({
+      name: `Env ${i}`, signers: ["signer@test.com"], emailSubject: "Sign",
+    }));
+    expect(() => validate.sendDocusign({
+      householdId: "0011234567890ABCDE",
+      envelopes,
+    })).toThrow(SFValidationError);
+  });
+
+  it("recordComplianceReview rejects > 100 checks", () => {
+    const checks = Array.from({ length: 101 }, (_, i) => ({
+      label: `Check ${i}`, status: "pass", detail: "ok",
+    }));
+    expect(() => validate.recordComplianceReview({
+      householdId: "0011234567890ABCDE",
+      familyName: "Test",
+      passed: true,
+      failCount: 0,
+      checks,
+    })).toThrow(SFValidationError);
+  });
+
+  it("recordMeetingNote rejects > 50 followUps", () => {
+    const followUps = Array.from({ length: 51 }, (_, i) => `Follow up ${i}`);
+    expect(() => validate.recordMeetingNote({
+      householdId: "0011234567890ABCDE",
+      familyName: "Test",
+      notes: "Meeting notes",
+      followUps,
+    })).toThrow(SFValidationError);
+  });
+
+  it("confirmIntent accepts arrays within limits", () => {
+    const result = validate.confirmIntent({
+      familyName: "Test",
+      accounts: [{ type: "IRA", owner: "Test" }],
+      members: [{ firstName: "A", lastName: "B", email: "a@b.com", phone: "555" }],
+    });
+    expect(result.members).toHaveLength(1);
+    expect(result.accounts).toHaveLength(1);
   });
 });

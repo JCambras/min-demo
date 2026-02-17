@@ -52,7 +52,7 @@ export function sanitizeSOQL(input: unknown): string {
   return input
     .replace(/\\/g, "\\\\")     // escape backslashes first
     .replace(/'/g, "\\'")       // escape single quotes
-    .replace(/[%_]/g, "")       // strip LIKE wildcards
+    .replace(/%/g, "\\%").replace(/_/g, "\\_") // escape LIKE wildcards
     .replace(/[\x00-\x1f]/g, "") // strip control characters
     .slice(0, 200);              // length limit prevents abuse
 }
@@ -172,8 +172,11 @@ function extractSFError(result: unknown, fallback: string): string {
 
 // ─── CRUD Primitives ────────────────────────────────────────────────────────
 
+const MAX_QUERY_RECORDS = 10_000;
+
 /**
  * Execute a SOQL query and return the records array.
+ * Automatically follows nextRecordsUrl for large result sets (up to MAX_QUERY_RECORDS).
  * The SOQL string should already have user inputs sanitized via sanitizeSOQL().
  */
 export async function query(ctx: SFContext, soql: string): Promise<Record<string, unknown>[]> {
@@ -182,7 +185,7 @@ export async function query(ctx: SFContext, soql: string): Promise<Record<string
     { headers: { Authorization: `Bearer ${ctx.accessToken}` } }
   );
 
-  const result = await response.json();
+  let result = await response.json();
 
   if (!response.ok) {
     throw new SFQueryError(
@@ -191,7 +194,19 @@ export async function query(ctx: SFContext, soql: string): Promise<Record<string
     );
   }
 
-  return (result.records as Record<string, unknown>[]) || [];
+  const allRecords = [...((result.records as Record<string, unknown>[]) || [])];
+
+  while (!result.done && result.nextRecordsUrl && allRecords.length < MAX_QUERY_RECORDS) {
+    const nextResponse = await sfFetch(
+      `${ctx.instanceUrl}${result.nextRecordsUrl}`,
+      { headers: { Authorization: `Bearer ${ctx.accessToken}` } }
+    );
+    if (!nextResponse.ok) break;
+    result = await nextResponse.json();
+    allRecords.push(...((result.records as Record<string, unknown>[]) || []));
+  }
+
+  return allRecords;
 }
 
 /**
@@ -367,61 +382,65 @@ export async function createTasksBatch(ctx: SFContext, inputs: TaskInput[]): Pro
     }
   }
 
-  // Build Composite API request (max 25 subrequests)
-  const batch = inputs.slice(0, 25);
-  const subrequests = batch.map((input, i) => ({
-    method: "POST" as const,
-    url: `/services/data/${SF_API_VERSION}/sobjects/Task`,
-    referenceId: `task_${i}`,
-    body: {
-      Subject: input.subject,
-      WhatId: input.householdId,
-      WhoId: input.contactId || undefined,
-      Status: input.status || "Completed",
-      Priority: input.priority || "Normal",
-      ActivityDate: input.activityDate || undefined,
-      Description: input.description || `Recorded by Min at ${new Date().toISOString()}`,
-    },
-  }));
+  // Build Composite API requests — auto-batch in chunks of 25
+  const COMPOSITE_BATCH_SIZE = 25;
+  const allRecords: SFRecord[] = [];
+  const allErrors: string[] = [];
 
-  try {
-    const response = await sfFetch(
-      `${ctx.instanceUrl}/services/data/${SF_API_VERSION}/composite`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${ctx.accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ allOrNone: false, compositeRequest: subrequests }),
+  for (let i = 0; i < inputs.length; i += COMPOSITE_BATCH_SIZE) {
+    const chunk = inputs.slice(i, i + COMPOSITE_BATCH_SIZE);
+    const subrequests = chunk.map((input, j) => ({
+      method: "POST" as const,
+      url: `/services/data/${SF_API_VERSION}/sobjects/Task`,
+      referenceId: `task_${i + j}`,
+      body: {
+        Subject: input.subject,
+        WhatId: input.householdId,
+        WhoId: input.contactId || undefined,
+        Status: input.status || "Completed",
+        Priority: input.priority || "Normal",
+        ActivityDate: input.activityDate || undefined,
+        Description: input.description || `Recorded by Min at ${new Date().toISOString()}`,
+      },
+    }));
+
+    try {
+      const response = await sfFetch(
+        `${ctx.instanceUrl}/services/data/${SF_API_VERSION}/composite`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${ctx.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ allOrNone: false, compositeRequest: subrequests }),
+        }
+      );
+
+      if (!response.ok) {
+        // Composite API not available or auth issue — fall back to sequential
+        console.warn("[sf-client] Composite API failed, falling back to sequential creates");
+        return _createTasksSequential(ctx, inputs);
       }
-    );
 
-    if (!response.ok) {
-      // Composite API not available or auth issue — fall back to sequential
-      console.warn("[sf-client] Composite API failed, falling back to sequential creates");
+      const result = await response.json();
+
+      for (const sub of result.compositeResponse || []) {
+        if (sub.httpStatusCode >= 200 && sub.httpStatusCode < 300 && sub.body?.id) {
+          allRecords.push({ id: sub.body.id, url: `${ctx.instanceUrl}/${sub.body.id}` });
+        } else {
+          const errMsg = Array.isArray(sub.body) ? sub.body[0]?.message : sub.body?.message || "Create failed";
+          allErrors.push(errMsg);
+        }
+      }
+    } catch {
+      // Network error on Composite — fall back to sequential for remaining
+      console.warn("[sf-client] Composite API network error, falling back to sequential creates");
       return _createTasksSequential(ctx, inputs);
     }
-
-    const result = await response.json();
-    const records: SFRecord[] = [];
-    const errors: string[] = [];
-
-    for (const sub of result.compositeResponse || []) {
-      if (sub.httpStatusCode >= 200 && sub.httpStatusCode < 300 && sub.body?.id) {
-        records.push({ id: sub.body.id, url: `${ctx.instanceUrl}/${sub.body.id}` });
-      } else {
-        const errMsg = Array.isArray(sub.body) ? sub.body[0]?.message : sub.body?.message || "Create failed";
-        errors.push(errMsg);
-      }
-    }
-
-    return { records, errors };
-  } catch {
-    // Network error on Composite — fall back to sequential
-    console.warn("[sf-client] Composite API network error, falling back to sequential creates");
-    return _createTasksSequential(ctx, inputs);
   }
+
+  return { records: allRecords, errors: allErrors };
 }
 
 /**
