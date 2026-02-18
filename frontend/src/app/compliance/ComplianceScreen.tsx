@@ -20,6 +20,8 @@ interface CheckResult {
   regulation: string;
   status: "pass" | "warn" | "fail";
   detail: string;
+  evidence?: string[];
+  whyItMatters: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,6 +57,13 @@ function runComplianceChecks(
 
   // ── IDENTITY & KYC ──
 
+  const kycEvidence: string[] = [];
+  if (contacts.length > 0) kycEvidence.push(`${contacts.length} contact(s) on file`);
+  contacts.forEach(c => {
+    const fields = [c.firstName && c.lastName ? `Name: ${c.firstName} ${c.lastName}` : null, c.email ? "Email populated" : null, c.phone ? "Phone populated" : null].filter(Boolean);
+    if (fields.length > 0) kycEvidence.push(fields.join(", "));
+  });
+
   checks.push({
     id: "kyc-profile",
     category: "identity",
@@ -64,6 +73,8 @@ function runComplianceChecks(
     detail: hasTask("kyc") || hasTask("suitability")
       ? `KYC recorded for ${contacts.length} contact(s)`
       : "No KYC/suitability record found — required before account activity",
+    evidence: hasTask("kyc") || hasTask("suitability") ? kycEvidence : undefined,
+    whyItMatters: "FINRA requires firms to know the essential facts about every customer. Without a KYC profile, the firm cannot demonstrate suitability of recommendations during an examination.",
   });
 
   checks.push({
@@ -75,6 +86,7 @@ function runComplianceChecks(
     detail: hasTask("trusted contact")
       ? "Trusted contact on file"
       : "No trusted contact task found — required for new accounts opened after Feb 2018",
+    whyItMatters: "A trusted contact allows the firm to reach someone if there are concerns about the client's wellbeing or potential financial exploitation. Required for all accounts opened after February 5, 2018.",
   });
 
   checks.push({
@@ -86,11 +98,17 @@ function runComplianceChecks(
     detail: hasTask("identity verified") || hasTask("gov id")
       ? "Government ID verified and on file"
       : "No identity verification record — required by Customer Identification Program",
+    whyItMatters: "The Customer Identification Program (CIP) requires firms to verify each customer's identity using government-issued documents. Failure creates AML compliance risk and potential enforcement action.",
   });
 
   // ── SUITABILITY ──
 
   const hasSuitability = hasTask("risk") || hasTask("investment objective") || hasTask("suitability");
+  const suitEvidence: string[] = [];
+  if (hasTask("risk")) suitEvidence.push("Risk tolerance documented");
+  if (hasTask("investment objective")) suitEvidence.push("Investment objectives documented");
+  if (hasTask("suitability")) suitEvidence.push("Suitability questionnaire completed");
+
   checks.push({
     id: "suitability-profile",
     category: "suitability",
@@ -100,6 +118,8 @@ function runComplianceChecks(
     detail: hasSuitability
       ? "Risk tolerance, investment objective, and financial profile on file"
       : "No suitability profile found — required before investment recommendations",
+    evidence: hasSuitability ? suitEvidence : undefined,
+    whyItMatters: "Reg BI requires a reasonable basis to believe any recommendation is in the client's best interest. Without a documented suitability profile, every recommendation is indefensible in an exam.",
   });
 
   // Check if any rollover was done — needs PTE documentation
@@ -114,6 +134,7 @@ function runComplianceChecks(
       detail: hasTask("pte")
         ? "Rollover Recommendation + PTE form generated and signed"
         : "Rollover detected but no PTE documentation found",
+      whyItMatters: "DOL PTE 2020-02 requires documented proof that a rollover recommendation is in the client's best interest. Missing PTE documentation is a top enforcement priority — fines can exceed $100K per violation.",
     });
   }
 
@@ -128,6 +149,7 @@ function runComplianceChecks(
     detail: hasTask("form crs") || hasTask("client relationship summary")
       ? "Form CRS delivered and acknowledged"
       : "No Form CRS delivery record — required at or before account opening",
+    whyItMatters: "Form CRS must be delivered before or at the time of an investment recommendation. SEC examiners check for delivery records as a priority item. Missing CRS is a common deficiency finding.",
   });
 
   checks.push({
@@ -139,6 +161,7 @@ function runComplianceChecks(
     detail: hasTask("adv") || hasTask("advisory") || hasTask("brochure")
       ? "Advisory business practices addendum delivered"
       : "No ADV delivery record found — required within 48 hours of engagement",
+    whyItMatters: "The Brochure Rule requires delivery of ADV Part 2A before or at the time of entering an advisory contract. It must also be offered annually. This is one of the first items SEC examiners request.",
   });
 
   checks.push({
@@ -150,6 +173,7 @@ function runComplianceChecks(
     detail: hasTask("privacy")
       ? "Privacy notice delivered"
       : "No privacy notice record — required annually and at account opening",
+    whyItMatters: "Regulation S-P requires initial and annual privacy notice delivery. While often overlooked, missing privacy notices can result in enforcement actions during routine examinations.",
   });
 
   // ── ACCOUNT SETUP ──
@@ -163,9 +187,11 @@ function runComplianceChecks(
     detail: hasTask("beneficiar")
       ? "Beneficiary designations recorded for all applicable accounts"
       : "No beneficiary designation record — recommended for all retirement accounts",
+    whyItMatters: "Missing beneficiary designations cause assets to default to the estate, potentially conflicting with the client's planning intent. This is also the #1 Schwab NIGO rejection reason for IRA applications.",
   });
 
   const hasDocusign = hasTask("docusign") || hasTask("docu");
+  const docuTasks = tasks.filter(t => (t.subject || "").toLowerCase().includes("docu"));
   checks.push({
     id: "signatures",
     category: "account",
@@ -175,6 +201,8 @@ function runComplianceChecks(
     detail: hasDocusign
       ? "DocuSign envelopes sent and tracked"
       : "No signature record found — accounts cannot be funded without signed applications",
+    evidence: hasDocusign ? docuTasks.slice(0, 3).map(t => `Envelope: ${t.subject} (${t.status})`) : undefined,
+    whyItMatters: `${custodian.shortName} requires signed originals (or DocuSign equivalents) for all account applications. Unsigned applications will be rejected as NIGO.`,
   });
 
   if (hasTask("moneylink") || hasTask("ach")) {
@@ -185,10 +213,19 @@ function runComplianceChecks(
       regulation: "NACHA Operating Rules",
       status: "pass",
       detail: "MoneyLink/ACH authorization recorded",
+      whyItMatters: "NACHA rules require explicit authorization before initiating ACH debits. The authorization form must be retained for 2 years after revocation.",
     });
   }
 
   // ── REGULATORY ──
+
+  const complEvidence: string[] = [];
+  if (hasTask("completeness")) {
+    complEvidence.push(`${tasks.length} total SF records scanned`);
+    complEvidence.push(`${contacts.length} contact(s) on file`);
+    const compCount = tasks.filter(t => t.status === "Completed").length;
+    if (compCount > 0) complEvidence.push(`${compCount} tasks completed`);
+  }
 
   checks.push({
     id: "completeness-check",
@@ -199,6 +236,8 @@ function runComplianceChecks(
     detail: hasTask("completeness")
       ? "All required information verified and completeness check recorded"
       : "No completeness check on file — creates audit risk during SEC examination",
+    evidence: hasTask("completeness") ? complEvidence : undefined,
+    whyItMatters: "SEC examiners expect a documented completeness check showing all client information was verified before account funding. This is your first line of defense during an exam.",
   });
 
   // Household creation date — check staleness
@@ -212,6 +251,7 @@ function runComplianceChecks(
       regulation: "SEC Examination Best Practice",
       status: "warn",
       detail: `Household created ${daysSinceCreation} days ago — annual review recommended`,
+      whyItMatters: "The SEC expects firms to conduct regular reviews of client accounts and relationships. A household without a review in over a year signals inadequate supervision to examiners.",
     });
   }
 
@@ -455,7 +495,12 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
           householdUrl: state.householdUrl,
           contacts: state.contacts.map(c => ({ name: `${c.firstName} ${c.lastName}`, email: c.email })),
           tasksScanned: state.tasks.length,
-          checks: state.checks.map(c => ({ label: c.label, category: c.category, regulation: c.regulation, status: c.status, detail: c.detail })),
+          checks: state.checks.map(c => ({
+            label: c.label, category: c.category, regulation: c.regulation, status: c.status,
+            detail: c.evidence && c.evidence.length > 0
+              ? `${c.detail}\nEvidence: ${c.evidence.join("; ")}`
+              : c.detail,
+          })),
           reviewDate,
           nextReviewDate,
           firmName: firmName || undefined,
@@ -592,8 +637,15 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                                   {check.status === "fail" && <div className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center" role="img" aria-label="Failed"><X size={12} /></div>}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-slate-800">{check.label}<WhyBubble reason={check.detail} regulation={check.regulation} compact /></p>
+                                  <p className="text-sm font-medium text-slate-800">{check.label}<WhyBubble reason={check.whyItMatters} regulation={check.regulation} compact /></p>
                                   <p className="text-xs text-slate-500 mt-0.5">{check.detail}</p>
+                                  {check.evidence && check.evidence.length > 0 && (
+                                    <div className="mt-1 space-y-0.5">
+                                      {check.evidence.map((e, ei) => (
+                                        <p key={ei} className="text-[10px] text-green-600 font-mono">✓ {e}</p>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             ))}

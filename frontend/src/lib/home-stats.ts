@@ -27,6 +27,17 @@ export interface Insight {
   action?: string;
 }
 
+export interface TriageItem {
+  urgency: "now" | "today" | "this-week";
+  label: string;
+  reason: string;
+  url: string;
+  householdId?: string;
+  householdName?: string;
+  action: string;
+  category: "overdue" | "unsigned" | "compliance" | "followup" | "stale";
+}
+
 export interface HomeStats {
   overdueTasks: number;
   openTasks: number;
@@ -40,6 +51,7 @@ export interface HomeStats {
   upcomingMeetingItems: StatDetailItem[];
   recentItems: { subject: string; household: string; url: string; type: string }[];
   insights: Insight[];
+  triageItems: TriageItem[];
 }
 
 // ─── Canonical CRM Record Shapes ────────────────────────────────────────────
@@ -253,6 +265,86 @@ export function buildHomeStats(
   insights.sort((a, b) => sevOrder[a.severity] - sevOrder[b.severity]);
   const topInsights = insights.slice(0, 3);
 
+  // ── Triage: "do this before noon" prioritized queue ──
+  const triage: TriageItem[] = [];
+  const hhShort = (n?: string) => (n || "").replace(" Household", "");
+
+  // High-priority overdue → urgency "now"
+  for (const t of highPriOverdue.slice(0, 3)) {
+    const days = daysSince(t.dueDate);
+    triage.push({
+      urgency: "now", category: "overdue",
+      label: humanizeSubject(t.subject, t.householdName),
+      reason: `High priority · ${days}d overdue`,
+      url: `${instanceUrl}/${t.id}`, householdId: t.householdId, householdName: t.householdName,
+      action: "Complete task",
+    });
+  }
+
+  // DocuSign unsigned > 5 days → urgency "now"
+  for (const t of unsigned.filter(u => daysSince(u.createdAt) >= 5).slice(0, 2)) {
+    const days = daysSince(t.createdAt);
+    triage.push({
+      urgency: "now", category: "unsigned",
+      label: `${hhShort(t.householdName)}: DocuSign awaiting signature`,
+      reason: `Unsigned ${days} days`,
+      url: `${instanceUrl}/${t.id}`, householdId: t.householdId, householdName: t.householdName,
+      action: "Follow up",
+    });
+  }
+
+  // Normal-priority overdue → urgency "today"
+  const normalOverdue = overdue.filter(t => t.priority !== "High").slice(0, 3);
+  for (const t of normalOverdue) {
+    const days = daysSince(t.dueDate);
+    triage.push({
+      urgency: "today", category: "overdue",
+      label: humanizeSubject(t.subject, t.householdName),
+      reason: `${days}d overdue · ${hhShort(t.householdName)}`,
+      url: `${instanceUrl}/${t.id}`, householdId: t.householdId, householdName: t.householdName,
+      action: "Complete task",
+    });
+  }
+
+  // Tasks due today or tomorrow → urgency "today"
+  const dueSoon = open.filter(t => {
+    if (!t.dueDate) return false;
+    const daysUntil = (new Date(t.dueDate).getTime() - now) / msDay;
+    return daysUntil >= 0 && daysUntil <= 1;
+  }).slice(0, 2);
+  for (const t of dueSoon) {
+    const isToday = new Date(t.dueDate).toDateString() === new Date().toDateString();
+    triage.push({
+      urgency: "today", category: "followup",
+      label: humanizeSubject(t.subject, t.householdName),
+      reason: isToday ? `Due today · ${hhShort(t.householdName)}` : `Due tomorrow · ${hhShort(t.householdName)}`,
+      url: `${instanceUrl}/${t.id}`, householdId: t.householdId, householdName: t.householdName,
+      action: "Complete task",
+    });
+  }
+
+  // Longest-unreviewed households → urgency "this-week"
+  if (unreviewedHH.length > 0) {
+    const oldest = [...unreviewedHH].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(0, 2);
+    for (const h of oldest) {
+      const days = Math.floor((now - new Date(h.createdAt).getTime()) / msDay);
+      if (days >= 7) {
+        triage.push({
+          urgency: "this-week", category: "compliance",
+          label: `${hhShort(h.name)}: no compliance review`,
+          reason: `Client for ${days}d · never reviewed`,
+          url: `${instanceUrl}/${h.id}`, householdId: h.id, householdName: h.name,
+          action: "Run review",
+        });
+      }
+    }
+  }
+
+  // Sort by urgency tier, cap at 7
+  const urgOrder = { now: 0, today: 1, "this-week": 2 };
+  triage.sort((a, b) => urgOrder[a.urgency] - urgOrder[b.urgency]);
+  const topTriage = triage.slice(0, 7);
+
   return {
     overdueTasks: overdue.length,
     openTasks: open.length,
@@ -286,5 +378,6 @@ export function buildHomeStats(
       type: classifyTask(t.subject),
     })),
     insights: topInsights,
+    triageItems: topTriage,
   };
 }

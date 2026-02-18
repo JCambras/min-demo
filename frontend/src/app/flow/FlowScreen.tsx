@@ -12,6 +12,17 @@ import { useFlowState } from "./useFlowState";
 import { isClientValid, missingFields, fmtDollar, docsFor, isValidEmail } from "@/lib/format";
 import { INTENT_CHIPS, INDIV_TYPES, JOINT_TYPES, BROKERAGES, RELATIONSHIPS, STEP_LABELS } from "@/lib/constants";
 import { emptyClient } from "@/lib/types";
+import { ACTIVE_CUSTODIAN } from "@/lib/custodian";
+import { getRulesForAccountType, getNIGORisks } from "@/lib/custodian-rules";
+import { ShieldCheck, AlertTriangle } from "lucide-react";
+
+// Map flow account type names → custodian-rules account type names
+const RULES_TYPE_MAP: Record<string, string> = {
+  "Individual": "Individual Brokerage", "Individual TOD": "Individual Brokerage",
+  "IRA": "Traditional IRA", "Roth IRA": "Roth IRA", "SEP IRA": "SEP IRA",
+  "Rollover IRA": "Rollover IRA", "JTWROS": "JTWROS", "JTWROS TOD": "JTWROS",
+  "Joint TIC": "Joint TIC", "Community Property": "JTWROS", "Trust": "Trust",
+};
 
 import type { Screen, WorkflowContext } from "@/lib/types";
 
@@ -353,10 +364,60 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
                   </button>
                   <div className="bg-white border border-slate-200 rounded-2xl p-5">
                     <div className="flex items-center justify-between mb-3">
-                      <p className="text-xs uppercase tracking-wider text-slate-400">Documents ({totalDocs} total)</p>
+                      <p className="text-xs uppercase tracking-wider text-slate-400">Document Checklist ({totalDocs} total)</p>
                       <WhyBubble reason="Min generates the exact documents required for each account type: the custodial application, Form CRS (required by SEC at account opening), the Advisory Business Practices Addendum, and beneficiary forms for accounts without survivorship rights. Additional forms are added for rollovers (PTE), transfers (TOA/LOA), and ACH setup." regulation="SEC Reg BI, FINRA Rules 2111 & 4512, DOL PTE 2020-02" compact />
                     </div>
-                    {state.accounts.map(a => <div key={a.id} className="mb-3 last:mb-0"><p className="text-sm font-medium text-slate-700 mb-1">{a.owner}&rsquo;s {a.type}</p><div className="pl-3 space-y-0.5">{docsFor(a, state.setupACH ?? false).map((dd, i) => <p key={i} className="text-xs text-slate-500">· {dd}</p>)}</div></div>)}
+                    {state.accounts.map(a => {
+                      const docs = docsFor(a, state.setupACH ?? false);
+                      const rulesType = RULES_TYPE_MAP[a.type];
+                      const rules = rulesType ? getRulesForAccountType(ACTIVE_CUSTODIAN, rulesType) : null;
+                      const nigoRisks = rulesType ? getNIGORisks(ACTIVE_CUSTODIAN, rulesType) : [];
+                      return (
+                        <div key={a.id} className="mb-4 last:mb-0">
+                          <p className="text-sm font-medium text-slate-700 mb-1.5">{a.owner}&rsquo;s {a.type}</p>
+                          <div className="pl-3 space-y-1">
+                            {docs.map((dd, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <Check size={12} className="text-green-500 flex-shrink-0" />
+                                <p className="text-xs text-slate-600">{dd}</p>
+                              </div>
+                            ))}
+                          </div>
+                          {nigoRisks.length > 0 && (
+                            <div className="mt-2 ml-3 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <ShieldCheck size={12} className="text-green-600" />
+                                <p className="text-[11px] font-medium text-green-700">{nigoRisks.length} NIGO risk{nigoRisks.length !== 1 ? "s" : ""} prevented</p>
+                              </div>
+                              <div className="space-y-0.5">
+                                {nigoRisks.map((r, ri) => (
+                                  <p key={ri} className="text-[10px] text-green-600 pl-4">✓ {r.prevention}</p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {rules?.requiresBeneficiary && state.beneficiaries.filter(b => b.accountId === a.id).length === 0 && (
+                            <div className="mt-2 ml-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-1.5">
+                              <AlertTriangle size={12} className="text-amber-500 mt-0.5 flex-shrink-0" />
+                              <p className="text-[10px] text-amber-600">No beneficiary designated — add one to avoid the #1 Schwab NIGO rejection</p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* NIGO prevention summary */}
+                    {(() => {
+                      const totalNigo = state.accounts.reduce((sum, a) => {
+                        const rulesType = RULES_TYPE_MAP[a.type];
+                        return sum + (rulesType ? getNIGORisks(ACTIVE_CUSTODIAN, rulesType).length : 0);
+                      }, 0);
+                      return totalNigo > 0 ? (
+                        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2">
+                          <ShieldCheck size={14} className="text-green-600" />
+                          <p className="text-xs text-green-700 font-medium">{totalNigo} total NIGO rejection risks prevented across {state.accounts.length} account{state.accounts.length !== 1 ? "s" : ""}</p>
+                        </div>
+                      ) : null;
+                    })()}
                     <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 text-sm text-slate-500"><Clock size={14} /> Estimated signing time: ~{estMinutes} minutes</div>
                   </div>
                   <div className="bg-white border border-slate-200 rounded-2xl p-5">

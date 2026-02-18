@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X } from "lucide-react";
+import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X, Target } from "lucide-react";
 import { TourButton } from "../tour/DemoMode";
 import { callSF } from "@/lib/salesforce";
 import { log } from "@/lib/logger";
@@ -387,6 +387,46 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                   )}
                 </div>
               </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Daily Triage — "do this before noon" */}
+      {(isAdvisor || isOps || role === "principal") && sfConnected && stats && stats.triageItems.length > 0 && (
+        <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden" data-tour="triage">
+          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+            <Target size={13} className="text-slate-500" />
+            <p className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Today&apos;s Priorities</p>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{stats.triageItems.length}</span>
+          </div>
+          {stats.triageItems.map((item, i) => {
+            const urgColors = item.urgency === "now"
+              ? "border-l-red-400 bg-red-50/30"
+              : item.urgency === "today"
+              ? "border-l-amber-400 bg-amber-50/20"
+              : "border-l-slate-300";
+            const urgLabel = item.urgency === "now" ? "NOW" : item.urgency === "today" ? "TODAY" : "THIS WEEK";
+            const urgBadge = item.urgency === "now"
+              ? "bg-red-100 text-red-600"
+              : item.urgency === "today"
+              ? "bg-amber-100 text-amber-600"
+              : "bg-slate-100 text-slate-500";
+            return (
+              <div key={i} className={`flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 last:border-0 border-l-[3px] ${urgColors} hover:bg-slate-50 transition-colors`}>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${urgBadge} flex-shrink-0 w-16 text-center`}>{urgLabel}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-slate-700 truncate">{item.label}</p>
+                  <p className="text-[11px] text-slate-400">{item.reason}</p>
+                </div>
+                <button onClick={() => {
+                  if (item.category === "compliance" && item.householdId) goTo("compliance", { householdId: item.householdId, familyName: (item.householdName || "").replace(" Household", "") });
+                  else if (item.householdId) goTo("family", { householdId: item.householdId, familyName: (item.householdName || "").replace(" Household", "") });
+                }}
+                  className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors whitespace-nowrap flex-shrink-0">
+                  {item.action}
+                </button>
+              </div>
             );
           })}
         </div>
