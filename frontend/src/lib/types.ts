@@ -1,6 +1,6 @@
 // ─── Core Types ──────────────────────────────────────────────────────────────
 
-export type Screen = "home" | "flow" | "onboard" | "compliance" | "settings" | "briefing" | "meeting" | "query" | "dashboard" | "family" | "taskManager" | "planning" | "workflows" | "money" | "documents" | "portal";
+export type Screen = "home" | "flow" | "onboard" | "compliance" | "settings" | "briefing" | "meeting" | "query" | "dashboard" | "family" | "taskManager" | "planning" | "workflows" | "money" | "documents" | "portal" | "activity" | "audit";
 
 /**
  * Exhaustiveness check for switch statements on union types.
@@ -26,6 +26,35 @@ export interface WorkflowContext {
 }
 
 export type UserRole = "advisor" | "operations" | "principal";
+
+/** A firm managed under the shared-services model */
+export interface ManagedFirm {
+  id: string;
+  name: string;
+  shortName: string;
+  households: number;
+  color: string;           // badge color (hex)
+  complianceThresholdDays: number; // days between required reviews
+}
+
+const FIRMS_KEY = "min-managed-firms";
+
+export const DEFAULT_FIRMS: ManagedFirm[] = [
+  { id: "langford", name: "Langford Steele Wealth Management", shortName: "Langford", households: 420, color: "#0f172a", complianceThresholdDays: 90 },
+  { id: "chen", name: "Chen & Associates", shortName: "Chen", households: 65, color: "#7c3aed", complianceThresholdDays: 60 },
+  { id: "omalley", name: "O'Malley Financial Group", shortName: "O'Malley", households: 48, color: "#0891b2", complianceThresholdDays: 90 },
+  { id: "brooks", name: "Brooks Capital Advisors", shortName: "Brooks", households: 55, color: "#059669", complianceThresholdDays: 90 },
+  { id: "reeves", name: "Reeves Wealth Partners", shortName: "Reeves", households: 42, color: "#dc2626", complianceThresholdDays: 60 },
+];
+
+export function loadFirms(): ManagedFirm[] {
+  if (typeof window === "undefined") return DEFAULT_FIRMS;
+  try { const raw = localStorage.getItem(FIRMS_KEY); return raw ? JSON.parse(raw) : DEFAULT_FIRMS; } catch { return DEFAULT_FIRMS; }
+}
+
+export function saveFirms(firms: ManagedFirm[]) {
+  localStorage.setItem(FIRMS_KEY, JSON.stringify(firms));
+}
 
 export type FlowStep =
   | "context" | "client-type" | "search-existing"

@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { AlertTriangle, Shield, ChevronDown, ChevronUp, ArrowRight } from "lucide-react";
+import { AlertTriangle, Shield, ChevronDown, ChevronUp, ArrowRight, GitCompareArrows, X } from "lucide-react";
 import type { PracticeData } from "../usePracticeData";
 
 interface HouseholdScore {
@@ -55,8 +55,19 @@ export function HouseholdRiskScore({ data, goToFamily, goToCompliance }: {
 }) {
   const [showAll, setShowAll] = useState(false);
   const [expandedHH, setExpandedHH] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
 
   const scores = computeHouseholdScores(data);
+
+  const toggleCompare = (id: string) => {
+    setCompareIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < 3) next.add(id);
+      return next;
+    });
+  };
   const atRisk = scores.filter(s => s.score < 100);
   const displayScores = showAll ? atRisk : atRisk.slice(0, 10);
 
@@ -82,6 +93,10 @@ export function HouseholdRiskScore({ data, goToFamily, goToCompliance }: {
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">{criticalCount} critical</span>
           )}
           <span className="text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-600 font-medium">{atRisk.length} at risk</span>
+          <button onClick={() => { setCompareMode(!compareMode); setCompareIds(new Set()); }}
+            className={`text-[10px] px-2.5 py-1 rounded-full font-medium transition-all flex items-center gap-1 ${compareMode ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            <GitCompareArrows size={10} /> {compareMode ? "Cancel" : "Compare"}
+          </button>
         </div>
       </div>
 
@@ -98,9 +113,14 @@ export function HouseholdRiskScore({ data, goToFamily, goToCompliance }: {
       {displayScores.map((hh, i) => (
         <div key={hh.id} className="border-b border-slate-50 last:border-0">
           <button
-            onClick={() => setExpandedHH(expandedHH === hh.id ? null : hh.id)}
-            className="w-full flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
+            onClick={() => compareMode ? toggleCompare(hh.id) : setExpandedHH(expandedHH === hh.id ? null : hh.id)}
+            className={`w-full flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors ${compareMode && compareIds.has(hh.id) ? "bg-blue-50" : ""}`}
           >
+            {compareMode && (
+              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${compareIds.has(hh.id) ? "border-blue-500 bg-blue-500 text-white" : "border-slate-300"}`}>
+                {compareIds.has(hh.id) && <span className="text-[10px] font-bold">✓</span>}
+              </div>
+            )}
             <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${scoreBg(hh.score)} ${scoreColor(hh.score)}`}>
               {hh.score}
             </span>
@@ -152,6 +172,46 @@ export function HouseholdRiskScore({ data, goToFamily, goToCompliance }: {
           {showAll ? <><ChevronUp size={12} /> Show top 10</> : <><ChevronDown size={12} /> Show all {atRisk.length}</>}
         </button>
       )}
+
+      {/* Comparison panel */}
+      {compareMode && compareIds.size >= 2 && (() => {
+        const compared = scores.filter(s => compareIds.has(s.id));
+        return (
+          <div className="px-5 py-4 border-t border-slate-200 bg-slate-50">
+            <div className="flex items-center gap-2 mb-3">
+              <GitCompareArrows size={14} className="text-slate-500" />
+              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Comparison</span>
+              <button onClick={() => { setCompareMode(false); setCompareIds(new Set()); }} className="ml-auto text-slate-400 hover:text-slate-600"><X size={14} /></button>
+            </div>
+            <div className={`grid gap-3 ${compared.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+              {compared.map(hh => (
+                <div key={hh.id} className="bg-white border border-slate-200 rounded-xl p-3">
+                  <p className="text-sm font-medium text-slate-700 truncate mb-2">{hh.name.replace(" Household", "")}</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`text-lg font-bold ${scoreColor(hh.score)}`}>{hh.score}</span>
+                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${barColor(hh.score)}`} style={{ width: `${hh.score}%` }} />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    {hh.signals.map((s, j) => (
+                      <div key={j} className="flex items-center gap-1.5">
+                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.severity === "critical" ? "bg-red-500" : s.severity === "high" ? "bg-amber-400" : "bg-slate-300"}`} />
+                        <span className="text-[10px] text-slate-500 truncate">{s.label}</span>
+                      </div>
+                    ))}
+                    {hh.signals.length === 0 && <span className="text-[10px] text-slate-300">No issues</span>}
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-slate-100 flex gap-1.5">
+                    <button onClick={() => goToFamily(hh.id, hh.name)} className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200">Family</button>
+                    <button onClick={() => goToCompliance(hh.id, hh.name)} className="text-[10px] px-2 py-0.5 rounded bg-slate-900 text-white hover:bg-slate-800">Review</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

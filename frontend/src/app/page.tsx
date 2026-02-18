@@ -17,6 +17,10 @@ import { WorkflowScreen } from "./workflows/WorkflowScreen";
 import { MoneyScreen } from "./money/MoneyScreen";
 import { DocumentScreen } from "./documents/DocumentScreen";
 import { PortalScreen } from "./portal/PortalScreen";
+import { ActivityFeedScreen } from "./activity/ActivityFeedScreen";
+import { AuditScreen } from "./audit/AuditScreen";
+import { CommandPalette } from "@/components/shared/CommandPalette";
+import { NotificationCenter } from "@/components/shared/NotificationCenter";
 import { DemoMode } from "./tour/DemoMode";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
@@ -345,6 +349,19 @@ export default function Home() {
   const { setupStep, role, advisorName, screen, wfCtx, handoff, sfConnected, toast, tourActive } = state;
   const [showSecurity, setShowSecurity] = useState(false);
   const [oauthError, setOauthError] = useState<OAuthError | null>(null);
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+
+  // Global Cmd+K handler
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCmdPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   // Read OAuth callback URL params on mount
   useEffect(() => {
@@ -553,7 +570,7 @@ export default function Home() {
       stats={state.stats}
     />
   );
-  const wrap = (el: React.ReactNode, label: string, withTour = true) => <><ErrorBoundary fallbackLabel={`${label} error.`}>{el}</ErrorBoundary>{withTour && tourOverlay}</>;
+  const wrap = (el: React.ReactNode, label: string, withTour = true) => <><ErrorBoundary fallbackLabel={`${label} error.`}>{el}</ErrorBoundary>{withTour && tourOverlay}<CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} onNavigate={(s, ctx) => { if (s === "home") goHome(); else goTo(s, ctx); }} /></>;
 
   switch (screen) {
     case "flow": return wrap(<FlowScreen onExit={goHome} initialClient={handoff || undefined} onNavigate={goTo} />, "Account opening");
@@ -568,6 +585,8 @@ export default function Home() {
     case "money": return wrap(<MoneyScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Money Movement");
     case "documents": return wrap(<DocumentScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Documents");
     case "portal": return wfCtx ? wrap(<PortalScreen onExit={goBack} context={wfCtx} />, "Client Portal") : null;
+    case "activity": return wrap(<ActivityFeedScreen onExit={goHome} onNavigate={goTo} />, "Activity Feed");
+    case "audit": return wrap(<AuditScreen onExit={goHome} onNavigate={goTo} />, "Audit Trail");
     case "family": return wfCtx ? wrap(<FamilyScreen onExit={goBack} context={wfCtx} onNavigate={goTo} />, "Family overview") : null;
     case "taskManager": return wrap(<TaskManager stats={state.stats} onBack={goHome} goTo={goTo} showToast={showToast} />, "Task manager");
     case "settings": return <ErrorBoundary fallbackLabel="Settings error."><SettingsScreen onExit={goHome} /></ErrorBoundary>;
@@ -583,6 +602,7 @@ export default function Home() {
     <>
       <HomeScreen state={state} dispatch={dispatch} goTo={goTo} goHome={goHome} loadStats={loadStats} showToast={showToast} firmName={FIRM_NAME} />
       {tourOverlay}
+      <CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} onNavigate={(s, ctx) => { if (s === "home") goHome(); else goTo(s, ctx); }} />
       {toast && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl bg-slate-900 text-white text-sm font-medium shadow-lg animate-fade-in z-50 flex items-center gap-2"><CheckCircle size={16} className="text-green-400" />{toast}</div>}
     </>
   );

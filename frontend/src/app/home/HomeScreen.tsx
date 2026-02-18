@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X, Target, DollarSign, Upload } from "lucide-react";
+import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X, Target, DollarSign, Upload, Activity } from "lucide-react";
 import { TourButton } from "../tour/DemoMode";
+import { NotificationCenter } from "@/components/shared/NotificationCenter";
 import { callSF } from "@/lib/salesforce";
 import { log } from "@/lib/logger";
 import { formatDate } from "@/lib/format";
@@ -35,6 +36,8 @@ const ALL_ACTIONS: { id: string; label: string; desc: string; Icon: React.Elemen
   { id: "documents", label: "Document Intake", desc: "Scan, classify & file documents", Icon: Upload, roles: ["operations", "principal"] },
   { id: "taskManager", label: "Task Manager", desc: "View, assign & complete tasks", Icon: ListTodo, roles: ["operations", "principal"] },
   { id: "workflows", label: "Workflow Automation", desc: "Active chains & templates", Icon: Zap, roles: ["operations", "principal"] },
+  { id: "activity", label: "Activity Feed", desc: "Timeline of all actions", Icon: Activity, roles: ["operations", "principal"] },
+  { id: "audit", label: "Audit Trail", desc: "Compliance audit log", Icon: Shield, roles: ["principal"] },
   { id: "dashboard", label: "Full Dashboard", desc: "Detailed practice view", Icon: ChevronRight, roles: ["principal"] },
 ];
 
@@ -346,6 +349,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
             className="text-xs text-slate-400 hover:text-slate-600 transition-all" title="Click or ⌘R to switch role">
             {ROLES.find(r => r.id === role)?.label || "Advisor"}{role === "principal" && principalAdvisor !== "all" ? ` · ${principalAdvisor}` : ""}
           </button>
+          <NotificationCenter stats={stats} onNavigate={goTo} />
           <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} aria-label="Settings" className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-all"><Settings size={16} /></button>
         </div>
       </div>

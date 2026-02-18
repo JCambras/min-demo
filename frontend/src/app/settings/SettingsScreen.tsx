@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { Cloud, CloudOff, ExternalLink, Loader2, Check, AlertTriangle, Search, ChevronDown, ChevronUp, Shield, Zap, Database, Users, DollarSign, BarChart3, FileCheck, GitBranch } from "lucide-react";
+import { Cloud, CloudOff, ExternalLink, Loader2, Check, AlertTriangle, Search, ChevronDown, ChevronUp, Shield, Zap, Database, Users, DollarSign, BarChart3, FileCheck, GitBranch, Bell, Palette, Plug, Plus, Trash2, TestTube, Calendar, LineChart, PenTool } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
@@ -415,6 +415,211 @@ function SeedDiscoveryButton({ onSeeded }: { onSeeded: () => void }) {
   );
 }
 
+// ─── Webhook Configuration Panel ────────────────────────────────────────────
+
+const WEBHOOK_KEY = "min-webhooks";
+const WEBHOOK_EVENTS = ["onboard_complete", "compliance_review", "task_overdue", "docusign_sent", "meeting_logged"];
+
+interface WebhookConfig { id: string; url: string; events: string[]; enabled: boolean; lastDelivery?: string }
+
+function WebhookPanel() {
+  const [webhooks, setWebhooks] = useState<WebhookConfig[]>(() => {
+    if (typeof window === "undefined") return [];
+    try { return JSON.parse(localStorage.getItem(WEBHOOK_KEY) || "[]"); } catch { return []; }
+  });
+  const [newUrl, setNewUrl] = useState("");
+  const [newEvents, setNewEvents] = useState<Set<string>>(new Set(["onboard_complete"]));
+
+  const save = (wh: WebhookConfig[]) => { setWebhooks(wh); localStorage.setItem(WEBHOOK_KEY, JSON.stringify(wh)); };
+
+  const addWebhook = () => {
+    if (!newUrl.trim()) return;
+    const wh: WebhookConfig = { id: Date.now().toString(), url: newUrl.trim(), events: Array.from(newEvents), enabled: true };
+    save([...webhooks, wh]);
+    setNewUrl("");
+    setNewEvents(new Set(["onboard_complete"]));
+  };
+
+  const removeWebhook = (id: string) => save(webhooks.filter(w => w.id !== id));
+  const toggleWebhook = (id: string) => save(webhooks.map(w => w.id === id ? { ...w, enabled: !w.enabled } : w));
+
+  return (
+    <div className="mt-10 animate-fade-in">
+      <h2 className="text-2xl font-light text-slate-900 mb-2">Webhook Notifications</h2>
+      <p className="text-slate-400 mb-6">Send POST requests to external URLs when events happen in Min.</p>
+
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+        {webhooks.map(wh => (
+          <div key={wh.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+            <button onClick={() => toggleWebhook(wh.id)}
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${wh.enabled ? "bg-green-500" : "bg-slate-300"}`} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-slate-700 truncate font-mono">{wh.url}</p>
+              <div className="flex items-center gap-1 mt-0.5">
+                {wh.events.map(e => <span key={e} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-500">{e}</span>)}
+              </div>
+            </div>
+            <button onClick={() => removeWebhook(wh.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
+          </div>
+        ))}
+
+        <div className="space-y-3 pt-2 border-t border-slate-100">
+          <input value={newUrl} onChange={e => setNewUrl(e.target.value)} placeholder="https://hooks.slack.com/services/..."
+            className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900" />
+          <div className="flex flex-wrap gap-2">
+            {WEBHOOK_EVENTS.map(e => (
+              <button key={e} onClick={() => setNewEvents(prev => { const s = new Set(prev); if (s.has(e)) s.delete(e); else s.add(e); return s; })}
+                className={`text-[10px] px-2.5 py-1 rounded-full font-medium transition-all ${newEvents.has(e) ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-500"}`}>
+                {e.replace(/_/g, " ")}
+              </button>
+            ))}
+          </div>
+          <button onClick={addWebhook} disabled={!newUrl.trim()}
+            className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-30 transition-colors flex items-center justify-center gap-2">
+            <Plus size={14} /> Add Webhook
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── White-Label Portal Panel ───────────────────────────────────────────────
+
+const BRANDING_KEY = "min-portal-branding";
+
+interface PortalBranding { firmName: string; primaryColor: string; logoUrl: string }
+
+function PortalBrandingPanel() {
+  const [branding, setBranding] = useState<PortalBranding>(() => {
+    if (typeof window === "undefined") return { firmName: "", primaryColor: "#0f172a", logoUrl: "" };
+    try { return JSON.parse(localStorage.getItem(BRANDING_KEY) || "null") || { firmName: "", primaryColor: "#0f172a", logoUrl: "" }; } catch { return { firmName: "", primaryColor: "#0f172a", logoUrl: "" }; }
+  });
+  const [saved, setSaved] = useState(false);
+
+  const save = () => {
+    localStorage.setItem(BRANDING_KEY, JSON.stringify(branding));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="mt-10 animate-fade-in">
+      <h2 className="text-2xl font-light text-slate-900 mb-2">Portal Branding</h2>
+      <p className="text-slate-400 mb-6">Customize the client-facing onboarding portal with your firm's branding.</p>
+
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+        <div>
+          <label className="text-xs text-slate-500 mb-1.5 block">Firm Display Name</label>
+          <input value={branding.firmName} onChange={e => setBranding({ ...branding, firmName: e.target.value })}
+            placeholder="Calloway Capital Partners"
+            className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900" />
+        </div>
+        <div>
+          <label className="text-xs text-slate-500 mb-1.5 block">Primary Color</label>
+          <div className="flex items-center gap-3">
+            <input type="color" value={branding.primaryColor} onChange={e => setBranding({ ...branding, primaryColor: e.target.value })}
+              className="w-10 h-10 rounded-lg border border-slate-200 cursor-pointer" />
+            <input value={branding.primaryColor} onChange={e => setBranding({ ...branding, primaryColor: e.target.value })}
+              className="flex-1 h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-slate-500 mb-1.5 block">Logo URL (optional)</label>
+          <input value={branding.logoUrl} onChange={e => setBranding({ ...branding, logoUrl: e.target.value })}
+            placeholder="https://example.com/logo.png"
+            className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900" />
+        </div>
+
+        {/* Preview */}
+        <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Preview</p>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold" style={{ backgroundColor: branding.primaryColor }}>
+              {branding.firmName ? branding.firmName[0].toUpperCase() : "M"}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-700">{branding.firmName || "Your Firm"}</p>
+              <p className="text-xs text-slate-400">Client Onboarding Portal</p>
+            </div>
+          </div>
+        </div>
+
+        <button onClick={save}
+          className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-2">
+          {saved ? <><Check size={14} /> Saved</> : "Save Branding"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Integration Marketplace Panel ──────────────────────────────────────────
+
+const INTEGRATIONS_KEY = "min-integrations";
+
+interface Integration { id: string; name: string; description: string; icon: React.ElementType; category: string; connected: boolean }
+
+const AVAILABLE_INTEGRATIONS: Omit<Integration, "connected">[] = [
+  { id: "calendly", name: "Calendly", description: "Sync meeting schedules and auto-create briefings", icon: Calendar, category: "Scheduling" },
+  { id: "orion", name: "Orion", description: "Import portfolio data and performance reporting", icon: LineChart, category: "Portfolio" },
+  { id: "moneyguide", name: "MoneyGuidePro", description: "Sync financial plans and goal tracking", icon: BarChart3, category: "Planning" },
+  { id: "docusign", name: "DocuSign", description: "E-signature status and document tracking", icon: PenTool, category: "Documents" },
+  { id: "slack", name: "Slack", description: "Push notifications and activity feed to channels", icon: Bell, category: "Communication" },
+];
+
+function IntegrationMarketplace() {
+  const [connected, setConnected] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try { return new Set(JSON.parse(localStorage.getItem(INTEGRATIONS_KEY) || "[]")); } catch { return new Set(); }
+  });
+
+  const toggle = (id: string) => {
+    setConnected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      localStorage.setItem(INTEGRATIONS_KEY, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
+
+  return (
+    <div className="mt-10 animate-fade-in">
+      <h2 className="text-2xl font-light text-slate-900 mb-2">Integrations</h2>
+      <p className="text-slate-400 mb-6">Connect Min to your existing tools and services.</p>
+
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-50">
+        {AVAILABLE_INTEGRATIONS.map(int => {
+          const isConnected = connected.has(int.id);
+          const Icon = int.icon;
+          return (
+            <div key={int.id} className="flex items-center gap-4 px-6 py-4">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isConnected ? "bg-green-50 text-green-600" : "bg-slate-100 text-slate-400"}`}>
+                <Icon size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-slate-700">{int.name}</p>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">{int.category}</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">{int.description}</p>
+              </div>
+              <button onClick={() => toggle(int.id)}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${isConnected
+                  ? "bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700"
+                  : "bg-slate-900 text-white hover:bg-slate-800"}`}>
+                {isConnected ? "Connected" : "Connect"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Settings Screen ────────────────────────────────────────────────────────
+
 export function SettingsScreen({ onExit }: { onExit: () => void }) {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -648,6 +853,15 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
                 </div>
               </div>
             )}
+
+            {/* Integrations — always visible */}
+            <IntegrationMarketplace />
+
+            {/* Webhooks — visible when connected */}
+            {status?.connected && <WebhookPanel />}
+
+            {/* Portal Branding — always visible */}
+            <PortalBrandingPanel />
 
           </div>
         </div>

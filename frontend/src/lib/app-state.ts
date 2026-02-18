@@ -33,6 +33,9 @@ export interface AppState {
   rawInstanceUrl: string;
   principalAdvisor: string;
 
+  // Multi-firm
+  activeFirmId: string; // "all" or a firm ID
+
   // UI
   toast: string | null;
   tourActive: boolean;
@@ -85,6 +88,7 @@ const initialState: AppState = {
   rawHouseholds: [],
   rawInstanceUrl: "",
   principalAdvisor: "all",
+  activeFirmId: "all",
   toast: null,
   tourActive: false,
 };
