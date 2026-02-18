@@ -87,12 +87,11 @@ export async function POST() {
       args: [orgId, "discovery_completed", JSON.stringify({ orgType: healthReport.orgType, confidence: mapping.confidence })],
     }).catch(() => {}); // fire-and-forget
 
-    return NextResponse.json({
-      success: true,
-      mapping,
-      healthReport,
-      // Include raw metadata for debugging (strip in production)
-      _debug: {
+    const body: Record<string, unknown> = { success: true, mapping, healthReport };
+
+    // Only include raw metadata in non-production environments
+    if (process.env.NODE_ENV !== "production") {
+      body._debug = {
         recordTypeInfos: bundle.accountDescribe?.recordTypeInfos.filter(rt => rt.active),
         fscObjects: bundle.fscObjectsFound,
         managedPackagesDetected: bundle.managedPackagesDetected,
@@ -102,8 +101,10 @@ export async function POST() {
           label: o.label,
           fieldCount: o.fields.length,
         })),
-      },
-    });
+      };
+    }
+
+    return NextResponse.json(body);
 
   } catch (error) {
     console.error("[Schema Discovery Error]", error);

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { FileDown, Loader2, BookOpen, Check } from "lucide-react";
+import { loadCustomChecks, loadSchedules } from "@/lib/compliance-engine";
 import type { PracticeData } from "@/app/dashboard/usePracticeData";
 
 // ─── Practice Playbook Export ────────────────────────────────────────────────
@@ -64,23 +65,19 @@ function buildPlaybook(data: PracticeData, firmName?: string): string {
     "",
     section("COMPLIANCE CONFIGURATION"),
     (() => {
-      try {
-        const checks = JSON.parse(localStorage.getItem("min-custom-compliance-checks") || "[]");
-        if (checks.length === 0) return "  No custom compliance checks defined.";
-        return "Custom Checks:\n" + checks.map((c: { label: string; keyword: string; regulation: string; failStatus: string }) =>
-          `  • ${c.label} — keyword: "${c.keyword}" · ${c.regulation} · ${c.failStatus === "fail" ? "FAIL" : "WARN"} if missing`
-        ).join("\n");
-      } catch { return "  Unable to read custom checks."; }
+      const checks = loadCustomChecks();
+      if (checks.length === 0) return "  No custom compliance checks defined.";
+      return "Custom Checks:\n" + checks.map(c =>
+        `  • ${c.label} — keyword: "${c.keyword}" · ${c.regulation} · ${c.failStatus === "fail" ? "FAIL" : "WARN"} if missing`
+      ).join("\n");
     })(),
 
     (() => {
-      try {
-        const schedules = JSON.parse(localStorage.getItem("min-compliance-schedules") || "[]");
-        if (schedules.length === 0) return "\n  No scheduled scans configured.";
-        return "\nScheduled Scans:\n" + schedules.map((s: { name: string; frequency: string; enabled: boolean; criteria: string }) =>
-          `  • ${s.name} — ${s.frequency} · ${s.enabled ? "enabled" : "disabled"} · ${s.criteria === "all" ? "all households" : "threshold-based"}`
-        ).join("\n");
-      } catch { return "\n  Unable to read schedules."; }
+      const schedules = loadSchedules();
+      if (schedules.length === 0) return "\n  No scheduled scans configured.";
+      return "\nScheduled Scans:\n" + schedules.map(s =>
+        `  • ${s.name} — ${s.frequency} · ${s.enabled ? "enabled" : "disabled"} · ${s.criteria === "all" ? "all households" : "threshold-based"}`
+      ).join("\n");
     })(),
 
     "",
