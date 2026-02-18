@@ -145,6 +145,11 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const familyName = s.selectedHousehold?.name?.replace(" Household", "") || "Client";
 
+  // Recent meetings state
+  const [recentMeetings, setRecentMeetings] = useState<{ household: string; householdId: string; type: string; date: string; notes: string; primaryContactId?: string }[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+  const [expandedMeeting, setExpandedMeeting] = useState<number | null>(null);
+
   // Image-to-notes state
   const [imageExtracting, setImageExtracting] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -191,6 +196,29 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
 
     setImageExtracting(false);
   };
+
+  // Load recent meetings on mount (search step, no initial context)
+  useEffect(() => {
+    if (s.step !== "search" || initialContext) return;
+    setRecentLoading(true);
+    callSF("queryTasks", {}).then(res => {
+      if (res.success && res.tasks) {
+        const meetings = (res.tasks as { subject: string; createdAt: string; household: string; householdId: string; description?: string; primaryContactId?: string }[])
+          .filter(t => t.subject?.toUpperCase().includes("MEETING NOTE"))
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 10)
+          .map(t => ({
+            household: t.household || "Unknown",
+            householdId: t.householdId || "",
+            type: t.subject.match(/\(([^)]+)\)/)?.[1] || "Meeting",
+            date: new Date(t.createdAt).toLocaleDateString(),
+            notes: (t.description || "").replace(/^Meeting Type:.*\n?/m, "").replace(/^Duration:.*\n?/m, "").replace(/^Attendees:.*\n?/m, "").replace(/^Date:.*\n?/m, "").trim().slice(0, 300),
+            primaryContactId: t.primaryContactId,
+          }));
+        setRecentMeetings(meetings);
+      }
+    }).catch(() => {}).finally(() => setRecentLoading(false));
+  }, [s.step, initialContext]);
 
   // Persist draft on state changes
   useEffect(() => {
@@ -324,6 +352,46 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
                         <p className="text-sm text-slate-500">{h.contactNames ? `${h.contactNames} · ` : ""}Created {h.createdDate}</p>
                       </button>
                     ))}
+                  </div>
+                )}
+
+                {/* Recent Meetings */}
+                {s.searchQuery.length < 2 && !initialContext && (
+                  <div className="mt-8">
+                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+                      <Clock size={12} /> Recent Meetings
+                    </p>
+                    {recentLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading...</div>
+                    ) : recentMeetings.length === 0 ? (
+                      <p className="text-sm text-slate-400">No meetings logged yet.</p>
+                    ) : (
+                      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                        {recentMeetings.map((m, i) => (
+                          <div key={i} className="border-b border-slate-50 last:border-0">
+                            <button onClick={() => setExpandedMeeting(expandedMeeting === i ? null : i)}
+                              className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors">
+                              <div className="flex items-center justify-between">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-slate-800 truncate">{m.household.replace(" Household", "")}</p>
+                                  <p className="text-xs text-slate-400">{m.type} · {m.date}</p>
+                                </div>
+                                <ChevronRight size={14} className={`text-slate-300 transition-transform ${expandedMeeting === i ? "rotate-90" : ""}`} />
+                              </div>
+                            </button>
+                            {expandedMeeting === i && (
+                              <div className="px-4 pb-3 animate-fade-in">
+                                <p className="text-xs text-slate-500 whitespace-pre-line mb-2">{m.notes || "No notes recorded."}</p>
+                                {m.householdId && (
+                                  <button onClick={() => d({ type: "SET_HOUSEHOLD", v: { id: m.householdId, name: m.household, createdDate: "", contactNames: "", primaryContactId: m.primaryContactId } })}
+                                    className="text-[11px] text-blue-600 hover:text-blue-800 font-medium">Log new meeting for {m.household.replace(" Household", "")} →</button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

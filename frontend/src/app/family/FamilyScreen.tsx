@@ -1,9 +1,10 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { FileText, BookOpen, MessageSquare, Briefcase, Shield, Clock, CheckCircle, Send, ExternalLink, Loader2, Users, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp, Building2, ArrowRight } from "lucide-react";
+import { FileText, BookOpen, MessageSquare, Briefcase, Shield, Clock, CheckCircle, Send, ExternalLink, Loader2, Users, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp, Building2, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
 import { classifyTask, TASK_TYPE_LABELS, isComplianceReview, isMeetingNote } from "@/lib/task-subjects";
+import { custodian } from "@/lib/custodian";
 import type { Screen, WorkflowContext } from "@/lib/types";
 
 interface Contact {
@@ -45,6 +46,12 @@ function parseDescription(desc: string | undefined) {
   return sections;
 }
 
+// Mask sequences of 4+ digits, showing only the last 4
+function maskDigits(text: string, show: boolean): string {
+  if (show) return text;
+  return text.replace(/\b(\d{4,})\b/g, (m) => "••••" + m.slice(-4));
+}
+
 function taskTypeIcon(type: string) {
   if (type === "compliance") return <Shield size={13} className="text-green-500" />;
   if (type === "docusign") return <Send size={13} className="text-blue-500" />;
@@ -67,6 +74,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
   const [showAllActivity, setShowAllActivity] = useState(false);
   const [completing, setCompleting] = useState<string | null>(null);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
+  const [showAcctNumbers, setShowAcctNumbers] = useState(false);
 
   useEffect(() => {
     loadFamilyData();
@@ -305,19 +313,23 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
             <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
                 <Briefcase size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Account Details</p>
+                <div className="flex-1" />
+                <button onClick={() => setShowAcctNumbers(!showAcctNumbers)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1">
+                  {showAcctNumbers ? <><EyeOff size={12} />Hide</> : <><Eye size={12} />Show</>} numbers
+                </button>
               </div>
               <div className="px-4 py-3 space-y-3">
                 {parsed.accounts && parsed.accounts !== "None yet" && (
                   <div>
                     <p className="text-[11px] text-slate-400 mb-1">Accounts Planned</p>
-                    <p className="text-sm text-slate-700">{parsed.accounts}</p>
+                    <p className="text-sm text-slate-700">{maskDigits(parsed.accounts, showAcctNumbers)}</p>
                   </div>
                 )}
                 {parsed.funding && parsed.funding.length > 0 && (
                   <div>
                     <p className="text-[11px] text-slate-400 mb-1">Funding</p>
                     {parsed.funding.map((f, i) => (
-                      <p key={i} className="text-sm text-slate-700">· {f}</p>
+                      <p key={i} className="text-sm text-slate-700">· {maskDigits(f, showAcctNumbers)}</p>
                     ))}
                   </div>
                 )}
@@ -340,7 +352,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
             const steps = [
               { label: "Application Submitted", done: docuTasks.length > 0, detail: docuTasks.length > 0 ? `${docuTasks.length} envelope(s) sent` : "Pending" },
               { label: "Signatures Complete", done: hasSigned, detail: hasSigned ? "All parties signed" : "Awaiting signatures" },
-              { label: "Account Number Assigned", done: hasAcctOpen, detail: hasAcctOpen ? "Account active at Schwab" : "Processing (1-2 business days)" },
+              { label: "Account Number Assigned", done: hasAcctOpen, detail: hasAcctOpen ? `Account active at ${custodian.shortName}` : "Processing (1-2 business days)" },
               { label: "Funding Initiated", done: hasFunding, detail: hasFunding ? "Transfer/contribution in progress" : "Pending account setup" },
               ...(hasACAT ? [{ label: "ACAT Transfer", done: false, detail: "In transit (3-5 business days typical)" }] : []),
             ];
@@ -352,7 +364,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                 <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Building2 size={12} className="text-slate-400" />
-                    <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Schwab Advisor Center</p>
+                    <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">{custodian.platform}</p>
                   </div>
                   <span className="text-[10px] text-slate-400">{completedSteps}/{steps.length} complete</span>
                 </div>
@@ -373,7 +385,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                           </div>
                           <div>
                             <p className={`text-sm ${step.done ? "text-slate-700 font-medium" : i === completedSteps ? "text-blue-700 font-medium" : "text-slate-400"}`}>{step.label}</p>
-                            <p className="text-[10px] text-slate-400">{step.detail}</p>
+                            <p className="text-[10px] text-slate-400">{maskDigits(step.detail, showAcctNumbers)}</p>
                           </div>
                         </div>
                       ))}

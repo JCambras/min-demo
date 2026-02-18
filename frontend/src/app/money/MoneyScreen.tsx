@@ -1,6 +1,6 @@
 "use client";
-import { useReducer, useEffect, useCallback, useRef, useState } from "react";
-import { Search, Loader2, Check, ChevronRight, DollarSign, ArrowRight, ArrowLeftRight, Building2, AlertTriangle, ExternalLink, Shield } from "lucide-react";
+import { useReducer, useEffect, useCallback, useRef, useState, useMemo } from "react";
+import { Search, Loader2, Check, ChevronRight, DollarSign, ArrowRight, ArrowLeftRight, Building2, AlertTriangle, ExternalLink, Shield, BookmarkPlus, Bookmark, Trash2, ArrowUpDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn, FieldLabel, SelectField } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
@@ -160,6 +160,36 @@ function computeWithholding(amount: number, fedPct: number, statePct: number): {
   return { gross: amount, fedTax, stateTax, net: Math.round((amount - fedTax - stateTax) * 100) / 100 };
 }
 
+function computeGrossFromNet(desiredNet: number, fedPct: number, statePct: number): { gross: number; fedTax: number; stateTax: number; net: number } {
+  const factor = 1 - fedPct / 100 - statePct / 100;
+  if (factor <= 0) return { gross: 0, fedTax: 0, stateTax: 0, net: 0 };
+  const gross = Math.round(desiredNet / factor * 100) / 100;
+  const fedTax = Math.round(gross * fedPct / 100 * 100) / 100;
+  const stateTax = Math.round(gross * statePct / 100 * 100) / 100;
+  return { gross, fedTax, stateTax, net: Math.round((gross - fedTax - stateTax) * 100) / 100 };
+}
+
+// ─── Wire Templates ──────────────────────────────────────────────────────────
+
+interface WireTemplate {
+  id: string;
+  name: string;
+  receivingBank: string;
+  routingNumber: string;
+  accountNumber: string;
+  beneficiaryName: string;
+}
+
+const WIRE_TEMPLATES_KEY = "min-wire-templates";
+
+function loadWireTemplates(): WireTemplate[] {
+  try { return JSON.parse(localStorage.getItem(WIRE_TEMPLATES_KEY) || "[]"); } catch { return []; }
+}
+
+function saveWireTemplates(templates: WireTemplate[]) {
+  try { localStorage.setItem(WIRE_TEMPLATES_KEY, JSON.stringify(templates)); } catch {}
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STEP_LABELS: Record<MoneyStep, string> = {
@@ -178,6 +208,14 @@ export function MoneyScreen({ onExit, initialContext, onNavigate }: {
   const [state, d] = useReducer(reducer, initialState);
   const progressPct = (STEPS_ORDER.indexOf(state.step) + 1) / STEPS_ORDER.length * 100;
   const familyName = state.selectedHousehold?.name?.replace(" Household", "") || "Client";
+
+  // Wire templates
+  const [wireTemplates, setWireTemplates] = useState<WireTemplate[]>(() => loadWireTemplates());
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+
+  // Net-to-gross calculator mode
+  const [calcMode, setCalcMode] = useState<"gross-to-net" | "net-to-gross">("gross-to-net");
 
   const addEv = useCallback((label: string, url?: string) => {
     d({ type: "ADD_EVIDENCE", ev: { label, url, timestamp: timestamp() } });
@@ -379,7 +417,7 @@ export function MoneyScreen({ onExit, initialContext, onNavigate }: {
 
                   {/* Amount */}
                   <div>
-                    <FieldLabel>Amount ($)</FieldLabel>
+                    <FieldLabel>{det.movementType === "ach-distribution" && isIra && calcMode === "net-to-gross" ? "Desired Net Amount ($)" : "Amount ($)"}</FieldLabel>
                     <Input type="number" min="0" step="0.01" className="h-12 text-lg rounded-xl" placeholder="0.00" value={det.amount} onChange={e => d({ type: "SET_DETAILS", details: { amount: e.target.value } })} />
                     {amountNum >= 100000 && (
                       <p className="text-xs text-amber-500 mt-1 flex items-center gap-1"><AlertTriangle size={12} /> Large transaction — may require additional verification</p>
@@ -390,6 +428,19 @@ export function MoneyScreen({ onExit, initialContext, onNavigate }: {
                   {det.movementType === "wire" && (
                     <div className="bg-slate-50 rounded-2xl p-5 space-y-4">
                       <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Wire Details</p>
+                      {wireTemplates.length > 0 && (
+                        <div className="bg-white rounded-xl p-3 space-y-2">
+                          <p className="text-[10px] uppercase tracking-wider text-slate-400 flex items-center gap-1"><Bookmark size={10} /> Saved Templates</p>
+                          {wireTemplates.map(t => (
+                            <div key={t.id} className="flex items-center justify-between">
+                              <button onClick={() => d({ type: "SET_DETAILS", details: { receivingBank: t.receivingBank, routingNumber: t.routingNumber, accountNumber: t.accountNumber, beneficiaryName: t.beneficiaryName } })}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-medium truncate">{t.name}</button>
+                              <button onClick={() => { const updated = wireTemplates.filter(x => x.id !== t.id); setWireTemplates(updated); saveWireTemplates(updated); }}
+                                className="text-slate-300 hover:text-red-400 flex-shrink-0"><Trash2 size={12} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div>
                         <FieldLabel>Receiving Bank Name</FieldLabel>
                         <Input className="h-11 rounded-xl" placeholder="e.g. JP Morgan Chase" value={det.receivingBank} onChange={e => d({ type: "SET_DETAILS", details: { receivingBank: e.target.value } })} />
@@ -418,9 +469,15 @@ export function MoneyScreen({ onExit, initialContext, onNavigate }: {
                   {/* IRA distribution fields */}
                   {det.movementType === "ach-distribution" && det.fromAccount && isIra && (
                     <div className="bg-amber-50 rounded-2xl p-5 space-y-4 border border-amber-200/60">
-                      <div className="flex items-center gap-2">
-                        <Shield size={16} className="text-amber-600" />
-                        <p className="text-xs uppercase tracking-wider text-amber-600 font-semibold">IRA Distribution — Tax Withholding</p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Shield size={16} className="text-amber-600" />
+                          <p className="text-xs uppercase tracking-wider text-amber-600 font-semibold">IRA Distribution — Tax Withholding</p>
+                        </div>
+                        <button onClick={() => setCalcMode(m => m === "gross-to-net" ? "net-to-gross" : "gross-to-net")}
+                          className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors font-medium">
+                          <ArrowUpDown size={10} /> {calcMode === "gross-to-net" ? "Gross → Net" : "Net → Gross"}
+                        </button>
                       </div>
                       <div>
                         <FieldLabel>Distribution Reason</FieldLabel>
@@ -445,9 +502,16 @@ export function MoneyScreen({ onExit, initialContext, onNavigate }: {
                       {amountNum > 0 && (
                         <div className="bg-white rounded-xl p-3 space-y-1 text-sm">
                           {(() => {
-                            const wh = computeWithholding(amountNum, Number(det.federalWithholding), Number(det.stateWithholding));
+                            const wh = calcMode === "gross-to-net"
+                              ? computeWithholding(amountNum, Number(det.federalWithholding), Number(det.stateWithholding))
+                              : computeGrossFromNet(amountNum, Number(det.federalWithholding), Number(det.stateWithholding));
                             return (
                               <>
+                                {calcMode === "net-to-gross" && (
+                                  <div className="flex justify-between text-[10px] text-amber-600 pb-1 mb-1 border-b border-amber-100">
+                                    <span>Desired net amount</span><span className="font-medium">${amountNum.toLocaleString()}</span>
+                                  </div>
+                                )}
                                 <div className="flex justify-between"><span className="text-slate-500">Gross distribution</span><span className="font-medium">${wh.gross.toLocaleString()}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">Federal tax ({det.federalWithholding}%)</span><span className="text-red-600">-${wh.fedTax.toLocaleString()}</span></div>
                                 {wh.stateTax > 0 && <div className="flex justify-between"><span className="text-slate-500">State tax ({det.stateWithholding}%)</span><span className="text-red-600">-${wh.stateTax.toLocaleString()}</span></div>}
@@ -541,6 +605,28 @@ export function MoneyScreen({ onExit, initialContext, onNavigate }: {
                     <div>
                       <p className="text-sm font-medium text-amber-900">Large Transaction Review</p>
                       <p className="text-xs text-amber-700/70">Transactions over $50,000 are flagged for supervisor review per firm policy.</p>
+                    </div>
+                  </div>
+                )}
+
+                {det.movementType === "wire" && !showSaveTemplate && (
+                  <button onClick={() => setShowSaveTemplate(true)} className="w-full mb-3 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-500 hover:bg-slate-50 transition-colors">
+                    <BookmarkPlus size={14} /> Save wire details as template
+                  </button>
+                )}
+                {showSaveTemplate && (
+                  <div className="mb-3 bg-slate-50 rounded-xl p-4 space-y-3 animate-fade-in">
+                    <p className="text-xs font-medium text-slate-600">Template Name</p>
+                    <div className="flex gap-2">
+                      <Input className="h-9 rounded-lg text-sm flex-1" placeholder={`e.g. ${det.beneficiaryName || "Recipient"}`} value={templateName} onChange={e => setTemplateName(e.target.value)} autoFocus />
+                      <button onClick={() => {
+                        if (!templateName.trim()) return;
+                        const t: WireTemplate = { id: Date.now().toString(), name: templateName.trim(), receivingBank: det.receivingBank, routingNumber: det.routingNumber, accountNumber: det.accountNumber, beneficiaryName: det.beneficiaryName };
+                        const updated = [...wireTemplates, t];
+                        setWireTemplates(updated); saveWireTemplates(updated);
+                        setShowSaveTemplate(false); setTemplateName("");
+                      }} disabled={!templateName.trim()} className="h-9 px-3 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 disabled:opacity-30 transition-colors">Save</button>
+                      <button onClick={() => { setShowSaveTemplate(false); setTemplateName(""); }} className="h-9 px-3 rounded-lg border border-slate-200 text-xs text-slate-400 hover:bg-slate-50 transition-colors">Cancel</button>
                     </div>
                   </div>
                 )}
