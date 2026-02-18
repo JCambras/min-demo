@@ -129,18 +129,37 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
   ]);
   const [error, setError] = useState<string | null>(null);
   const [healthSummary, setHealthSummary] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function runDiscovery() {
-      // Step 1: Connecting (brief pause so it feels intentional, not instant)
-      await sleep(600);
+      // Step 1: Check if we already have a cached mapping
+      await sleep(400);
       if (cancelled) return;
+
+      try {
+        const cached = await fetch("/api/salesforce/discover").then(r => r.json()).catch(() => null);
+        if (cancelled) return;
+
+        // If we have a cached mapping, fast-forward through discovery
+        if (cached?.success && cached?.mapping) {
+          advance(0, "done");
+          advance(1, "done");
+          advance(2, "done", "Using cached discovery");
+          advance(3, "done");
+          advance(4, "done", "Ready");
+          await sleep(600);
+          if (!cancelled) setDone(true);
+          return;
+        }
+      } catch {}
+
+      // No cache — run full discovery
       advance(0, "done");
       advance(1, "active");
 
-      // Step 2–4: Run actual discovery
       await sleep(400);
       if (cancelled) return;
       advance(1, "done");
@@ -185,9 +204,8 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
         if (cancelled) return;
         advance(4, "done", "Ready");
 
-        // Brief pause to let them read the results, then advance
-        await sleep(1200);
-        if (!cancelled) onComplete();
+        await sleep(400);
+        if (!cancelled) setDone(true);
 
       } catch (err) {
         if (cancelled) return;
@@ -206,6 +224,34 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
     setSteps(prev => prev.map((s, i) => i === index ? { ...s, status, detail: detail ?? s.detail } : s));
   }
 
+  // ── "You're all set" confirmation ──
+  if (done) return (
+    <div className="flex h-screen bg-surface">
+      <div className="flex-1 flex flex-col items-center justify-center px-8">
+        <div className="max-w-md w-full text-center animate-fade-in">
+          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
+            <CheckCircle size={32} className="text-green-600" />
+          </div>
+          <h1 className="text-3xl font-light tracking-tight text-slate-900 mb-2">You&rsquo;re all set</h1>
+          <p className="text-lg text-slate-400 font-light mb-8">Min is connected to your Salesforce org.</p>
+
+          {healthSummary && (
+            <div className="bg-white border border-slate-200 rounded-2xl px-6 py-4 mb-6">
+              <p className="text-sm text-slate-600">{healthSummary}</p>
+            </div>
+          )}
+
+          <button onClick={onComplete} className="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors">
+            Open your dashboard
+          </button>
+
+          <p className="text-xs text-slate-300 mt-6">You can re-run discovery anytime from Settings.</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── Discovery progress ──
   return (
     <div className="flex h-screen bg-surface">
       <div className="flex-1 flex flex-col items-center justify-center px-8">
@@ -319,6 +365,17 @@ export default function Home() {
       const inst = orgUrl.replace("https://", "").split(".")[0]
         .replace(/-[a-f0-9]{10,}-dev-ed$/i, "").replace(/-/g, " ") || "";
       dispatch({ type: "SF_STATUS", connected: true, instance: inst });
+
+      // Restore role + name that were saved before the OAuth redirect
+      try {
+        const savedRole = localStorage.getItem("min_setup_role");
+        const savedName = localStorage.getItem("min_setup_name");
+        if (savedRole) dispatch({ type: "SET_ROLE", role: savedRole as UserRole });
+        if (savedName) dispatch({ type: "SET_ADVISOR_NAME", name: savedName });
+        localStorage.removeItem("min_setup_role");
+        localStorage.removeItem("min_setup_name");
+      } catch {}
+
       dispatch({ type: "SET_SETUP_STEP", step: "discovering" });
       // Clean URL
       const cleaned = new URL(window.location.href);
@@ -456,7 +513,13 @@ export default function Home() {
     </div></div></div>
   );
 
-  if (setupStep === "connect") return (
+  if (setupStep === "connect") {
+    // Persist role + name before OAuth redirect so they survive the page reload
+    try {
+      if (role) localStorage.setItem("min_setup_role", role);
+      if (advisorName) localStorage.setItem("min_setup_name", advisorName);
+    } catch {}
+    return (
     <ErrorBoundary fallbackLabel="Settings encountered an error.">
       <SettingsScreen onExit={() => { fetch("/api/salesforce/connection").then(r => r.json()).then(d => {
         const inst = d.instanceUrl?.replace("https://", "").split(".")[0].replace(/-[a-f0-9]{10,}-dev-ed$/i, "").replace(/-/g, " ") || "";
@@ -464,7 +527,8 @@ export default function Home() {
         dispatch({ type: "SET_SETUP_STEP", step: d.connected ? "discovering" : "crm" });
       }).catch(() => { dispatch({ type: "SF_STATUS", connected: false, instance: "" }); dispatch({ type: "SET_SETUP_STEP", step: "crm" }); }); }} />
     </ErrorBoundary>
-  );
+    );
+  }
 
   if (setupStep === "discovering") return (
     <DiscoveryInterstitial
