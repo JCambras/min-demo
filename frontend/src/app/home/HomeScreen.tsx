@@ -154,6 +154,21 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
 
   const statKeys = ["overdueTasks", "openTasks", "readyForReview", "unsignedEnvelopes", "upcomingMeetings"];
 
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // ── Local UI state (not app-level) ──
+  const [expandedStat, setExpandedStat] = useState<string | null>(null);
+  const [panelFilter, setPanelFilter] = useState("");
+  const [panelSort, setPanelSort] = useState<"alpha" | "priority" | "due">("alpha");
+  const [reminderSent] = useState<Set<string>>(new Set());
+  const [completing, setCompleting] = useState<string | null>(null);
+  const [completed, setCompleted] = useState<Set<string>>(new Set());
+  const [bulkCompleting, setBulkCompleting] = useState(false);
+  const [lastSession, setLastSession] = useState<{ screen: Screen; ctx?: WorkflowContext; ts: number } | null>(null);
+  const [familyQuery, setFamilyQuery] = useState("");
+  const [familyResults, setFamilyResults] = useState<FamilyResult[]>([]);
+  const [familySearching, setFamilySearching] = useState(false);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Cmd+R: cycle role
@@ -185,21 +200,6 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [cycleRole, expandedStat, familyQuery]);
-
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  // ── Local UI state (not app-level) ──
-  const [expandedStat, setExpandedStat] = useState<string | null>(null);
-  const [panelFilter, setPanelFilter] = useState("");
-  const [panelSort, setPanelSort] = useState<"alpha" | "priority" | "due">("alpha");
-  const [reminderSent] = useState<Set<string>>(new Set());
-  const [completing, setCompleting] = useState<string | null>(null);
-  const [completed, setCompleted] = useState<Set<string>>(new Set());
-  const [bulkCompleting, setBulkCompleting] = useState(false);
-  const [lastSession, setLastSession] = useState<{ screen: Screen; ctx?: WorkflowContext; ts: number } | null>(null);
-  const [familyQuery, setFamilyQuery] = useState("");
-  const [familyResults, setFamilyResults] = useState<FamilyResult[]>([]);
-  const [familySearching, setFamilySearching] = useState(false);
 
   // ── Family search debounce ──
   useEffect(() => {

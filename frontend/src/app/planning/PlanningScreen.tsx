@@ -85,11 +85,11 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
     try {
       const res = await callSF("queryTasks", { limit: 200 });
       if (res.success) {
-        const goalTasks = (res.tasks || []).filter((t: { Subject: string }) => {
+        const goalTasks = ((res.tasks || []) as { Subject: string; Id: string; Status: string; Priority: string; ActivityDate: string; What?: { Name: string; Id?: string } }[]).filter((t) => {
           const s = t.Subject?.toUpperCase() || "";
           return s.includes("GOAL:") || s.includes("PLAN:") || s.includes("MILESTONE:");
         });
-        setGoals(goalTasks.map((t: { Id: string; Subject: string; Status: string; Priority: string; ActivityDate: string; What?: { Name: string; Id?: string } }) => ({
+        setGoals(goalTasks.map((t) => ({
           id: t.Id,
           subject: t.Subject.replace(/^(GOAL|PLAN|MILESTONE):\s*/i, ""),
           household: t.What?.Name || "",
@@ -100,8 +100,8 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
           category: parseCategory(t.Subject),
           url: `${res.instanceUrl}/${t.Id}`,
         })));
-        setHouseholds((res.households || []).map((h: { Id: string; Name: string }) => ({ id: h.Id, name: h.Name })));
-        setInstanceUrl(res.instanceUrl);
+        setHouseholds(((res.households || []) as { Id: string; Name: string }[]).map((h) => ({ id: h.Id, name: h.Name })));
+        setInstanceUrl(res.instanceUrl as string);
       }
     } catch { /* */ }
     setLoading(false);
@@ -121,7 +121,7 @@ export function PlanningScreen({ onExit, initialContext, onNavigate }: {
       });
       if (res.success) {
         setGoals(prev => [{
-          id: res.taskId || `temp-${Date.now()}`,
+          id: (res.taskId as string) || `temp-${Date.now()}`,
           subject: newGoal.subject,
           household: household?.name || "",
           householdId: newGoal.householdId,

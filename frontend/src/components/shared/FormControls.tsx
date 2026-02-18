@@ -39,24 +39,24 @@ export function BypassLink({ onClick, label }: { onClick: () => void; label: str
 
 // ─── Field Label ─────────────────────────────────────────────────────────────
 
-export function FieldLabel({ label, required }: { label: string; required?: boolean }) {
+export function FieldLabel({ label, required, children }: { label?: string; required?: boolean; children?: React.ReactNode }) {
   return (
     <label className="text-sm text-slate-500 mb-1.5 block">
-      {label}{required && <span className="text-red-400 ml-0.5">*</span>}
+      {children || label}{required && <span className="text-red-400 ml-0.5">*</span>}
     </label>
   );
 }
 
 // ─── Select Field ────────────────────────────────────────────────────────────
 
-export function SelectField({ value, onChange, options, optionItems, placeholder }: {
-  value: string; onChange: (v: string) => void; options?: string[]; optionItems?: { value: string; label: string }[]; placeholder?: string;
+export function SelectField({ value, onChange, options, optionItems, placeholder, labels }: {
+  value: string; onChange: (v: string) => void; options?: string[]; optionItems?: { value: string; label: string }[]; placeholder?: string; labels?: string[];
 }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)}
       className="w-full h-12 px-3 text-base rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-slate-400">
       {placeholder && <option value="">{placeholder}</option>}
-      {optionItems ? optionItems.map((o) => <option key={o.value} value={o.value}>{o.label}</option>) : options?.map((o) => <option key={o} value={o}>{o}</option>)}
+      {optionItems ? optionItems.map((o) => <option key={o.value} value={o.value}>{o.label}</option>) : options?.map((o, i) => <option key={o} value={o}>{labels?.[i] || o}</option>)}
     </select>
   );
 }

@@ -272,7 +272,7 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
     const t = setTimeout(async () => {
       try {
         const res = await callSF("searchHouseholds", { query: s.searchQuery });
-        if (res.success) d({ type: "SET_RESULTS", v: res.households.map((h: { id: string; name: string; description: string; createdAt: string; contacts?: { firstName: string; id: string }[] }) => ({
+        if (res.success) d({ type: "SET_RESULTS", v: (res.households as { id: string; name: string; description: string; createdAt: string; contacts?: { firstName: string; id: string }[] }[]).map((h) => ({
           id: h.id, name: h.name, createdDate: new Date(h.createdAt).toLocaleDateString(),
           contactNames: h.contacts?.map(c => c.firstName).filter(Boolean).join(" & ") || "",
           primaryContactId: h.contacts?.[0]?.id || undefined,
@@ -312,9 +312,10 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
             followUpDays: s.followUpDays,
           });
           if (res.success) {
-            d({ type: "ADD_EVIDENCE", ev: { label: "Meeting note recorded", url: res.task.url } });
-            if (res.followUpCount > 0) {
-              d({ type: "ADD_EVIDENCE", ev: { label: `${res.followUpCount} follow-up task${res.followUpCount > 1 ? "s" : ""} created` } });
+            d({ type: "ADD_EVIDENCE", ev: { label: "Meeting note recorded", url: (res.task as { url: string }).url } });
+            const fuc = res.followUpCount as number;
+            if (fuc > 0) {
+              d({ type: "ADD_EVIDENCE", ev: { label: `${fuc} follow-up task${fuc > 1 ? "s" : ""} created` } });
             }
           }
         },

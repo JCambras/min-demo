@@ -223,7 +223,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
     const t = setTimeout(async () => {
       try {
         const res = await callSF("searchHouseholds", { query: s.searchQuery });
-        if (res.success) d({ type: "SET_RESULTS", v: res.households.map((h: { id: string; name: string; description: string; createdAt: string; contacts?: { firstName: string }[] }) => ({
+        if (res.success) d({ type: "SET_RESULTS", v: (res.households as { id: string; name: string; description: string; createdAt: string; contacts?: { firstName: string }[] }[]).map((h) => ({
           id: h.id, name: h.name, description: h.description || "", createdDate: new Date(h.createdAt).toLocaleDateString(),
           contactNames: h.contacts?.map(c => c.firstName).filter(Boolean).join(" & ") || "",
         })) });
@@ -239,9 +239,9 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
     try {
       const res = await callSF("getHouseholdDetail", { householdId: hh.id });
       if (!res.success) throw new Error("Failed to load");
-      const intel = buildIntel(res.household, res.contacts, res.tasks);
+      const intel = buildIntel(res.household as { name: string; description: string; createdAt: string }, res.contacts as SFContact[], res.tasks as SFTask[]);
       const narrative = buildNarrative(intel);
-      d({ type: "SET_INTEL", intel, narrative, url: res.householdUrl });
+      d({ type: "SET_INTEL", intel, narrative, url: res.householdUrl as string });
       d({ type: "SET_STEP", step: "briefing" });
     } catch {
       d({ type: "SET_STEP", step: "search" });

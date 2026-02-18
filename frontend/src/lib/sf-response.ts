@@ -14,7 +14,8 @@ export type SFErrorCode =
   | "AUTH_FAILED"         // Salesforce auth/token issue
   | "INTERNAL_ERROR"      // Unexpected server error
   | "NETWORK_ERROR"       // Client couldn't reach the server
-  | "PARSE_ERROR";        // Server returned non-JSON
+  | "PARSE_ERROR"         // Server returned non-JSON
+  | "TIMEOUT";            // Client-side request timeout
 
 // ─── Response Shape ─────────────────────────────────────────────────────────
 

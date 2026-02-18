@@ -97,7 +97,7 @@ async function writeAuditRecord(ctx: SFContext, entry: AuditEntry, payload: Reco
 
   await createTask(ctx, {
     subject: `MIN:AUDIT — ${entry.action} — ${entry.result}`,
-    householdId: householdId || undefined,
+    householdId: householdId || "",
     status: "Completed",
     priority: entry.result === "error" ? "High" : "Low",
     description,

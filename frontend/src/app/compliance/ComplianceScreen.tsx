@@ -37,6 +37,34 @@ interface CustomCheck {
 
 const CUSTOM_CHECKS_KEY = "min-custom-compliance-checks";
 
+// ─── Scheduled Scans ─────────────────────────────────────────────────────────
+
+interface ComplianceSchedule {
+  id: string;
+  name: string;
+  frequency: "daily" | "weekly" | "monthly";
+  criteria: "all" | "below-threshold";
+  threshold: number;       // score threshold when criteria = "below-threshold"
+  emailReport: boolean;
+  emailTo: string;
+  enabled: boolean;
+  createdAt: string;
+  lastRunAt?: string;
+  lastRunHouseholds?: number;
+  lastRunFails?: number;
+}
+
+const SCHEDULES_KEY = "min-compliance-schedules";
+
+function loadSchedules(): ComplianceSchedule[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem(SCHEDULES_KEY) || "[]"); } catch { return []; }
+}
+
+function saveSchedules(schedules: ComplianceSchedule[]) {
+  localStorage.setItem(SCHEDULES_KEY, JSON.stringify(schedules));
+}
+
 function loadCustomChecks(): CustomCheck[] {
   if (typeof window === "undefined") return [];
   try { return JSON.parse(localStorage.getItem(CUSTOM_CHECKS_KEY) || "[]"); } catch { return []; }
@@ -419,6 +447,68 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
   const [newCheck, setNewCheck] = useState({ label: "", keyword: "", regulation: "Firm Internal Policy", whyItMatters: "", failStatus: "warn" as "fail" | "warn" });
   const [showAddForm, setShowAddForm] = useState(false);
 
+  // Scheduled scans management
+  const [showSchedules, setShowSchedules] = useState(false);
+  const [schedules, setSchedules] = useState<ComplianceSchedule[]>(loadSchedules);
+  const [showAddSchedule, setShowAddSchedule] = useState(false);
+  const [newSchedule, setNewSchedule] = useState<{ name: string; frequency: "daily" | "weekly" | "monthly"; criteria: "all" | "below-threshold"; threshold: number; emailReport: boolean; emailTo: string }>({ name: "", frequency: "weekly", criteria: "all", threshold: 70, emailReport: true, emailTo: "" });
+  const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
+
+  const addSchedule = () => {
+    if (!newSchedule.name.trim()) return;
+    const sched: ComplianceSchedule = {
+      id: Date.now().toString(36),
+      ...newSchedule,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+    };
+    const updated = [...schedules, sched];
+    setSchedules(updated);
+    saveSchedules(updated);
+    setNewSchedule({ name: "", frequency: "weekly", criteria: "all", threshold: 70, emailReport: true, emailTo: "" });
+    setShowAddSchedule(false);
+  };
+
+  const removeSchedule = (id: string) => {
+    const updated = schedules.filter(s => s.id !== id);
+    setSchedules(updated);
+    saveSchedules(updated);
+  };
+
+  const toggleSchedule = (id: string) => {
+    const updated = schedules.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s);
+    setSchedules(updated);
+    saveSchedules(updated);
+  };
+
+  const runScheduleNow = async (schedId: string) => {
+    setRunningScheduleId(schedId);
+    try {
+      const res = await callSF("queryTasks", { limit: 200 });
+      if (!res.success) { setRunningScheduleId(null); return; }
+      const households = (res.households || []) as SFHousehold[];
+      let failCount = 0;
+      let scannedCount = 0;
+      for (const h of households) {
+        try {
+          const detail = await callSF("getHouseholdDetail", { householdId: h.id });
+          if (detail.success) {
+            const checks = runComplianceChecks(
+              { id: h.id, name: h.name, description: h.description || "", createdAt: h.createdAt },
+              (detail.contacts || []) as SFContact[], (detail.tasks || []) as SFTask[],
+            );
+            failCount += checks.filter(c => c.status === "fail").length;
+            scannedCount++;
+          }
+        } catch { /* skip */ }
+      }
+      const updated = schedules.map(s => s.id === schedId ? { ...s, lastRunAt: new Date().toISOString(), lastRunHouseholds: scannedCount, lastRunFails: failCount } : s);
+      setSchedules(updated);
+      saveSchedules(updated);
+    } catch { /* swallow */ }
+    setRunningScheduleId(null);
+  };
+
   const addCustomCheck = () => {
     if (!newCheck.label.trim() || !newCheck.keyword.trim()) return;
     const check: CustomCheck = { ...newCheck, id: Date.now().toString(36) };
@@ -458,7 +548,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
       try {
         const res = await callSF("searchHouseholds", { query: state.searchQuery });
         if (res.success) {
-          d({ type: "SET_SEARCH_RESULTS", value: res.households.map((h: SFHousehold) => ({
+          d({ type: "SET_SEARCH_RESULTS", value: (res.households as SFHousehold[]).map((h) => ({
             id: h.id, name: h.name, description: h.description || "",
             createdDate: new Date(h.createdAt).toLocaleDateString(),
             contactNames: "",
@@ -481,12 +571,12 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
         fn: async () => {
           const res = await callSF("getHouseholdDetail", { householdId: household.id });
           if (!res.success) throw new Error("Failed to load household");
-          householdRef.current = res.household;
-          contactsRef.current = res.contacts || [];
-          tasksRef.current = res.tasks || [];
-          d({ type: "SET_HOUSEHOLD_DATA", contacts: res.contacts, tasks: res.tasks, url: res.householdUrl });
-          addEv(`Loaded ${household.name}`, res.householdUrl);
-          addEv(`${res.contacts.length} contacts, ${res.tasks.length} task records`);
+          householdRef.current = res.household as SFHousehold;
+          contactsRef.current = (res.contacts || []) as SFContact[];
+          tasksRef.current = (res.tasks || []) as SFTask[];
+          d({ type: "SET_HOUSEHOLD_DATA", contacts: contactsRef.current, tasks: tasksRef.current, url: res.householdUrl as string });
+          addEv(`Loaded ${household.name}`, res.householdUrl as string);
+          addEv(`${contactsRef.current.length} contacts, ${tasksRef.current.length} task records`);
         },
       },
       {
@@ -550,8 +640,8 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
           if (detail.success) {
             const checks = runComplianceChecks(
               { id: households[i].id, name: households[i].name, description: households[i].description || "", createdAt: households[i].createdAt },
-              detail.contacts || [],
-              detail.tasks || [],
+              (detail.contacts || []) as SFContact[],
+              (detail.tasks || []) as SFTask[],
             );
             results.push({
               household: households[i].name.replace(" Household", ""),
@@ -658,7 +748,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
         checks: state.checks.map(c => ({ label: c.label, status: c.status, detail: c.detail })),
         nextReviewDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toLocaleDateString(),
       });
-      if (res.success) addEv("Compliance review recorded", res.task.url);
+      if (res.success) addEv("Compliance review recorded", (res.task as { url: string })?.url);
       d({ type: "SET_STEP", step: "cc-complete" });
     } catch (err) {
       addEv(`Error: ${err instanceof Error ? err.message : "Unknown"}`);
@@ -848,6 +938,131 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                             <button onClick={addCustomCheck} disabled={!newCheck.label.trim() || !newCheck.keyword.trim()}
                               className="text-xs px-4 py-2 rounded-lg bg-purple-600 text-white font-medium hover:bg-purple-700 transition-colors disabled:opacity-50">Save Check</button>
                             <button onClick={() => setShowAddForm(false)} className="text-xs px-4 py-2 rounded-lg border border-slate-200 text-slate-400 font-medium hover:bg-white transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Scheduled Compliance Scans */}
+                <div className="mt-4">
+                  <button onClick={() => setShowSchedules(!showSchedules)}
+                    className="w-full flex items-center gap-4 p-4 rounded-2xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 transition-colors text-left">
+                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                      <Calendar size={20} className="text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-800">Scheduled Scans</p>
+                      <p className="text-xs text-slate-400">Automate recurring compliance reviews with email summaries.</p>
+                    </div>
+                    {schedules.filter(s => s.enabled).length > 0 && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium">{schedules.filter(s => s.enabled).length} active</span>
+                    )}
+                  </button>
+
+                  {showSchedules && (
+                    <div className="mt-3 bg-white border border-slate-200 rounded-2xl overflow-hidden animate-fade-in">
+                      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Scan Schedules</p>
+                        <button onClick={() => setShowAddSchedule(true)} className="text-xs px-2.5 py-1 rounded-lg bg-blue-100 text-blue-600 font-medium hover:bg-blue-200 transition-colors flex items-center gap-1">
+                          <Plus size={12} /> New Schedule
+                        </button>
+                      </div>
+
+                      {schedules.length === 0 && !showAddSchedule && (
+                        <div className="px-4 py-6 text-center">
+                          <Calendar size={20} className="mx-auto text-slate-200 mb-2" />
+                          <p className="text-sm text-slate-400">No scheduled scans</p>
+                          <p className="text-xs text-slate-300 mt-1">Create a schedule to automatically run compliance reviews on a recurring basis.</p>
+                        </div>
+                      )}
+
+                      {schedules.map(sched => (
+                        <div key={sched.id} className={`px-4 py-3 border-b border-slate-50 last:border-0 ${sched.enabled ? "" : "opacity-50"}`}>
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => toggleSchedule(sched.id)}
+                              className={`w-8 h-5 rounded-full transition-all flex-shrink-0 ${sched.enabled ? "bg-green-500" : "bg-slate-300"}`}>
+                              <div className={`w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${sched.enabled ? "ml-[14px]" : "ml-[3px]"}`} />
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-slate-700">{sched.name}</p>
+                              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                                <span className="capitalize">{sched.frequency}</span>
+                                <span>·</span>
+                                <span>{sched.criteria === "all" ? "All households" : `Score below ${sched.threshold}`}</span>
+                                {sched.emailReport && <><span>·</span><span>Email: {sched.emailTo || "configured"}</span></>}
+                              </div>
+                              {sched.lastRunAt && (
+                                <p className="text-[10px] text-green-600 mt-0.5">
+                                  Last run: {new Date(sched.lastRunAt).toLocaleDateString()} — {sched.lastRunHouseholds} scanned, {sched.lastRunFails} fails
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button onClick={() => runScheduleNow(sched.id)} disabled={runningScheduleId === sched.id}
+                                className="text-[10px] px-2 py-1 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors font-medium disabled:opacity-50">
+                                {runningScheduleId === sched.id ? <Loader2 size={10} className="animate-spin inline" /> : "Run Now"}
+                              </button>
+                              <button onClick={() => removeSchedule(sched.id)} className="text-slate-300 hover:text-red-500 transition-colors">
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {showAddSchedule && (
+                        <div className="px-4 py-4 border-t border-slate-100 bg-slate-50 space-y-3">
+                          <div>
+                            <label className="text-[10px] text-slate-400 uppercase tracking-wider">Schedule Name</label>
+                            <Input className="h-9 rounded-lg text-sm mt-1" placeholder="e.g. Friday Compliance Sweep" value={newSchedule.name}
+                              onChange={e => setNewSchedule(p => ({ ...p, name: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-slate-400 uppercase tracking-wider">Frequency</label>
+                            <div className="flex gap-2 mt-1">
+                              {(["daily", "weekly", "monthly"] as const).map(f => (
+                                <button key={f} onClick={() => setNewSchedule(p => ({ ...p, frequency: f }))}
+                                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors capitalize ${newSchedule.frequency === f ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-400"}`}>{f}</button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-slate-400 uppercase tracking-wider">Scope</label>
+                            <div className="flex gap-2 mt-1">
+                              <button onClick={() => setNewSchedule(p => ({ ...p, criteria: "all" }))}
+                                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${newSchedule.criteria === "all" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-400"}`}>All Households</button>
+                              <button onClick={() => setNewSchedule(p => ({ ...p, criteria: "below-threshold" }))}
+                                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${newSchedule.criteria === "below-threshold" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-400"}`}>Below Threshold</button>
+                            </div>
+                          </div>
+                          {newSchedule.criteria === "below-threshold" && (
+                            <div>
+                              <label className="text-[10px] text-slate-400 uppercase tracking-wider">Score Threshold</label>
+                              <Input type="number" className="h-9 rounded-lg text-sm mt-1 w-24" value={newSchedule.threshold}
+                                onChange={e => setNewSchedule(p => ({ ...p, threshold: parseInt(e.target.value) || 70 }))} />
+                              <p className="text-[10px] text-slate-300 mt-0.5">Only scan households with compliance score below this value</p>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => setNewSchedule(p => ({ ...p, emailReport: !p.emailReport }))}
+                              className={`w-8 h-5 rounded-full transition-all flex-shrink-0 ${newSchedule.emailReport ? "bg-green-500" : "bg-slate-300"}`}>
+                              <div className={`w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${newSchedule.emailReport ? "ml-[14px]" : "ml-[3px]"}`} />
+                            </button>
+                            <span className="text-xs text-slate-500">Email summary report</span>
+                          </div>
+                          {newSchedule.emailReport && (
+                            <div>
+                              <label className="text-[10px] text-slate-400 uppercase tracking-wider">Email To</label>
+                              <Input type="email" className="h-9 rounded-lg text-sm mt-1" placeholder="ops@yourfirm.com" value={newSchedule.emailTo}
+                                onChange={e => setNewSchedule(p => ({ ...p, emailTo: e.target.value }))} />
+                            </div>
+                          )}
+                          <div className="flex gap-2 pt-1">
+                            <button onClick={addSchedule} disabled={!newSchedule.name.trim()}
+                              className="text-xs px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors disabled:opacity-50">Create Schedule</button>
+                            <button onClick={() => setShowAddSchedule(false)} className="text-xs px-4 py-2 rounded-lg border border-slate-200 text-slate-400 font-medium hover:bg-white transition-colors">Cancel</button>
                           </div>
                         </div>
                       )}

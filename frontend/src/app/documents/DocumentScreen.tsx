@@ -211,7 +211,7 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
       });
 
       if (res.success) {
-        addEv("Saved to Salesforce", res.task?.url);
+        addEv("Saved to Salesforce", (res.task as { url?: string })?.url);
       }
       setStep("complete");
     } catch (err) {
@@ -362,7 +362,7 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
           priority: doc.classification?.type === "acat" ? "High" : "Normal",
           status: "Open",
         });
-        if (res.success) addEv(`Saved: ${doc.fileName}`, res.task?.url);
+        if (res.success) addEv(`Saved: ${doc.fileName}`, (res.task as { url?: string })?.url);
         setBatchDocStatus(doc.id, "saved");
       } catch {
         setBatchDocStatus(doc.id, "approved"); // revert on error

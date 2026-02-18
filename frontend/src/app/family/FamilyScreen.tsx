@@ -87,10 +87,10 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
       const res = await callSF("getHouseholdDetail", { householdId: context.householdId });
       if (res.success) {
         setData({
-          household: res.household || { id: context.householdId, name: context.familyName + " Household", createdAt: "" },
-          contacts: res.contacts || [],
-          tasks: res.tasks || [],
-          instanceUrl: res.householdUrl ? res.householdUrl.replace(`/${context.householdId}`, "") : "",
+          household: (res.household as FamilyData["household"]) || { id: context.householdId, name: context.familyName + " Household", createdAt: "" },
+          contacts: (res.contacts || []) as FamilyData["contacts"],
+          tasks: (res.tasks || []) as FamilyData["tasks"],
+          instanceUrl: res.householdUrl ? (res.householdUrl as string).replace(`/${context.householdId}`, "") : "",
         });
       } else {
         setError("Could not load family data.");
@@ -191,7 +191,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
               { l: "Client Briefing", i: BookOpen, a: () => onNavigate("briefing", context) },
               { l: "Meeting Logs", i: MessageSquare, a: () => onNavigate("meeting", context) },
               { l: "Planning & Goals", i: CheckCircle, a: () => onNavigate("planning" as Screen, context) },
-              { l: "Open Account", i: Briefcase, a: () => onNavigate("flow") },
+              { l: "Client Portal", i: ExternalLink, a: () => onNavigate("portal" as Screen, context) },
             ].map((x, idx) => (
               <button key={idx} onClick={x.a}
                 className="group flex flex-col items-center gap-2 p-4 rounded-xl bg-white border border-slate-200 hover:border-slate-400 hover:shadow-md transition-all text-center">
@@ -382,7 +382,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           )}
 
           {/* Custodian Status (Schwab Advisor Center) */}
-          {(() => {
+          {data && (() => {
             // Derive custodian processing status from SF task data
             const docuTasks = data.tasks.filter(t => t.subject.toUpperCase().includes("DOCU"));
             const hasSigned = docuTasks.some(t => t.status === "Completed");

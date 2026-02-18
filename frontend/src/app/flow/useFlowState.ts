@@ -328,7 +328,7 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
       try {
         const res = await callSF("searchContacts", { query: state.searchQuery });
         if (res.success && res.contacts) {
-          d({ type: "SET_SF_RESULTS", results: res.contacts.map((c: { FirstName: string; LastName: string; Email: string; Phone: string; Account?: { Name: string } }) => ({
+          d({ type: "SET_SF_RESULTS", results: (res.contacts as { FirstName: string; LastName: string; Email: string; Phone: string; Account?: { Name: string } }[]).map((c) => ({
             firstName: c.FirstName || "", lastName: c.LastName || "",
             email: c.Email || "", phone: c.Phone || "",
             household: c.Account?.Name || "No Household", source: "salesforce" as const,
@@ -420,9 +420,11 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
           if (state.hasP2 && state.p2.firstName) members.push({ firstName: state.p2.firstName, lastName: state.p2.lastName, email: state.p2.email || "", phone: state.p2.phone });
           const r = await callSF("confirmIntent", { familyName: fam, force: true, accounts: state.accounts.map(a => ({ type: a.type, owner: a.owner })), members });
           if (!r.success) throw new Error(r.error || "Failed");
-          sfRef.current = { householdId: r.household.id, householdUrl: r.household.url, contacts: r.contacts, primaryContactId: r.contacts[0]?.id };
-          addEv(`${fam} Household created`, r.household.url);
-          addEv(`${r.contacts.length} contacts created`, r.contacts[0]?.url);
+          const hh = r.household as { id: string; url: string };
+          const cts = r.contacts as { id: string; url: string; name: string }[];
+          sfRef.current = { householdId: hh.id, householdUrl: hh.url, contacts: cts, primaryContactId: cts[0]?.id };
+          addEv(`${fam} Household created`, hh.url);
+          addEv(`${cts.length} contacts created`, cts[0]?.url);
         },
       },
       {
@@ -431,7 +433,7 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
           const fd = state.accounts.filter(a => a.funding && a.funding !== "None").map(a => ({ account: `${a.owner}'s ${a.type}`, detail: `${a.funding}${a.fundingAmount ? ` — ~$${a.fundingAmount}` : ""}${a.amount ? ` acct#${a.amount}` : ""}${a.allocation ? `, ${a.allocation}` : ""}` }));
           if (fd.length > 0) {
             const r = await callSF("recordFunding", { householdId: sfRef.current.householdId, familyName: fam, pteRequired: state.accounts.some(a => a.funding === "Rollover"), fundingDetails: fd });
-            if (r.success) addEv("Funding recorded", r.task.url);
+            if (r.success) addEv("Funding recorded", (r.task as { url: string }).url);
           }
         },
       },
@@ -440,7 +442,7 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
         fn: async () => {
           if (state.setupACH && state.matchedBank && state.bankAcct) {
             const r = await callSF("recordMoneyLink", { householdId: sfRef.current.householdId, bankName: state.matchedBank, routingLastFour: state.bankLast4, lastFour: state.bankAcct.slice(-4) });
-            if (r.success) addEv(`MoneyLink: ${state.matchedBank}`, r.task.url);
+            if (r.success) addEv(`MoneyLink: ${state.matchedBank}`, (r.task as { url: string }).url);
           }
         },
       },
@@ -453,28 +455,28 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
             return { account: `${a.owner}'s ${a.type}`, beneficiary: ab.length > 0 ? ab.map(b => `${b.name} (${b.relationship}) — ${b.percentage}% ${b.beneType}`).join("; ") : "None" };
           });
           const r = await callSF("recordBeneficiaries", { householdId: sfRef.current.householdId, familyName: fam, designations: desig });
-          if (r.success) addEv("Beneficiaries recorded", r.task.url);
+          if (r.success) addEv("Beneficiaries recorded", (r.task as { url: string }).url);
         },
       },
       {
         label: "Running completeness check",
         fn: async () => {
           const r = await callSF("recordCompleteness", { householdId: sfRef.current.householdId, familyName: fam, checks: ["Account types confirmed", "Funding details entered", "Beneficiaries designated", ...(state.setupACH ? ["ACH configured"] : [])] });
-          if (r.success) addEv("Completeness passed", r.task.url);
+          if (r.success) addEv("Completeness passed", (r.task as { url: string }).url);
         },
       },
       {
         label: "Generating paperwork",
         fn: async () => {
           const r = await callSF("recordPaperwork", { householdId: sfRef.current.householdId, envelopes: state.accounts.map(a => ({ name: `${a.owner}'s ${a.type} Envelope`, documents: docsFor(a, !!state.setupACH) })) });
-          if (r.success) addEv(`${r.count} envelopes generated`, r.tasks[0]?.url);
+          if (r.success) addEv(`${r.count} envelopes generated`, (r.tasks as { url: string }[])?.[0]?.url);
         },
       },
       {
         label: "Configuring DocuSign",
         fn: async () => {
           const r = await callSF("recordDocusignConfig", { householdId: sfRef.current.householdId, familyName: fam, envelopeCount: state.accounts.length, config: state.accounts.map(a => ({ envelope: `${a.owner}'s ${a.type} (${a.signers}-Signer)`, recipients: a.signers === 2 ? `${p1Name} → ${p2Name} → AO Ops` : `${a.owner} → AO Ops` })) });
-          if (r.success) addEv("DocuSign configured", r.task.url);
+          if (r.success) addEv("DocuSign configured", (r.task as { url: string }).url);
         },
       },
       {
@@ -506,7 +508,7 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
           }
           // Always record SF tasks (primary record of what was sent, regardless of DS success)
           const sfResult = await recordSFDocusignTasks();
-          if (sfResult.success) addEv(`${sfResult.count} SF tasks created`, sfResult.tasks[0]?.url);
+          if (sfResult.success) addEv(`${sfResult.count} SF tasks created`, (sfResult.tasks as { url: string }[])?.[0]?.url);
         },
       },
       {

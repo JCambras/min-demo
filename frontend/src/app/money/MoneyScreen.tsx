@@ -254,9 +254,10 @@ export function MoneyScreen({ onExit, initialContext, onNavigate }: {
     try {
       const res = await callSF("getHouseholdDetail", { householdId: hh.id });
       if (res.success) {
-        const accounts = parseAccounts(res.household?.description || hh.description || "");
-        d({ type: "SET_SELECTED", value: { ...hh, description: res.household?.description || hh.description }, accounts, url: res.householdUrl || "" });
-        addEv(`Loaded ${hh.name}`, res.householdUrl);
+        const hhDetail = res.household as { description?: string } | undefined;
+        const accounts = parseAccounts(hhDetail?.description || hh.description || "");
+        d({ type: "SET_SELECTED", value: { ...hh, description: hhDetail?.description || hh.description }, accounts, url: (res.householdUrl as string) || "" });
+        addEv(`Loaded ${hh.name}`, res.householdUrl as string);
         addEv(`${accounts.length} account(s) found`);
       } else {
         d({ type: "SET_SELECTED", value: hh, accounts: parseAccounts(hh.description), url: "" });
@@ -303,7 +304,7 @@ export function MoneyScreen({ onExit, initialContext, onNavigate }: {
       });
 
       if (res.success) {
-        addEv(`${typeLabel} request created`, res.task?.url);
+        addEv(`${typeLabel} request created`, (res.task as { url?: string })?.url);
         addEv(`$${Number(det.amount).toLocaleString()} from ${det.fromAccount}`);
       }
       d({ type: "SET_STEP", step: "complete" });

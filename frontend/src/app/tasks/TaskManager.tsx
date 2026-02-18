@@ -129,7 +129,7 @@ export function TaskManager({ stats, onBack, goTo, showToast }: {
 
   const typeCounts = useMemo(() => {
     const items = allItems.filter(t => !completed.has(t.url));
-    const counts: Record<TypeFilter, number> = { all: items.length, compliance: 0, docusign: 0, meeting: 0, task: 0 };
+    const counts: Record<TypeFilter, number> = { all: items.length, compliance: 0, docusign: 0, meeting: 0, task: 0, followup: 0, goal: 0 };
     items.forEach(t => { counts[classifyTask(t.label)]++; });
     return counts;
   }, [allItems, completed]);

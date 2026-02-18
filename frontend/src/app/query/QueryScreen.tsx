@@ -292,7 +292,7 @@ export function QueryScreen({ onExit, initialQuery }: { onExit: () => void; init
     try {
       const res = await callSF("queryTasks", {});
       if (res.success) {
-        const result = runQuery(question, res.tasks, res.households, res.instanceUrl);
+        const result = runQuery(question, res.tasks as SFTask[], res.households as SFHousehold[], res.instanceUrl as string);
         d({ type: "SET_RESULT", q: question, r: result });
       } else {
         d({ type: "SET_RESULT", q: question, r: { answer: "Couldn't connect to Salesforce. Check your connection.", items: [] } });
