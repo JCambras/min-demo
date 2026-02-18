@@ -18,6 +18,15 @@ export interface StatDetailItem {
   daysOutstanding?: number;
 }
 
+export interface Insight {
+  severity: "critical" | "high" | "medium";
+  headline: string;
+  detail: string;
+  householdId?: string;
+  url?: string;
+  action?: string;
+}
+
 export interface HomeStats {
   overdueTasks: number;
   openTasks: number;
@@ -30,6 +39,7 @@ export interface HomeStats {
   unsignedItems: StatDetailItem[];
   upcomingMeetingItems: StatDetailItem[];
   recentItems: { subject: string; household: string; url: string; type: string }[];
+  insights: Insight[];
 }
 
 // ─── Canonical CRM Record Shapes ────────────────────────────────────────────
@@ -157,6 +167,92 @@ export function buildHomeStats(
     householdName: t.householdName,
   });
 
+  // ── Insights: named, specific, surprising ──
+  const insights: Insight[] = [];
+
+  // 1. Longest-unsigned DocuSign
+  if (unsigned.length > 0) {
+    const worst = unsigned.reduce((a, b) => daysSince(a.createdAt) > daysSince(b.createdAt) ? a : b);
+    const days = daysSince(worst.createdAt);
+    if (days >= 5) {
+      const hh = (worst.householdName || "").replace(" Household", "");
+      insights.push({
+        severity: days > 10 ? "critical" : "high",
+        headline: `${hh || "DocuSign"}: unsigned for ${days} days`,
+        detail: `${humanizeSubject(worst.subject, worst.householdName)} has been waiting for a signature since ${formatDate(worst.createdAt)}.`,
+        householdId: worst.householdId,
+        url: `${instanceUrl}/${worst.id}`,
+        action: "View envelope",
+      });
+    }
+  }
+
+  // 2. Compliance coverage gap
+  if (filteredHH.length > 0) {
+    const coveragePct = Math.round((reviewed.size / filteredHH.length) * 100);
+    if (coveragePct < 80) {
+      insights.push({
+        severity: coveragePct < 50 ? "critical" : "high",
+        headline: `Compliance: ${coveragePct}% of households reviewed`,
+        detail: `${unreviewedHH.length} of ${filteredHH.length} households have never had a compliance review on file.`,
+        action: "Run reviews",
+      });
+    }
+  }
+
+  // 3. Stalest household (no activity)
+  if (filteredHH.length > 0) {
+    const lastActivityByHH = new Map<string, number>();
+    for (const h of filteredHH) {
+      lastActivityByHH.set(h.id, new Date(h.createdAt).getTime());
+    }
+    for (const t of filteredTasks) {
+      if (t.householdId) {
+        const prev = lastActivityByHH.get(t.householdId) || 0;
+        const tTime = new Date(t.createdAt).getTime();
+        if (tTime > prev) lastActivityByHH.set(t.householdId, tTime);
+      }
+    }
+    let stalestId = "", stalestDays = 0;
+    for (const [id, lastMs] of lastActivityByHH) {
+      const d = Math.floor((now - lastMs) / msDay);
+      if (d > stalestDays) { stalestDays = d; stalestId = id; }
+    }
+    if (stalestDays >= 30) {
+      const hh = filteredHH.find(h => h.id === stalestId);
+      const name = (hh?.name || "").replace(" Household", "");
+      insights.push({
+        severity: stalestDays > 60 ? "critical" : "medium",
+        headline: `${name || "Household"}: no activity in ${stalestDays} days`,
+        detail: `This household hasn't had any task, meeting, or review logged since ${formatDate(new Date(now - stalestDays * msDay).toISOString())}.`,
+        householdId: stalestId,
+        url: `${instanceUrl}/${stalestId}`,
+        action: "View family",
+      });
+    }
+  }
+
+  // 4. High-priority overdue tasks
+  const highPriOverdue = overdue.filter(t => t.priority === "High");
+  if (highPriOverdue.length > 0) {
+    const worst = highPriOverdue.reduce((a, b) => new Date(a.dueDate).getTime() < new Date(b.dueDate).getTime() ? a : b);
+    const days = daysSince(worst.dueDate);
+    const hh = (worst.householdName || "").replace(" Household", "");
+    insights.push({
+      severity: days > 7 ? "critical" : "high",
+      headline: `${hh ? `${hh}: ` : ""}High-priority task ${days} days overdue`,
+      detail: humanizeSubject(worst.subject, worst.householdName),
+      householdId: worst.householdId,
+      url: `${instanceUrl}/${worst.id}`,
+      action: "View task",
+    });
+  }
+
+  // Sort by severity (critical first), cap at 3
+  const sevOrder = { critical: 0, high: 1, medium: 2 };
+  insights.sort((a, b) => sevOrder[a.severity] - sevOrder[b.severity]);
+  const topInsights = insights.slice(0, 3);
+
   return {
     overdueTasks: overdue.length,
     openTasks: open.length,
@@ -189,5 +285,6 @@ export function buildHomeStats(
       url: `${instanceUrl}/${t.id}`,
       type: classifyTask(t.subject),
     })),
+    insights: topInsights,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap } from "lucide-react";
+import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight } from "lucide-react";
 import { TourButton } from "../tour/DemoMode";
 import { callSF } from "@/lib/salesforce";
 import { log } from "@/lib/logger";
@@ -245,6 +245,47 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {/* Tour Button */}
       {!tourActive && (
         <div className="mb-6"><TourButton onClick={() => dispatch({ type: "SET_TOUR", active: true })} hasData={!!stats && stats.readyForReviewItems.length > 0} /></div>
+      )}
+
+      {/* Insights — the "surprise" moment */}
+      {(isAdvisor || role === "principal") && sfConnected && stats && stats.insights.length > 0 && (
+        <div className="mb-6 space-y-2" data-tour="insights">
+          {stats.insights.map((insight, i) => {
+            const colors = insight.severity === "critical"
+              ? "border-red-200 bg-red-50"
+              : insight.severity === "high"
+              ? "border-amber-200 bg-amber-50"
+              : "border-slate-200 bg-slate-50";
+            const iconColor = insight.severity === "critical"
+              ? "text-red-500"
+              : insight.severity === "high"
+              ? "text-amber-500"
+              : "text-slate-400";
+            const headlineColor = insight.severity === "critical"
+              ? "text-red-800"
+              : insight.severity === "high"
+              ? "text-amber-800"
+              : "text-slate-700";
+            return (
+              <button key={i} onClick={() => {
+                if (insight.householdId) goTo("family", { householdId: insight.householdId, familyName: insight.headline.split(":")[0] });
+                else if (insight.action === "Run reviews") goTo("compliance");
+              }}
+                className={`w-full text-left px-4 py-3 rounded-xl border ${colors} hover:shadow-sm transition-all group`}>
+                <div className="flex items-start gap-3">
+                  <AlertTriangle size={16} className={`${iconColor} mt-0.5 flex-shrink-0`} />
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${headlineColor}`}>{insight.headline}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{insight.detail}</p>
+                  </div>
+                  {(insight.householdId || insight.action) && (
+                    <ArrowRight size={14} className="text-slate-300 group-hover:text-slate-500 mt-1 flex-shrink-0 transition-colors" />
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {/* Zero-data welcome state */}
