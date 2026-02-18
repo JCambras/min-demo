@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
-import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X } from "lucide-react";
 import { TourButton } from "../tour/DemoMode";
 import { callSF } from "@/lib/salesforce";
 import { log } from "@/lib/logger";
@@ -150,16 +150,41 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     dispatch({ type: "SET_ROLE_INLINE", role: next as UserRole });
   }, [role, dispatch]);
 
+  const statKeys = ["overdueTasks", "openTasks", "readyForReview", "unsignedEnvelopes", "upcomingMeetings"];
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Cmd+R: cycle role
       if ((e.metaKey || e.ctrlKey) && e.key === "r") {
         e.preventDefault();
         cycleRole();
+        return;
+      }
+      // Cmd+K: focus search
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      // Cmd+1-5: toggle stat panels
+      if ((e.metaKey || e.ctrlKey) && e.key >= "1" && e.key <= "5") {
+        e.preventDefault();
+        const idx = parseInt(e.key) - 1;
+        const key = statKeys[idx];
+        if (key) setExpandedStat(prev => prev === key ? null : key);
+        return;
+      }
+      // Escape: collapse panel, clear search, or go back
+      if (e.key === "Escape") {
+        if (familyQuery) { setFamilyQuery(""); setFamilyResults([]); return; }
+        if (expandedStat) { setExpandedStat(null); return; }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [cycleRole]);
+  }, [cycleRole, expandedStat, familyQuery]);
+
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // ── Local UI state (not app-level) ──
   const [expandedStat, setExpandedStat] = useState<string | null>(null);
@@ -168,6 +193,8 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const [reminderSent] = useState<Set<string>>(new Set());
   const [completing, setCompleting] = useState<string | null>(null);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
+  const [bulkCompleting, setBulkCompleting] = useState(false);
+  const [lastSession, setLastSession] = useState<{ screen: Screen; ctx?: WorkflowContext; ts: number } | null>(null);
   const [familyQuery, setFamilyQuery] = useState("");
   const [familyResults, setFamilyResults] = useState<FamilyResult[]>([]);
   const [familySearching, setFamilySearching] = useState(false);
@@ -191,6 +218,20 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     return () => clearTimeout(t);
   }, [familyQuery]);
 
+  // ── Session resume (read once on mount) ──
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("min_last_session");
+      if (raw) {
+        const s = JSON.parse(raw);
+        // Only show if less than 24 hours old and not the home screen
+        if (s.screen && s.screen !== "home" && Date.now() - s.ts < 86400000) {
+          setLastSession(s);
+        }
+      }
+    } catch {}
+  }, []);
+
   // ── Derived values ──
   const actions = ALL_ACTIONS.filter(a => a.roles.includes(role!));
   const roleLabel = ROLES.find(r => r.id === role)?.label || "User";
@@ -201,6 +242,18 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const isAdvisor = role === "advisor";
   const isOps = role === "operations";
+
+  const describeSession = (s: { screen: Screen; ctx?: WorkflowContext }) => {
+    const screenNames: Partial<Record<Screen, string>> = {
+      family: "viewing", briefing: "reviewing briefing for", meeting: "logging meeting for",
+      compliance: "reviewing compliance for", planning: "planning for", flow: "opening account",
+      onboard: "onboarding a client", taskManager: "managing tasks", dashboard: "the dashboard",
+      settings: "settings", workflows: "workflows",
+    };
+    const verb = screenNames[s.screen] || s.screen;
+    const name = s.ctx?.familyName;
+    return name ? `You were ${verb} ${name}` : `You were in ${verb}`;
+  };
 
   const iconForType = (t: string) =>
     t === "compliance" ? <Shield size={13} className="text-green-500" /> :
@@ -237,6 +290,27 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       showToast("Failed to complete task");
     }
     setCompleting(null);
+  };
+
+  // ── Bulk complete all visible tasks in panel ──
+  const handleBulkComplete = async (items: { url: string }[]) => {
+    const remaining = items.filter(it => !completed.has(it.url));
+    if (remaining.length === 0) return;
+    setBulkCompleting(true);
+    let count = 0;
+    for (const item of remaining) {
+      try {
+        const taskId = item.url.split("/").pop();
+        if (taskId) await callSF("completeTask", { taskId });
+        setCompleted(prev => { const s = new Set(prev); s.add(item.url); return s; });
+        count++;
+      } catch {
+        // continue with remaining tasks
+      }
+    }
+    setBulkCompleting(false);
+    showToast(`${count} task${count !== 1 ? "s" : ""} marked complete`);
+    setTimeout(() => loadStats(), 400);
   };
 
   // ── Loading state ──
@@ -318,6 +392,20 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         </div>
       )}
 
+      {/* Session Resume */}
+      {lastSession && (
+        <div className="mb-6 flex items-center gap-3 px-4 py-3 rounded-xl border border-blue-100 bg-blue-50/50 group">
+          <RotateCcw size={15} className="text-blue-400 flex-shrink-0" />
+          <button onClick={() => { goTo(lastSession.screen, lastSession.ctx); setLastSession(null); try { localStorage.removeItem("min_last_session"); } catch {} }}
+            className="flex-1 text-left">
+            <p className="text-sm text-blue-700 font-medium">{describeSession(lastSession)}</p>
+            <p className="text-[11px] text-blue-400">Pick up where you left off</p>
+          </button>
+          <button onClick={() => { setLastSession(null); try { localStorage.removeItem("min_last_session"); } catch {} }}
+            className="text-blue-300 hover:text-blue-500 transition-colors flex-shrink-0"><X size={14} /></button>
+        </div>
+      )}
+
       {/* Zero-data welcome state */}
       {(isAdvisor || role === "principal") && sfConnected && stats && stats.openTasks === 0 && stats.readyForReview === 0 && stats.unsignedEnvelopes === 0 && stats.upcomingMeetings === 0 && stats.recentItems.length === 0 && (
         <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-8 text-center">
@@ -370,6 +458,12 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
               <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">{p.title}</p>
               <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{filtered.length}</span>
               <div className="flex-1" />
+              {(expandedStat === "overdueTasks" || expandedStat === "openTasks") && filtered.length > 1 && (
+                <button onClick={() => handleBulkComplete(filtered)} disabled={bulkCompleting}
+                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-lg font-medium transition-colors bg-green-50 text-green-600 hover:bg-green-100 disabled:opacity-50">
+                  {bulkCompleting ? <><Loader2 size={10} className="animate-spin" />Completing...</> : <>Complete All ({filtered.filter(it => !completed.has(it.url)).length})</>}
+                </button>
+              )}
               {p.sortable && <button onClick={() => setPanelSort(panelSort === "alpha" ? "priority" : panelSort === "priority" ? "due" : "alpha")} className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600"><ArrowUpDown size={11} /><span>{panelSort === "alpha" ? "A→Z" : panelSort === "priority" ? "Priority" : "Due"}</span></button>}
             </div>
             {p.items.length > 4 && <div className="px-4 py-2 border-b border-slate-100"><input className="w-full text-sm text-slate-700 placeholder:text-slate-300 outline-none bg-transparent" placeholder="Filter..." value={panelFilter} onChange={e => setPanelFilter(e.target.value)} autoFocus /></div>}
@@ -389,7 +483,8 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       <div className="mb-6 relative">
         <div className="relative">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input className="w-full h-12 rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent" placeholder="Search for a family..." value={familyQuery} onChange={e => setFamilyQuery(e.target.value)} />
+          <input ref={searchRef} className="w-full h-12 rounded-xl border border-slate-200 bg-white pl-11 pr-16 text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent" placeholder="Search for a family..." value={familyQuery} onChange={e => setFamilyQuery(e.target.value)} />
+          {!familyQuery && !familySearching && <kbd className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-slate-300 border border-slate-200 rounded px-1.5 py-0.5 font-mono pointer-events-none">⌘K</kbd>}
           {familySearching && <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />}
         </div>
         {familyQuery.length >= 2 && (<div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-20 animate-slide-down">

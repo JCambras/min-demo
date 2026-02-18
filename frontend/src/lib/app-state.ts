@@ -227,6 +227,10 @@ export function useAppState() {
   const goTo = useCallback((screen: Screen, ctx?: WorkflowContext) => {
     dispatch({ type: "NAVIGATE", screen, ctx });
     trackEvent("screen_view", { screen });
+    // Persist session for resume — skip home since that's the default
+    if (screen !== "home") {
+      try { localStorage.setItem("min_last_session", JSON.stringify({ screen, ctx, ts: Date.now() })); } catch {}
+    }
   }, []);
 
   const goBack = useCallback(() => {
@@ -235,6 +239,7 @@ export function useAppState() {
 
   const goHome = useCallback(() => {
     dispatch({ type: "GO_HOME" });
+    try { localStorage.removeItem("min_last_session"); } catch {}
   }, []);
 
   // ── Toast ──
