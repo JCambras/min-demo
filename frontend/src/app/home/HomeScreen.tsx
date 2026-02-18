@@ -3,6 +3,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X, Target, DollarSign, Upload, Activity } from "lucide-react";
 import { TourButton } from "../tour/DemoMode";
 import { NotificationCenter } from "@/components/shared/NotificationCenter";
+import { TeamTraining } from "@/components/shared/TeamTraining";
+import { RegulatoryFeed } from "@/components/shared/RegulatoryFeed";
 import { callSF } from "@/lib/salesforce";
 import { log } from "@/lib/logger";
 import { formatDate } from "@/lib/format";
@@ -554,6 +556,22 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
             <p className="text-sm text-slate-400 mt-0.5">{a.desc}</p>
           </div>
         </button>))}
+      </div>
+
+      {/* Regulatory Feed + Team Training */}
+      <div className="mb-8 space-y-6">
+        <RegulatoryFeed onAddCheck={(label, keyword) => {
+          const CUSTOM_CHECKS_KEY = "min-custom-compliance-checks";
+          try {
+            const existing = JSON.parse(localStorage.getItem(CUSTOM_CHECKS_KEY) || "[]");
+            const alreadyExists = existing.some((c: { keyword: string }) => c.keyword === keyword);
+            if (!alreadyExists) {
+              existing.push({ id: Date.now().toString(36), label, keyword, regulation: "Regulatory Update", whyItMatters: `Added from regulatory feed: ${label}`, failStatus: "warn" });
+              localStorage.setItem(CUSTOM_CHECKS_KEY, JSON.stringify(existing));
+            }
+          } catch {}
+        }} />
+        {role === "principal" && <TeamTraining onNavigate={goTo} advisorName={advisorName} />}
       </div>
 
       {/* Recent Activity */}

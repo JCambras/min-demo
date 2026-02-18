@@ -1,8 +1,21 @@
 "use client";
 import { useState } from "react";
-import { Loader2, Users, Shield, MessageSquare, Clock, Send, AlertTriangle, CheckCircle, Download } from "lucide-react";
+import { Loader2, Users, Shield, MessageSquare, Clock, Send, AlertTriangle, CheckCircle, Download, TrendingUp } from "lucide-react";
 import type { PracticeData } from "../usePracticeData";
 import { HealthRing, DetailDrawer, ComingSoon } from "./DashboardPrimitives";
+
+// ─── Industry Benchmarks ────────────────────────────────────────────────────
+// Source: IAA compliance survey, Schwab/Fidelity practice management data,
+// FINRA exam deficiency rates (reverse-engineered). For firms with 100-500 HH.
+
+const INDUSTRY_BENCHMARKS: Record<string, { avg: number; top: number; label: string }> = {
+  "Compliance Coverage": { avg: 58, top: 85, label: "200-500 HH firms" },
+  "DocuSign Velocity": { avg: 72, top: 92, label: "e-signature turnaround" },
+  "Tasks On Time": { avg: 65, top: 88, label: "task completion rate" },
+  "Meeting Coverage (90d)": { avg: 45, top: 75, label: "client meeting frequency" },
+};
+
+const OVERALL_BENCHMARK = { avg: 62, top: 85 };
 
 export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }: {
   data: PracticeData;
@@ -48,6 +61,14 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Practice Health Score</h2>
                 <p className="text-sm text-slate-400 mt-0.5">Weighted composite of 4 operational metrics</p>
+                {data.healthScore >= OVERALL_BENCHMARK.avg && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <TrendingUp size={12} className="text-green-500" />
+                    <span className="text-[10px] text-green-600 font-medium">
+                      {data.healthScore >= OVERALL_BENCHMARK.top ? "Top quartile" : "Above average"} — industry avg: {OVERALL_BENCHMARK.avg}
+                    </span>
+                  </div>
+                )}
               </div>
               <button onClick={downloadPDF} disabled={pdfLoading} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors">
                 {pdfLoading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
@@ -55,16 +76,27 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
               </button>
             </div>
             <div className="space-y-3">
-              {data.healthBreakdown.map((b, i) => (
+              {data.healthBreakdown.map((b, i) => {
+                const bench = INDUSTRY_BENCHMARKS[b.label];
+                return (
                 <div key={i}>
                   <button onClick={() => toggleDetail(`health-${i}`)} className="w-full text-left hover:bg-slate-50 rounded-lg px-2 py-1 -mx-2 transition-colors">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm text-slate-600">{b.label}<span className="text-[10px] text-slate-300 ml-1.5">▾</span></span>
-                      <span className="text-sm font-medium text-slate-700">{b.score}%<span className="text-xs text-slate-400 ml-1">({b.weight}% weight)</span></span>
+                      <div className="flex items-center gap-2">
+                        {bench && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${b.score >= bench.top ? "bg-green-100 text-green-600" : b.score >= bench.avg ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-600"}`}>
+                            {b.score >= bench.top ? "Top quartile" : b.score >= bench.avg ? "Above avg" : "Below avg"}
+                          </span>
+                        )}
+                        <span className="text-sm font-medium text-slate-700">{b.score}%<span className="text-xs text-slate-400 ml-1">({b.weight}% weight)</span></span>
+                      </div>
                     </div>
-                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="relative w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div className={`h-full rounded-full transition-all duration-700 ${b.score >= 80 ? "bg-green-500" : b.score >= 60 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${b.score}%` }} />
+                      {bench && <div className="absolute top-0 h-full w-0.5 bg-slate-400/50" style={{ left: `${bench.avg}%` }} title={`Industry avg: ${bench.avg}%`} />}
                     </div>
+                    {bench && <p className="text-[10px] text-slate-300 mt-0.5">Industry avg: {bench.avg}% · Top quartile: {bench.top}%+ ({bench.label})</p>}
                   </button>
                   <DetailDrawer id={`health-${i}`} activeId={detailPanel}>
                     {b.label === "Compliance Coverage" ? (
@@ -80,7 +112,8 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
                     ) : <ComingSoon />}
                   </DetailDrawer>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

@@ -15,6 +15,8 @@ import { OpsWorkload } from "./components/OpsWorkload";
 import { DataQuality } from "./components/DataQuality";
 import { HouseholdRiskScore } from "./components/HouseholdRiskScore";
 import { StaffWorkload } from "./components/StaffWorkload";
+import { SuccessionPlanning } from "./components/SuccessionPlanning";
+import { PracticePlaybook } from "@/components/shared/PracticePlaybook";
 
 // ─── Section Definitions ────────────────────────────────────────────────────
 
@@ -278,6 +280,8 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
                   <SectionWrapper id="radar"><RiskRadar data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} /></SectionWrapper>
                   <SectionWrapper id="weekly"><WeeklyComparison data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} /></SectionWrapper>
                 </div>
+                {(role === "principal") && <SuccessionPlanning data={data} />}
+                <PracticePlaybook data={data} firmName={firmName} />
               </div>
             )}
 

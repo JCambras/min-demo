@@ -9,6 +9,7 @@ import { WhyBubble } from "@/components/shared/WhyBubble";
 import { callSF } from "@/lib/salesforce";
 import { timestamp } from "@/lib/format";
 import { custodian } from "@/lib/custodian";
+import { ComplianceTemplates } from "@/components/shared/ComplianceTemplates";
 import type { ComplianceStep, SFEvidence, Screen, WorkflowContext } from "@/lib/types";
 
 // ─── Compliance Check Definitions ────────────────────────────────────────────
@@ -1068,6 +1069,22 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                       )}
                     </div>
                   )}
+                </div>
+
+                {/* Compliance Templates Library */}
+                <div className="mt-6">
+                  <ComplianceTemplates onAdopt={(checks) => {
+                    const existing = loadCustomChecks();
+                    const existingIds = new Set(existing.map(c => c.id));
+                    const newChecks = checks
+                      .filter(c => !existingIds.has(c.id))
+                      .map(c => ({ id: c.id, label: c.label, keyword: c.keyword, regulation: c.regulation, whyItMatters: c.whyItMatters, failStatus: c.failStatus }));
+                    if (newChecks.length > 0) {
+                      const updated = [...existing, ...newChecks];
+                      setCustomChecks(updated);
+                      saveCustomChecks(updated);
+                    }
+                  }} />
                 </div>
               </div>
             )}

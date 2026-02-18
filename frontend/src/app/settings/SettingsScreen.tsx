@@ -863,6 +863,37 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
             {/* Portal Branding — always visible */}
             <PortalBrandingPanel />
 
+            {/* Roadmap — Coming Soon Features */}
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
+                <Zap size={16} className="text-slate-500" />
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Roadmap</h3>
+                  <p className="text-xs text-slate-400">Features in development — request early access</p>
+                </div>
+              </div>
+              <div className="divide-y divide-slate-50">
+                {[
+                  { icon: FileCheck, label: "Regulatory Filing Assistant", desc: "Auto-generate ADV amendments, Form CRS updates, and annual compliance filings from your Min data. Pre-fills IARD submissions.", status: "In Development" },
+                  { icon: BarChart3, label: "Industry Benchmarking Network", desc: "Anonymized peer comparisons across 200+ RIA firms. See how your health score, compliance coverage, and task velocity rank.", status: "Beta Q2 2026" },
+                  { icon: Shield, label: "Practice Certification Badge", desc: "Earn a verified 'Min Certified' badge for your website when your practice maintains a health score above 80 for 90 consecutive days.", status: "Coming Q3 2026" },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-4 px-5 py-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      <item.icon size={18} className="text-slate-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium">{item.status}</span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
