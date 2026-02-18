@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X, Target, DollarSign } from "lucide-react";
+import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X, Target, DollarSign, Upload } from "lucide-react";
 import { TourButton } from "../tour/DemoMode";
 import { callSF } from "@/lib/salesforce";
 import { log } from "@/lib/logger";
@@ -32,6 +32,7 @@ const ALL_ACTIONS: { id: string; label: string; desc: string; Icon: React.Elemen
   { id: "onboard", label: "Onboard New Client", desc: "Client records & setup", Icon: UserPlus, roles: ["operations", "principal"] },
   { id: "open", label: "Open Account", desc: "Paperwork & e-signatures", Icon: Briefcase, roles: ["operations", "principal"] },
   { id: "money", label: "Money Movement", desc: "Wires, journals & distributions", Icon: DollarSign, roles: ["operations", "principal"] },
+  { id: "documents", label: "Document Intake", desc: "Scan, classify & file documents", Icon: Upload, roles: ["operations", "principal"] },
   { id: "taskManager", label: "Task Manager", desc: "View, assign & complete tasks", Icon: ListTodo, roles: ["operations", "principal"] },
   { id: "workflows", label: "Workflow Automation", desc: "Active chains & templates", Icon: Zap, roles: ["operations", "principal"] },
   { id: "dashboard", label: "Full Dashboard", desc: "Detailed practice view", Icon: ChevronRight, roles: ["principal"] },
@@ -274,6 +275,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     else if (id === "taskManager") dispatch({ type: "SET_SCREEN", screen: "taskManager" });
     else if (id === "workflows") dispatch({ type: "SET_SCREEN", screen: "workflows" });
     else if (id === "money") dispatch({ type: "SET_SCREEN", screen: "money" });
+    else if (id === "documents") dispatch({ type: "SET_SCREEN", screen: "documents" });
     else goTo(id as Screen);
   };
 

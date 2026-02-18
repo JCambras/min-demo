@@ -15,6 +15,7 @@ import { TaskManager } from "./tasks/TaskManager";
 import { PlanningScreen } from "./planning/PlanningScreen";
 import { WorkflowScreen } from "./workflows/WorkflowScreen";
 import { MoneyScreen } from "./money/MoneyScreen";
+import { DocumentScreen } from "./documents/DocumentScreen";
 import { DemoMode } from "./tour/DemoMode";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
@@ -564,6 +565,7 @@ export default function Home() {
     case "planning": return wrap(<PlanningScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Planning");
     case "workflows": return wrap(<WorkflowScreen onExit={goHome} onNavigate={goTo} />, "Workflows");
     case "money": return wrap(<MoneyScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Money Movement");
+    case "documents": return wrap(<DocumentScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Documents");
     case "family": return wfCtx ? wrap(<FamilyScreen onExit={goBack} context={wfCtx} onNavigate={goTo} />, "Family overview") : null;
     case "taskManager": return wrap(<TaskManager stats={state.stats} onBack={goHome} goTo={goTo} showToast={showToast} />, "Task manager");
     case "settings": return <ErrorBoundary fallbackLabel="Settings error."><SettingsScreen onExit={goHome} /></ErrorBoundary>;
