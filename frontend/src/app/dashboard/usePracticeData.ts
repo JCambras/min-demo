@@ -27,6 +27,18 @@ export interface AdvisorScore {
   dataWarning?: string;
 }
 
+export interface OpsStaffScore {
+  name: string;
+  openTasks: number;
+  overdueTasks: number;
+  completedThisWeek: number;
+  avgTaskAgeDays: number;
+  onboardings: number;
+  compliance: number;
+  docusign: number;
+  score: number;
+}
+
 export interface RiskItem {
   id: string;
   label: string;
@@ -96,6 +108,8 @@ export interface PracticeData {
   realAum: number | null;        // null = FSC not available, use assumptions
   aumByHousehold: Record<string, number>;
   financialAccountCount: number;
+  // Ops staff workload
+  opsStaff: OpsStaffScore[];
   // Internal: household name → advisor name mapping (used for FSC AUM overlay)
   hhAdvisorMap: Map<string, string>;
 }
@@ -103,6 +117,7 @@ export interface PracticeData {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const KNOWN_ADVISORS = ["Jon Cambras", "Marcus Rivera", "Diane Rivera", "James Wilder", "Amy Sato", "Kevin Trịnh", "Michelle Osei"];
+export const KNOWN_OPS_STAFF = ["Sandra Ellis", "Emily Chen", "Miguel Torres"];
 
 export interface RevenueAssumptions {
   avgAumPerHousehold: number;
@@ -335,6 +350,35 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
   const reviewItems = compReviews.sort((a, b) => daysSince(a.createdAt) - daysSince(b.createdAt)).slice(0, 10).map(toSummary);
   const meetingItems = meetingNotes.sort((a, b) => daysSince(a.createdAt) - daysSince(b.createdAt)).slice(0, 10).map(toSummary);
 
+  // Ops Staff Workload — simulate staff assignment via round-robin on non-meeting tasks
+  const opsMap = new Map<string, { open: number; overdue: number; completedWeek: number; ages: number[]; onboardings: number; compliance: number; docusign: number }>();
+  for (const name of KNOWN_OPS_STAFF) opsMap.set(name, { open: 0, overdue: 0, completedWeek: 0, ages: [], onboardings: 0, compliance: 0, docusign: 0 });
+  let opsRR = 0;
+  for (const t of tasks) {
+    // Skip meeting notes — those are advisor tasks, not ops
+    if (t.subject?.includes("MEETING NOTE")) continue;
+    const staffName = KNOWN_OPS_STAFF[opsRR % KNOWN_OPS_STAFF.length];
+    opsRR++;
+    const entry = opsMap.get(staffName)!;
+    const isOpen = t.status !== "Completed";
+    const age = daysSince(t.createdAt);
+    if (isOpen) {
+      entry.open++;
+      entry.ages.push(age);
+      if (t.dueDate && new Date(t.dueDate).getTime() < now) entry.overdue++;
+    } else if (thisWeek(t.createdAt)) {
+      entry.completedWeek++;
+    }
+    if (t.subject?.includes("Account opening") || t.subject?.includes("ONBOARD")) entry.onboardings++;
+    if (t.subject?.includes("COMPLIANCE REVIEW")) entry.compliance++;
+    if (t.subject?.includes("SEND DOCU") || t.subject?.includes("DocuSign")) entry.docusign++;
+  }
+  const opsStaff: OpsStaffScore[] = Array.from(opsMap.entries()).map(([name, d]) => {
+    const avgAge = d.ages.length > 0 ? Math.round(d.ages.reduce((s, v) => s + v, 0) / d.ages.length) : 0;
+    const score = Math.min(100, Math.max(0, 100 - d.overdue * 20 - Math.max(0, avgAge - 5) * 5 + d.completedWeek * 5));
+    return { name, openTasks: d.open, overdueTasks: d.overdue, completedThisWeek: d.completedWeek, avgTaskAgeDays: avgAge, onboardings: d.onboardings, compliance: d.compliance, docusign: d.docusign, score };
+  }).sort((a, b) => b.score - a.score);
+
   return {
     healthScore, healthBreakdown, advisors, pipeline: stages, risks: risks.slice(0, 30),
     totalHouseholds: households.length, totalTasks: tasks.length, completedTasks: completed.length, openTasks: open.length,
@@ -342,6 +386,7 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
     revenue, assumptions,
     openTaskItems, unsignedItems, reviewItems, meetingItems,
     fscAvailable: false, realAum: null, aumByHousehold: {}, financialAccountCount: 0,
+    opsStaff,
     hhAdvisorMap,
     weeklyComparison: [
       { label: "Tasks Completed", thisWeek: thisWeekCompleted, lastWeek: lastWeekCompleted },

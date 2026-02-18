@@ -1,6 +1,6 @@
 "use client";
 import { useReducer, useEffect, useRef, useState } from "react";
-import { Search, Loader2, Plus, Trash2, Check, ExternalLink, ChevronRight, Calendar, Clock, Users, MessageSquare, Shield, FileText, Camera, Sparkles } from "lucide-react";
+import { Search, Loader2, Plus, Trash2, Check, ExternalLink, ChevronRight, Calendar, Clock, Users, MessageSquare, Shield, FileText, Camera, Sparkles, ArrowRightLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn, FieldLabel, SelectField } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
@@ -195,6 +195,38 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
     }
 
     setImageExtracting(false);
+  };
+
+  // Advisor-to-ops handoff
+  const [handoffSending, setHandoffSending] = useState(false);
+  const [handoffSent, setHandoffSent] = useState(false);
+
+  const sendHandoff = async () => {
+    if (!s.selectedHousehold || handoffSending) return;
+    setHandoffSending(true);
+    try {
+      const description = [
+        `ADVISOR HANDOFF — ${familyName} Household`,
+        `\nMeeting: ${s.meetingType || "Meeting"} on ${s.meetingDate}`,
+        s.attendees ? `Attendees: ${s.attendees}` : "",
+        `\n── Meeting Notes ──`,
+        s.notes || "(no notes)",
+        s.followUps.length > 0 ? `\n── Follow-ups ──\n${s.followUps.map((f, i) => `${i + 1}. ${f}`).join("\n")}` : "",
+        `\n── Action Required ──`,
+        `Please review and process any account openings, compliance reviews, or document tasks for this household.`,
+      ].filter(Boolean).join("\n");
+
+      await callSF("createTask", {
+        householdId: s.selectedHousehold.id,
+        subject: `OPS HANDOFF: ${familyName} — ${s.meetingType || "Post-Meeting"} Action Items`,
+        description,
+        priority: "High",
+        status: "Open",
+      });
+      setHandoffSent(true);
+      d({ type: "ADD_EVIDENCE", ev: { label: `Ops handoff created for ${familyName}` } });
+    } catch { /* swallow */ }
+    setHandoffSending(false);
   };
 
   // Load recent meetings on mount (search step, no initial context)
@@ -561,6 +593,25 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
                       <p className="text-xs text-emerald-700/70 mt-0.5">Good time to verify compliance while the meeting details are fresh.</p>
                       <button onClick={() => onNavigate!("compliance", { householdId: s.selectedHousehold!.id, familyName })} className="text-xs font-medium text-emerald-700 mt-2 hover:text-emerald-900 transition-colors">Run Compliance Review →</button>
                     </div>
+                  </div>
+                )}
+                {/* Ops Handoff */}
+                {s.selectedHousehold && !handoffSent && (
+                  <div className="max-w-sm mx-auto mt-4 mb-2 bg-blue-50 border border-blue-200/60 rounded-2xl p-4 flex items-start gap-3 text-left">
+                    <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0"><ArrowRightLeft size={16} className="text-blue-600" /></div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-blue-900">Hand off to operations</p>
+                      <p className="text-xs text-blue-700/70 mt-0.5">Send meeting notes, follow-ups, and context to the ops team for processing.</p>
+                      <button onClick={sendHandoff} disabled={handoffSending} className="text-xs font-medium text-blue-700 mt-2 hover:text-blue-900 transition-colors inline-flex items-center gap-1">
+                        {handoffSending ? <><Loader2 size={10} className="animate-spin" /> Sending...</> : "Create Ops Handoff →"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {handoffSent && (
+                  <div className="max-w-sm mx-auto mt-4 mb-2 bg-green-50 border border-green-200/60 rounded-2xl p-4 flex items-center gap-3 text-left">
+                    <Check size={16} className="text-green-600 flex-shrink-0" />
+                    <p className="text-sm text-green-800">Ops handoff created — task added to operations queue</p>
                   </div>
                 )}
                 <div className="flex flex-wrap gap-3 justify-center mt-8">

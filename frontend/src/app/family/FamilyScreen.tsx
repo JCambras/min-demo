@@ -308,6 +308,50 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
             </div>
           )}
 
+          {/* Meeting Timeline */}
+          {meetingNotes.length > 0 && (
+            <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
+                <MessageSquare size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Meeting History</p>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{meetingNotes.length}</span>
+                <div className="flex-1" />
+                <button onClick={() => onNavigate("meeting", context)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">Log meeting →</button>
+              </div>
+              <div className="relative px-4 py-3">
+                <div className="absolute left-[25px] top-6 bottom-6 w-px bg-slate-200" />
+                <div className="space-y-4">
+                  {meetingNotes.slice(0, showAllActivity ? meetingNotes.length : 5).map((m, i) => {
+                    const date = new Date(m.createdAt);
+                    const typeMatch = m.subject.match(/MEETING NOTE:\s*(.+?)(?:\s*—|$)/);
+                    const meetingType = typeMatch ? typeMatch[1] : "Meeting";
+                    const descLines = m.description?.split("\n").filter(l => l.trim() && !l.startsWith("MEETING NOTE")) || [];
+                    const notePreview = descLines.slice(0, 2).join(" ").slice(0, 120);
+                    return (
+                      <div key={i} className="relative flex items-start gap-3 pl-6">
+                        <div className={`absolute left-0 top-0.5 w-[19px] h-[19px] rounded-full border-2 flex items-center justify-center ${i === 0 ? "border-purple-400 bg-purple-50" : "border-slate-200 bg-white"}`}>
+                          <MessageSquare size={9} className={i === 0 ? "text-purple-500" : "text-slate-400"} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-slate-700">{meetingType}</p>
+                            <span className="text-[10px] text-slate-400">{date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                          </div>
+                          {notePreview && <p className="text-xs text-slate-500 mt-0.5 truncate">{notePreview}{notePreview.length >= 120 ? "..." : ""}</p>}
+                        </div>
+                        {baseUrl && <a href={`${baseUrl}/${m.id}`} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 mt-0.5"><ExternalLink size={12} className="text-slate-300 hover:text-blue-500 transition-colors" /></a>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {meetingNotes.length > 5 && (
+                <button onClick={() => setShowAllActivity(!showAllActivity)} className="w-full px-4 py-2 text-center text-[11px] text-slate-400 hover:text-slate-600 border-t border-slate-100">
+                  {showAllActivity ? "Show recent" : `Show all ${meetingNotes.length}`}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Account Details (from Description) */}
           {parsed && (parsed.accounts || parsed.funding) && (
             <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">

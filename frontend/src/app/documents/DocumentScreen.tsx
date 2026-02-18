@@ -432,30 +432,56 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
                   </div>
                 </div>
 
+                {/* Confidence summary */}
+                {(() => {
+                  const high = extractedFields.filter(f => f.confidence === "high").length;
+                  const med = extractedFields.filter(f => f.confidence === "medium").length;
+                  const low = extractedFields.filter(f => f.confidence === "low").length;
+                  return (
+                    <div className="grid grid-cols-3 gap-3 mb-6">
+                      <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                        <p className="text-lg font-light text-green-700">{high}</p>
+                        <p className="text-[10px] text-green-600 font-medium">Auto-verified</p>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                        <p className="text-lg font-light text-amber-700">{med}</p>
+                        <p className="text-[10px] text-amber-600 font-medium">Verify suggested</p>
+                      </div>
+                      <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                        <p className="text-lg font-light text-red-700">{low}</p>
+                        <p className="text-[10px] text-red-600 font-medium">Needs review</p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Extracted fields */}
                 <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden mb-6">
-                  <div className="px-5 py-3 border-b border-slate-100">
+                  <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                     <p className="text-xs uppercase tracking-wider text-slate-400">Extracted Fields</p>
+                    <p className="text-[10px] text-slate-400">{extractedFields.filter(f => f.confidence === "low" || f.confidence === "medium").length} field(s) need verification</p>
                   </div>
                   <div className="divide-y divide-slate-50">
                     {extractedFields.map((field, i) => {
                       const isEdited = i in editedValues;
                       const displayValue = isEdited ? editedValues[i] : field.value;
+                      const borderColor = field.confidence === "low" ? "border-l-4 border-l-red-400 bg-red-50/30" : field.confidence === "medium" ? "border-l-4 border-l-amber-400 bg-amber-50/20" : "";
                       return (
-                        <div key={i} className="flex items-center justify-between px-5 py-3 group">
+                        <div key={i} className={`flex items-center justify-between px-5 py-3 group ${borderColor}`}>
                           <div className="flex-1 min-w-0 mr-3">
                             <div className="flex items-center gap-1.5">
                               <p className="text-xs text-slate-400">{field.label}</p>
                               {isEdited && <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-600 font-medium">edited</span>}
+                              {field.confidence === "high" && !isEdited && <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-600 font-medium">auto-verified</span>}
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
                               <input
                                 type="text"
                                 value={displayValue}
                                 onChange={e => setEditedValues(prev => ({ ...prev, [i]: e.target.value }))}
-                                className={`text-sm font-medium text-slate-800 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none w-full py-0.5 transition-colors ${isEdited ? "border-blue-200" : "hover:border-slate-200"}`}
+                                className={`text-sm font-medium text-slate-800 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none w-full py-0.5 transition-colors ${isEdited ? "border-blue-200" : field.confidence === "low" ? "border-red-200" : "hover:border-slate-200"}`}
                               />
-                              <Pencil size={12} className="text-slate-300 group-hover:text-slate-400 flex-shrink-0 transition-colors" />
+                              <Pencil size={12} className={`flex-shrink-0 transition-colors ${field.confidence === "low" ? "text-red-400" : "text-slate-300 group-hover:text-slate-400"}`} />
                             </div>
                           </div>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
@@ -694,16 +720,16 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
                                   const isEdited = fi in doc.editedValues;
                                   const displayValue = isEdited ? doc.editedValues[fi] : field.value;
                                   return (
-                                    <div key={fi} className="flex items-center gap-3">
+                                    <div key={fi} className={`flex items-center gap-3 ${field.confidence === "low" ? "bg-red-50/50 rounded-lg px-1 -mx-1" : ""}`}>
                                       <p className="text-[10px] text-slate-400 w-28 flex-shrink-0">{field.label}</p>
                                       <input type="text" value={displayValue}
                                         onChange={e => updateBatchDocEdit(doc.id, fi, e.target.value)}
-                                        className={`text-xs text-slate-700 bg-white border rounded-lg px-2 py-1 flex-1 focus:border-blue-400 focus:outline-none ${isEdited ? "border-blue-200" : "border-slate-200"}`} />
+                                        className={`text-xs text-slate-700 bg-white border rounded-lg px-2 py-1 flex-1 focus:border-blue-400 focus:outline-none ${isEdited ? "border-blue-200" : field.confidence === "low" ? "border-red-200" : "border-slate-200"}`} />
                                       <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${
                                         field.confidence === "high" ? "bg-green-100 text-green-700" :
                                         field.confidence === "medium" ? "bg-amber-100 text-amber-700" :
                                         "bg-red-100 text-red-700"
-                                      }`}>{field.confidence}</span>
+                                      }`}>{field.confidence === "high" ? "verified" : field.confidence}</span>
                                     </div>
                                   );
                                 })}

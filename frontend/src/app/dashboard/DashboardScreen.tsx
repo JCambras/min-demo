@@ -13,6 +13,7 @@ import { WeeklyComparison } from "./components/WeeklyComparison";
 import { OpsWorkload } from "./components/OpsWorkload";
 import { DataQuality } from "./components/DataQuality";
 import { HouseholdRiskScore } from "./components/HouseholdRiskScore";
+import { StaffWorkload } from "./components/StaffWorkload";
 
 export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorName }: {
   onExit: () => void;
@@ -111,6 +112,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
                 <HealthScoreSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} firmName={firmName} />
                 <RevenueSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} />
                 <AdvisorScoreboard data={data} advisorName={advisorName} isAdvisor={isAdvisor} />
+                {(role === "operations" || role === "principal") && <StaffWorkload data={data} />}
                 {(role === "operations" || role === "principal") && <OpsWorkload data={data} firmName={firmName} />}
                 {(role === "operations" || role === "principal") && <DataQuality data={data} goToFamily={goToFamily} />}
                 {(role === "operations" || role === "principal") && <HouseholdRiskScore data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} />}
