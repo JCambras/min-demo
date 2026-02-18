@@ -1,6 +1,6 @@
 "use client";
 import { useReducer, useEffect, useCallback, useRef, useState } from "react";
-import { Search, Loader2, Check, X, AlertTriangle, ExternalLink, Shield, ChevronDown, ChevronUp, Download, MessageSquare, Fingerprint, BarChart3, FileText, Briefcase, Scale, Calendar, Clock } from "lucide-react";
+import { Search, Loader2, Check, X, AlertTriangle, ExternalLink, Shield, ChevronDown, ChevronUp, Download, MessageSquare, Fingerprint, BarChart3, FileText, Briefcase, Scale, Calendar, Clock, Plus, Trash2, Settings } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
@@ -15,13 +15,35 @@ import type { ComplianceStep, SFEvidence, Screen, WorkflowContext } from "@/lib/
 
 interface CheckResult {
   id: string;
-  category: "identity" | "suitability" | "documents" | "account" | "regulatory";
+  category: "identity" | "suitability" | "documents" | "account" | "regulatory" | "firm";
   label: string;
   regulation: string;
   status: "pass" | "warn" | "fail";
   detail: string;
   evidence?: string[];
   whyItMatters: string;
+}
+
+// ─── Custom Compliance Checks ─────────────────────────────────────────────────
+
+interface CustomCheck {
+  id: string;
+  label: string;
+  keyword: string;        // keyword to search for in task text
+  regulation: string;     // e.g. "Firm Internal Policy"
+  whyItMatters: string;
+  failStatus: "fail" | "warn";  // severity when keyword not found
+}
+
+const CUSTOM_CHECKS_KEY = "min-custom-compliance-checks";
+
+function loadCustomChecks(): CustomCheck[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem(CUSTOM_CHECKS_KEY) || "[]"); } catch { return []; }
+}
+
+function saveCustomChecks(checks: CustomCheck[]) {
+  localStorage.setItem(CUSTOM_CHECKS_KEY, JSON.stringify(checks));
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -255,6 +277,23 @@ function runComplianceChecks(
     });
   }
 
+  // ── FIRM CUSTOM CHECKS ──
+  const customChecks = loadCustomChecks();
+  for (const cc of customChecks) {
+    const found = hasTask(cc.keyword);
+    checks.push({
+      id: `custom-${cc.id}`,
+      category: "firm",
+      label: cc.label,
+      regulation: cc.regulation,
+      status: found ? "pass" : cc.failStatus,
+      detail: found
+        ? `"${cc.keyword}" found in household records`
+        : `No record matching "${cc.keyword}" — required by firm policy`,
+      whyItMatters: cc.whyItMatters,
+    });
+  }
+
   return checks;
 }
 
@@ -345,6 +384,7 @@ const CATEGORY_LABELS: Record<string, { label: string; icon: React.ReactNode; ti
   documents: { label: "Disclosures & Delivery", icon: <FileText size={18} className="text-slate-500" /> },
   account: { label: "Account Setup", icon: <Briefcase size={18} className="text-slate-500" /> },
   regulatory: { label: "Regulatory Readiness", icon: <Scale size={18} className="text-slate-500" /> },
+  firm: { label: "Firm Policies", icon: <Settings size={18} className="text-purple-500" />, title: "Custom compliance checks defined by your firm" },
 };
 
 const STEP_LABELS: Record<string, string> = {
@@ -372,6 +412,28 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
   const [batchPdfLoading, setBatchPdfLoading] = useState(false);
   const [individualPdfLoading, setIndividualPdfLoading] = useState(false);
   const [individualPdfProgress, setIndividualPdfProgress] = useState({ current: 0, total: 0 });
+
+  // Custom checks management
+  const [showCustomChecks, setShowCustomChecks] = useState(false);
+  const [customChecks, setCustomChecks] = useState<CustomCheck[]>(loadCustomChecks);
+  const [newCheck, setNewCheck] = useState({ label: "", keyword: "", regulation: "Firm Internal Policy", whyItMatters: "", failStatus: "warn" as "fail" | "warn" });
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  const addCustomCheck = () => {
+    if (!newCheck.label.trim() || !newCheck.keyword.trim()) return;
+    const check: CustomCheck = { ...newCheck, id: Date.now().toString(36) };
+    const updated = [...customChecks, check];
+    setCustomChecks(updated);
+    saveCustomChecks(updated);
+    setNewCheck({ label: "", keyword: "", regulation: "Firm Internal Policy", whyItMatters: "", failStatus: "warn" });
+    setShowAddForm(false);
+  };
+
+  const removeCustomCheck = (id: string) => {
+    const updated = customChecks.filter(c => c.id !== id);
+    setCustomChecks(updated);
+    saveCustomChecks(updated);
+  };
 
   const addEv = useCallback((label: string, url?: string) => {
     d({ type: "ADD_EVIDENCE", ev: { label, url, timestamp: timestamp() } });
@@ -703,6 +765,94 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                       <p className="text-xs text-slate-400">Run compliance checks across every household in Salesforce. Export firm-wide report.</p>
                     </div>
                   </button>
+                </div>
+
+                {/* Custom Compliance Checks */}
+                <div className="mt-4">
+                  <button onClick={() => setShowCustomChecks(!showCustomChecks)}
+                    className="w-full flex items-center gap-4 p-4 rounded-2xl border border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 transition-colors text-left">
+                    <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                      <Settings size={20} className="text-purple-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-800">Custom Firm Checks</p>
+                      <p className="text-xs text-slate-400">Define internal policies that run alongside the {12} regulatory checks.</p>
+                    </div>
+                    {customChecks.length > 0 && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-600 font-medium">{customChecks.length}</span>
+                    )}
+                  </button>
+
+                  {showCustomChecks && (
+                    <div className="mt-3 bg-white border border-slate-200 rounded-2xl overflow-hidden animate-fade-in">
+                      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Firm Policy Checks</p>
+                        <button onClick={() => setShowAddForm(true)} className="text-xs px-2.5 py-1 rounded-lg bg-purple-100 text-purple-600 font-medium hover:bg-purple-200 transition-colors flex items-center gap-1">
+                          <Plus size={12} /> Add Check
+                        </button>
+                      </div>
+
+                      {customChecks.length === 0 && !showAddForm && (
+                        <div className="px-4 py-6 text-center">
+                          <Settings size={20} className="mx-auto text-slate-200 mb-2" />
+                          <p className="text-sm text-slate-400">No custom checks defined yet</p>
+                          <p className="text-xs text-slate-300 mt-1">Add your firm&apos;s internal policies to run alongside regulatory checks.</p>
+                        </div>
+                      )}
+
+                      {customChecks.map(cc => (
+                        <div key={cc.id} className="flex items-center gap-3 px-4 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-700">{cc.label}</p>
+                            <p className="text-[10px] text-slate-400">Keyword: &quot;{cc.keyword}&quot; · {cc.failStatus === "fail" ? "Fails" : "Warns"} if missing</p>
+                          </div>
+                          <button onClick={() => removeCustomCheck(cc.id)} className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+
+                      {showAddForm && (
+                        <div className="px-4 py-4 border-t border-slate-100 bg-slate-50 space-y-3">
+                          <div>
+                            <label className="text-[10px] text-slate-400 uppercase tracking-wider">Check Name</label>
+                            <Input className="h-9 rounded-lg text-sm mt-1" placeholder="e.g. Senior Client Risk Assessment" value={newCheck.label}
+                              onChange={e => setNewCheck(p => ({ ...p, label: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-slate-400 uppercase tracking-wider">Keyword to Match</label>
+                            <Input className="h-9 rounded-lg text-sm mt-1" placeholder="e.g. senior risk assessment" value={newCheck.keyword}
+                              onChange={e => setNewCheck(p => ({ ...p, keyword: e.target.value }))} />
+                            <p className="text-[10px] text-slate-300 mt-0.5">Searches task subjects and descriptions for this text</p>
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-slate-400 uppercase tracking-wider">Policy Reference</label>
+                            <Input className="h-9 rounded-lg text-sm mt-1" placeholder="e.g. Firm Policy §4.2" value={newCheck.regulation}
+                              onChange={e => setNewCheck(p => ({ ...p, regulation: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-slate-400 uppercase tracking-wider">Why It Matters</label>
+                            <Input className="h-9 rounded-lg text-sm mt-1" placeholder="Why this check is important..." value={newCheck.whyItMatters}
+                              onChange={e => setNewCheck(p => ({ ...p, whyItMatters: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-slate-400 uppercase tracking-wider">Severity if Missing</label>
+                            <div className="flex gap-2 mt-1">
+                              <button onClick={() => setNewCheck(p => ({ ...p, failStatus: "warn" }))}
+                                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${newCheck.failStatus === "warn" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-400"}`}>Warning</button>
+                              <button onClick={() => setNewCheck(p => ({ ...p, failStatus: "fail" }))}
+                                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${newCheck.failStatus === "fail" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-400"}`}>Fail</button>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 pt-1">
+                            <button onClick={addCustomCheck} disabled={!newCheck.label.trim() || !newCheck.keyword.trim()}
+                              className="text-xs px-4 py-2 rounded-lg bg-purple-600 text-white font-medium hover:bg-purple-700 transition-colors disabled:opacity-50">Save Check</button>
+                            <button onClick={() => setShowAddForm(false)} className="text-xs px-4 py-2 rounded-lg border border-slate-200 text-slate-400 font-medium hover:bg-white transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
