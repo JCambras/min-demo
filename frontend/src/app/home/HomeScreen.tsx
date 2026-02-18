@@ -80,13 +80,24 @@ function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClic
   );
 }
 
-function StatPanelRow({ item, showAction, showReminder, reminderSent, onRemind, goTo }: {
+function StatPanelRow({ item, showAction, showReminder, showComplete, reminderSent, onRemind, onComplete, completing, completed, goTo }: {
   item: { url: string; label: string; sub: string; priority?: string; householdId?: string; householdName?: string };
-  showAction?: string; showReminder?: boolean; reminderSent: Set<string>;
-  onRemind: (url: string) => void; goTo: (screen: Screen, ctx?: WorkflowContext) => void;
+  showAction?: string; showReminder?: boolean; showComplete?: boolean; reminderSent: Set<string>;
+  onRemind: (url: string) => void; onComplete?: (url: string) => void;
+  completing?: string | null; completed?: Set<string>;
+  goTo: (screen: Screen, ctx?: WorkflowContext) => void;
 }) {
+  const isDone = completed?.has(item.url);
+  const isLoading = completing === item.url;
+  if (isDone) return null;
   return (
     <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+      {showComplete && onComplete && (
+        <button onClick={() => onComplete(item.url)} disabled={isLoading}
+          className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mr-3 flex items-center justify-center transition-all ${isLoading ? "border-green-400 bg-green-50" : "border-slate-300 hover:border-green-500 hover:bg-green-50"}`}>
+          {isLoading && <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />}
+        </button>
+      )}
       <a href={item.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1">
         <p className="text-sm text-slate-700 truncate">{item.label}</p>
         <p className="text-xs text-slate-400">{item.sub}</p>
@@ -98,10 +109,10 @@ function StatPanelRow({ item, showAction, showReminder, reminderSent, onRemind, 
             className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors whitespace-nowrap">Run Check</button>
         )}
         {showReminder && (
-          <button onClick={() => onRemind(item.url)} disabled={reminderSent.has(item.url)}
-            className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${reminderSent.has(item.url) ? "bg-green-100 text-green-600 cursor-default" : "bg-blue-600 text-white hover:bg-blue-700"}`}>
-            {reminderSent.has(item.url) ? "Sent \u2713" : "Send Reminder"}
-          </button>
+          <a href={item.url} target="_blank" rel="noopener noreferrer"
+            className="text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap bg-blue-600 text-white hover:bg-blue-700">
+            Open in Salesforce
+          </a>
         )}
         <a href={item.url} target="_blank" rel="noopener noreferrer">
           <ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" />
@@ -154,7 +165,9 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const [expandedStat, setExpandedStat] = useState<string | null>(null);
   const [panelFilter, setPanelFilter] = useState("");
   const [panelSort, setPanelSort] = useState<"alpha" | "priority" | "due">("alpha");
-  const [reminderSent, setReminderSent] = useState<Set<string>>(new Set());
+  const [reminderSent] = useState<Set<string>>(new Set());
+  const [completing, setCompleting] = useState<string | null>(null);
+  const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [familyQuery, setFamilyQuery] = useState("");
   const [familyResults, setFamilyResults] = useState<FamilyResult[]>([]);
   const [familySearching, setFamilySearching] = useState(false);
@@ -207,6 +220,23 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     else if (id === "taskManager") dispatch({ type: "SET_SCREEN", screen: "taskManager" });
     else if (id === "workflows") dispatch({ type: "SET_SCREEN", screen: "workflows" });
     else goTo(id as Screen);
+  };
+
+  // ── Task completion from stat panels ──
+  const handleCompleteTask = async (url: string) => {
+    setCompleting(url);
+    try {
+      const taskId = url.split("/").pop();
+      if (taskId) await callSF("completeTask", { taskId });
+      setCompleted(prev => { const s = new Set(prev); s.add(url); return s; });
+      showToast("Task marked complete");
+      // Refresh stats after a brief moment so the user sees the checkmark
+      setTimeout(() => loadStats(), 600);
+    } catch (err) {
+      log.error("HomeScreen", "Failed to complete task", { error: err instanceof Error ? err.message : "Unknown" });
+      showToast("Failed to complete task");
+    }
+    setCompleting(null);
   };
 
   // ── Loading state ──
@@ -346,8 +376,10 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
             {filtered.length === 0 ? <div className="px-4 py-6 text-center"><Search size={20} className="mx-auto text-slate-200 mb-2" /><p className="text-sm text-slate-400">No items match your filter.</p></div>
             : filtered.map((item, i) => (
               <StatPanelRow key={i} item={item} showAction={p.showAction} showReminder={p.showReminder}
+                showComplete={expandedStat === "overdueTasks" || expandedStat === "openTasks"}
                 reminderSent={reminderSent} goTo={goTo}
-                onRemind={(url) => { setReminderSent(prev => { const s = new Set(prev); s.add(url); return s; }); showToast("DocuSign reminder sent to signers"); }}
+                onRemind={() => {}}
+                onComplete={handleCompleteTask} completing={completing} completed={completed}
               />))}
           </div>);
         })()}

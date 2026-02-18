@@ -65,6 +65,8 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [completing, setCompleting] = useState<string | null>(null);
+  const [completed, setCompleted] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadFamilyData();
@@ -89,6 +91,19 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
       setError("Could not load family data.");
     }
     setLoading(false);
+  };
+
+  const handleCompleteTask = async (taskId: string) => {
+    setCompleting(taskId);
+    try {
+      await callSF("completeTask", { taskId });
+      setCompleted(prev => { const s = new Set(prev); s.add(taskId); return s; });
+      // Reload family data after a brief pause so the user sees the checkmark
+      setTimeout(() => loadFamilyData(), 600);
+    } catch {
+      // silently fail — the user can still click "Open in Salesforce"
+    }
+    setCompleting(null);
   };
 
   const familyName = context.familyName || "Client";
@@ -318,10 +333,15 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
             </div>
             {openTasks.length === 0 ? (
               <div className="px-4 py-8 text-center"><CheckCircle size={24} className="mx-auto text-green-200 mb-2" /><p className="text-sm font-medium text-slate-500">All clear</p><p className="text-xs text-slate-400 mt-1">No open action items for this family.</p></div>
-            ) : openTasks.map((t, i) => {
+            ) : openTasks.filter(t => !completed.has(t.id)).map((t, i) => {
               const type = classifyTask(t.subject);
+              const isLoading = completing === t.id;
               return (
                 <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                  <button onClick={() => handleCompleteTask(t.id)} disabled={isLoading}
+                    className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mr-3 flex items-center justify-center transition-all ${isLoading ? "border-green-400 bg-green-50" : "border-slate-300 hover:border-green-500 hover:bg-green-50"}`}>
+                    {isLoading && <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />}
+                  </button>
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     {taskTypeIcon(type)}
                     <div className="min-w-0">
