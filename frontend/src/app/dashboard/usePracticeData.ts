@@ -39,6 +39,14 @@ export interface OpsStaffScore {
   score: number;
 }
 
+export interface WeeklyMetric {
+  label: string;
+  thisWeek: number;
+  lastWeek: number;
+  /** 12-week history, index 0 = oldest (week -12), index 11 = most recent (week -1) */
+  history: number[];
+}
+
 export interface RiskItem {
   id: string;
   label: string;
@@ -96,7 +104,7 @@ export interface PracticeData {
   unsigned: number;
   revenue: RevenueData;
   assumptions: RevenueAssumptions;
-  weeklyComparison: { label: string; thisWeek: number; lastWeek: number }[];
+  weeklyComparison: WeeklyMetric[];
   instanceUrl: string;
   // Detail drawer data: actual items behind the stat counts
   openTaskItems: TaskSummary[];
@@ -328,7 +336,14 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
   for (const h of households) { const lastAct = lastActivityMap.get(h.name); const stale = lastAct ? Math.floor((now - lastAct) / msDay) : daysSince(h.createdAt); if (stale >= 30) risks.push({ id: h.id, label: `No activity in ${stale} days`, household: h.name, householdId: h.id, severity: stale > 60 ? "critical" : "medium", category: "Stale Account", action: "View Family", daysStale: stale, url: `${instanceUrl}/${h.id}` }); }
   risks.sort((a, b) => { const sev = { critical: 0, high: 1, medium: 2 }; return (sev[a.severity] - sev[b.severity]) || (b.daysStale - a.daysStale); });
 
-  // Weekly Comparison
+  // Weekly Comparison — build 12-week history for each metric
+  const inWeek = (d: string, weeksAgo: number) => { const ds = daysSince(d); return ds > weeksAgo * 7 && ds <= (weeksAgo + 1) * 7; };
+  const weekCounts = (items: { createdAt: string }[]) => {
+    const counts: number[] = [];
+    for (let w = 11; w >= 0; w--) counts.push(items.filter(t => inWeek(t.createdAt, w + 1)).length);
+    return counts;
+  };
+
   const thisWeekCompleted = completed.filter(t => thisWeek(t.createdAt)).length;
   const lastWeekCompleted = completed.filter(t => lastWeek(t.createdAt)).length;
   const thisWeekOnboarded = households.filter(h => thisWeek(h.createdAt)).length;
@@ -337,6 +352,11 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
   const lastWeekReviews = compReviews.filter(t => lastWeek(t.createdAt)).length;
   const thisWeekSigned = completed.filter(t => thisWeek(t.createdAt) && (t.subject?.includes("DocuSign") || t.subject?.includes("SEND DOCU"))).length;
   const lastWeekSigned = completed.filter(t => lastWeek(t.createdAt) && (t.subject?.includes("DocuSign") || t.subject?.includes("SEND DOCU"))).length;
+
+  const completedHistory = weekCounts(completed);
+  const onboardedHistory = weekCounts(households);
+  const reviewsHistory = weekCounts(compReviews);
+  const signedHistory = weekCounts(completed.filter(t => t.subject?.includes("DocuSign") || t.subject?.includes("SEND DOCU")));
 
   const revenue = buildRevenueData(households, stages, hhAdvisorMap, assumptions);
 
@@ -389,10 +409,10 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
     opsStaff,
     hhAdvisorMap,
     weeklyComparison: [
-      { label: "Tasks Completed", thisWeek: thisWeekCompleted, lastWeek: lastWeekCompleted },
-      { label: "Onboarded", thisWeek: thisWeekOnboarded, lastWeek: lastWeekOnboarded },
-      { label: "Compliance Reviews", thisWeek: thisWeekReviews, lastWeek: lastWeekReviews },
-      { label: "DocuSign Signed", thisWeek: thisWeekSigned, lastWeek: lastWeekSigned },
+      { label: "Tasks Completed", thisWeek: thisWeekCompleted, lastWeek: lastWeekCompleted, history: completedHistory },
+      { label: "Onboarded", thisWeek: thisWeekOnboarded, lastWeek: lastWeekOnboarded, history: onboardedHistory },
+      { label: "Compliance Reviews", thisWeek: thisWeekReviews, lastWeek: lastWeekReviews, history: reviewsHistory },
+      { label: "DocuSign Signed", thisWeek: thisWeekSigned, lastWeek: lastWeekSigned, history: signedHistory },
     ],
     instanceUrl,
   };

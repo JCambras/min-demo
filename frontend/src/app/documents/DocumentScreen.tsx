@@ -88,6 +88,8 @@ interface BatchDoc {
   fields: ExtractedField[];
   editedValues: Record<number, string>;
   status: "processing" | "ready" | "approved" | "rejected" | "saving" | "saved";
+  /** Auto-detected household from extracted client name */
+  detectedHousehold?: { id: string; name: string } | null;
 }
 
 type Step = "upload" | "classifying" | "review" | "linking" | "complete";
@@ -275,6 +277,55 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
 
     setBatchProcessing(false);
     addEv(`${files.length} documents processed`);
+
+    // Auto-detect households from extracted client names
+    const clientNames = new Set<string>();
+    for (const doc of docs) {
+      for (const f of doc.fields) {
+        if ((f.label === "Client Name" || f.label === "Client Reference" || f.label === "Trust Name") && f.value && f.value !== "Unknown") {
+          // Extract last name or household-like string
+          const parts = f.value.replace(/ Family Trust$/, "").replace(/ Household$/, "").split(" ");
+          if (parts.length > 0) clientNames.add(parts[parts.length - 1]);
+          clientNames.add(f.value.replace(/ Family Trust$/, "").replace(/ Household$/, ""));
+        }
+      }
+    }
+
+    // Search Salesforce for each unique name
+    const hhCache = new Map<string, { id: string; name: string }>();
+    for (const name of clientNames) {
+      if (name.length < 2) continue;
+      try {
+        const res = await callSF("searchHouseholds", { query: name });
+        if (res.success) {
+          for (const h of (res.households as { id: string; name: string }[])) {
+            hhCache.set(h.name.toLowerCase(), h);
+          }
+        }
+      } catch { /* swallow */ }
+    }
+
+    // Match docs to households
+    if (hhCache.size > 0) {
+      let matchCount = 0;
+      const updated = docs.map(doc => {
+        for (const f of doc.fields) {
+          if ((f.label === "Client Name" || f.label === "Client Reference" || f.label === "Trust Name") && f.value) {
+            const normalized = f.value.replace(/ Family Trust$/, "").replace(/ Household$/, "").toLowerCase();
+            // Try exact match on household name
+            for (const [hhKey, hh] of hhCache) {
+              if (hhKey.includes(normalized) || normalized.includes(hhKey.replace(/ household$/, ""))) {
+                matchCount++;
+                return { ...doc, detectedHousehold: hh };
+              }
+            }
+          }
+        }
+        return { ...doc, detectedHousehold: null };
+      });
+      setBatchDocs(updated);
+      if (matchCount > 0) addEv(`Auto-matched ${matchCount} document(s) to households`);
+    }
   };
 
   const updateBatchDocEdit = (docId: string, fieldIdx: number, value: string) => {
@@ -604,7 +655,7 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
                     <p className="text-slate-400 mb-4">{batchDocs.length} documents processed. Approve or reject each before saving.</p>
 
                     {/* Summary */}
-                    <div className="grid grid-cols-4 gap-3 mb-6">
+                    <div className="grid grid-cols-4 gap-3 mb-4">
                       <div className="bg-white border border-slate-200 rounded-xl p-3 text-center">
                         <p className="text-lg font-light text-slate-900">{batchDocs.length}</p>
                         <p className="text-[10px] text-slate-400">Total</p>
@@ -622,6 +673,31 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
                         <p className="text-[10px] text-slate-400">Rejected</p>
                       </div>
                     </div>
+
+                    {/* Auto-detected household grouping banner */}
+                    {(() => {
+                      const detected = batchDocs.filter(d => d.detectedHousehold);
+                      const households = new Map<string, string>();
+                      detected.forEach(d => { if (d.detectedHousehold) households.set(d.detectedHousehold.id, d.detectedHousehold.name); });
+                      if (detected.length === 0) return null;
+                      return (
+                        <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 mb-4 animate-fade-in">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <Sparkles size={14} className="text-purple-500" />
+                            <p className="text-xs font-medium text-purple-700">Smart Grouping: {detected.length} of {batchDocs.length} docs matched to {households.size} household{households.size !== 1 ? "s" : ""}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Array.from(households.values()).map(name => (
+                              <button key={name} onClick={() => { const hh = detected.find(d => d.detectedHousehold?.name === name)?.detectedHousehold; if (hh) { setLinkedHousehold(hh); addEv(`Linked to ${hh.name}`); } }}
+                                className="text-[10px] px-2 py-1 rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors font-medium">
+                                {name} ({detected.filter(d => d.detectedHousehold?.name === name).length} docs)
+                              </button>
+                            ))}
+                          </div>
+                          {!linkedHousehold && <p className="text-[10px] text-purple-500 mt-1.5">Click a household to link all approved docs to it</p>}
+                        </div>
+                      );
+                    })()}
 
                     {/* Household linking for batch */}
                     <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-4">
@@ -677,6 +753,9 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
                                 {doc.classification && <span className="text-[10px] text-slate-400">{doc.classification.subtype}</span>}
                                 <span className="text-[10px] text-slate-300">·</span>
                                 <span className="text-[10px] text-slate-400">{doc.fields.length} fields</span>
+                                {doc.detectedHousehold && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-600 font-medium">{doc.detectedHousehold.name.replace(" Household", "")}</span>
+                                )}
                                 {Object.keys(doc.editedValues).length > 0 && (
                                   <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-600 font-medium">{Object.keys(doc.editedValues).length} edited</span>
                                 )}

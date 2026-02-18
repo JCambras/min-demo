@@ -25,7 +25,57 @@ const RULES_TYPE_MAP: Record<string, string> = {
   "Joint TIC": "Joint TIC", "Community Property": "JTWROS", "Trust": "Trust",
 };
 
-import type { Screen, WorkflowContext } from "@/lib/types";
+import { Lightbulb } from "lucide-react";
+import { checkIncomeEligibility } from "@/lib/custodian-rules";
+import type { Screen, WorkflowContext, ClientInfo } from "@/lib/types";
+
+/** Recommend account types based on client profile */
+function recommendAccounts(client: ClientInfo, selectedIntents: string[], hasP2: boolean): { type: string; reason: string }[] {
+  const recs: { type: string; reason: string; priority: number }[] = [];
+  const income = parseInt(client.annualIncome?.replace(/\D/g, "") || "0");
+  const netWorth = parseInt(client.netWorth?.replace(/\D/g, "") || "0");
+  const employment = client.employmentStatus?.toLowerCase() || "";
+  const objective = client.investmentObjective?.toLowerCase() || "";
+  const risk = client.riskTolerance?.toLowerCase() || "";
+  const marital = client.maritalStatus?.toLowerCase() || "";
+  const hasRolloverIntent = selectedIntents.some(i => i.toLowerCase().includes("rollover"));
+  const hasTOAIntent = selectedIntents.some(i => i.toLowerCase().includes("transfer"));
+
+  // Always recommend Individual Brokerage for basic investing
+  recs.push({ type: "Individual", reason: "Core taxable investment account", priority: 5 });
+
+  // Roth IRA — check income eligibility
+  const rothCheck = checkIncomeEligibility(ACTIVE_CUSTODIAN, "Roth IRA", income, marital.includes("married") ? "joint" : "single");
+  if (!rothCheck || rothCheck.eligible) {
+    if (income > 0 && income < 200000) {
+      recs.push({ type: "Roth IRA", reason: "Tax-free growth — eligible based on income", priority: 1 });
+    } else if (rothCheck?.inPhaseOut) {
+      recs.push({ type: "Roth IRA", reason: "In phase-out range — consider backdoor conversion", priority: 3 });
+    }
+  }
+
+  // Traditional IRA — always reasonable for retirement savings
+  if (income > 0) {
+    recs.push({ type: "IRA", reason: hasRolloverIntent ? "Rollover destination for employer plan" : "Tax-deferred retirement savings", priority: hasRolloverIntent ? 1 : 3 });
+  }
+
+  // SEP IRA — for self-employed
+  if (employment.includes("self") || employment.includes("business")) {
+    recs.push({ type: "SEP IRA", reason: "Self-employed — up to 25% of compensation, max $69K", priority: 1 });
+  }
+
+  // Individual TOD — estate-conscious clients
+  if (objective.includes("preservation") || objective.includes("estate") || netWorth > 1000000) {
+    recs.push({ type: "Individual TOD", reason: "Transfer on Death — avoids probate on taxable assets", priority: 4 });
+  }
+
+  // 529 Plan — families
+  if (hasP2 || marital.includes("married")) {
+    recs.push({ type: "529 Plan", reason: "Tax-advantaged education savings", priority: 6 });
+  }
+
+  return recs.sort((a, b) => a.priority - b.priority).slice(0, 3);
+}
 
 export function FlowScreen({ onExit, initialClient, onNavigate }: {
   onExit: () => void;
@@ -164,7 +214,36 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
             {state.step === "select-accounts-p1" && (
               <div className="animate-fade-in">
                 <h2 className="text-3xl font-light text-slate-900 mb-2">Accounts for {state.p1.firstName}</h2>
-                <p className="text-slate-400 mb-8">Select one or more account types.</p>
+                <p className="text-slate-400 mb-6">Select one or more account types.</p>
+                {/* AI Recommendations */}
+                {(() => {
+                  const recs = recommendAccounts(state.p1, state.selectedIntents, state.hasP2);
+                  if (recs.length === 0) return null;
+                  return (
+                    <div className="mb-6 bg-blue-50 border border-blue-200 rounded-2xl p-4 animate-fade-in">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Lightbulb size={14} className="text-blue-500" />
+                        <p className="text-xs font-medium text-blue-700">Recommended based on {state.p1.firstName}&rsquo;s profile</p>
+                      </div>
+                      <div className="space-y-2">
+                        {recs.map(r => {
+                          const selected = hasAcct(p1Name, r.type);
+                          return (
+                            <button key={r.type} onClick={() => d({ type: "ADD_ACCOUNT", owner: p1Name, acctType: r.type, signers: 1 })}
+                              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all ${selected ? "bg-blue-600 text-white" : "bg-white border border-blue-200 hover:border-blue-400"}`}>
+                              <div>
+                                <p className={`text-sm font-medium ${selected ? "text-white" : "text-slate-800"}`}>{r.type}</p>
+                                <p className={`text-[11px] ${selected ? "text-blue-100" : "text-blue-600/70"}`}>{r.reason}</p>
+                              </div>
+                              {selected && <Check size={16} className="text-white flex-shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+                <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-3">All Account Types</p>
                 <div className="grid grid-cols-2 gap-3">{INDIV_TYPES.map(t => <Choice key={t} label={t} selected={hasAcct(p1Name, t)} onClick={() => d({ type: "ADD_ACCOUNT", owner: p1Name, acctType: t, signers: 1 })} large />)}</div>
                 {acctsFor(p1Name).length > 0 && <p className="mt-4 text-sm text-slate-500 text-center">{acctsFor(p1Name).length} account{acctsFor(p1Name).length > 1 ? "s" : ""} selected</p>}
                 <ContinueBtn onClick={nextP1} disabled={acctsFor(p1Name).length === 0} />
@@ -174,7 +253,36 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
             {state.step === "select-accounts-p2" && (
               <div className="animate-fade-in">
                 <h2 className="text-3xl font-light text-slate-900 mb-2">Accounts for {state.p2.firstName}</h2>
-                <p className="text-slate-400 mb-8">Select one or more account types.</p>
+                <p className="text-slate-400 mb-6">Select one or more account types.</p>
+                {/* AI Recommendations for P2 */}
+                {(() => {
+                  const recs = recommendAccounts(state.p2, state.selectedIntents, true);
+                  if (recs.length === 0) return null;
+                  return (
+                    <div className="mb-6 bg-blue-50 border border-blue-200 rounded-2xl p-4 animate-fade-in">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Lightbulb size={14} className="text-blue-500" />
+                        <p className="text-xs font-medium text-blue-700">Recommended based on {state.p2.firstName}&rsquo;s profile</p>
+                      </div>
+                      <div className="space-y-2">
+                        {recs.map(r => {
+                          const selected = hasAcct(p2Name, r.type);
+                          return (
+                            <button key={r.type} onClick={() => d({ type: "ADD_ACCOUNT", owner: p2Name, acctType: r.type, signers: 1 })}
+                              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all ${selected ? "bg-blue-600 text-white" : "bg-white border border-blue-200 hover:border-blue-400"}`}>
+                              <div>
+                                <p className={`text-sm font-medium ${selected ? "text-white" : "text-slate-800"}`}>{r.type}</p>
+                                <p className={`text-[11px] ${selected ? "text-blue-100" : "text-blue-600/70"}`}>{r.reason}</p>
+                              </div>
+                              {selected && <Check size={16} className="text-white flex-shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+                <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-3">All Account Types</p>
                 <div className="grid grid-cols-2 gap-3">{INDIV_TYPES.map(t => <Choice key={t} label={t} selected={hasAcct(p2Name, t)} onClick={() => d({ type: "ADD_ACCOUNT", owner: p2Name, acctType: t, signers: 1 })} large />)}</div>
                 {acctsFor(p2Name).length > 0 && <p className="mt-4 text-sm text-slate-500 text-center">{acctsFor(p2Name).length} account{acctsFor(p2Name).length > 1 ? "s" : ""} selected</p>}
                 <ContinueBtn onClick={nextP2} disabled={acctsFor(p2Name).length === 0} />
