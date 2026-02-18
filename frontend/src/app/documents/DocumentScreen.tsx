@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useCallback } from "react";
-import { Upload, FileText, Loader2, Check, X, Search, Building2, FileWarning, ArrowRight, ExternalLink, Sparkles } from "lucide-react";
+import { Upload, FileText, Loader2, Check, X, Search, Building2, FileWarning, ArrowRight, ExternalLink, Sparkles, Pencil } from "lucide-react";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import { ContinueBtn } from "@/components/shared/FormControls";
 import { Input } from "@/components/ui/input";
@@ -95,6 +95,7 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
   const [extractedFields, setExtractedFields] = useState<ExtractedField[]>([]);
   const [evidence, setEvidence] = useState<SFEvidence[]>([]);
   const [showRightPane, setShowRightPane] = useState(false);
+  const [editedValues, setEditedValues] = useState<Record<number, string>>({});
 
   // Household linking
   const [searchQuery, setSearchQuery] = useState("");
@@ -169,11 +170,17 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
   const saveToSalesforce = async () => {
     setStep("linking");
     try {
+      const finalFields = extractedFields.map((f, i) => ({
+        ...f,
+        value: i in editedValues ? editedValues[i] : f.value,
+      }));
+      const editCount = Object.keys(editedValues).length;
       const description = [
         `Document Type: ${classification?.subtype || "Unknown"}`,
         `File: ${fileName}`,
+        ...(editCount > 0 ? [`${editCount} field(s) manually corrected`] : []),
         `\nExtracted Fields:`,
-        ...extractedFields.map(f => `${f.label}: ${f.value} (${f.confidence} confidence)`),
+        ...finalFields.map(f => `${f.label}: ${f.value} (${f.confidence} confidence)`),
       ].join("\n");
 
       const res = await callSF("createTask", {
@@ -200,6 +207,7 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
     setFilePreview(null);
     setClassification(null);
     setExtractedFields([]);
+    setEditedValues({});
     setLinkedHousehold(initialContext ? { id: initialContext.householdId, name: initialContext.familyName + " Household" } : null);
     setSearchQuery("");
     setSearchResults([]);
@@ -298,19 +306,34 @@ export function DocumentScreen({ onExit, initialContext, onNavigate }: {
                     <p className="text-xs uppercase tracking-wider text-slate-400">Extracted Fields</p>
                   </div>
                   <div className="divide-y divide-slate-50">
-                    {extractedFields.map((field, i) => (
-                      <div key={i} className="flex items-center justify-between px-5 py-3">
-                        <div>
-                          <p className="text-xs text-slate-400">{field.label}</p>
-                          <p className="text-sm font-medium text-slate-800">{field.value}</p>
+                    {extractedFields.map((field, i) => {
+                      const isEdited = i in editedValues;
+                      const displayValue = isEdited ? editedValues[i] : field.value;
+                      return (
+                        <div key={i} className="flex items-center justify-between px-5 py-3 group">
+                          <div className="flex-1 min-w-0 mr-3">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs text-slate-400">{field.label}</p>
+                              {isEdited && <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-600 font-medium">edited</span>}
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <input
+                                type="text"
+                                value={displayValue}
+                                onChange={e => setEditedValues(prev => ({ ...prev, [i]: e.target.value }))}
+                                className={`text-sm font-medium text-slate-800 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none w-full py-0.5 transition-colors ${isEdited ? "border-blue-200" : "hover:border-slate-200"}`}
+                              />
+                              <Pencil size={12} className="text-slate-300 group-hover:text-slate-400 flex-shrink-0 transition-colors" />
+                            </div>
+                          </div>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                            field.confidence === "high" ? "bg-green-100 text-green-700" :
+                            field.confidence === "medium" ? "bg-amber-100 text-amber-700" :
+                            "bg-red-100 text-red-700"
+                          }`}>{field.confidence}</span>
                         </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                          field.confidence === "high" ? "bg-green-100 text-green-700" :
-                          field.confidence === "medium" ? "bg-amber-100 text-amber-700" :
-                          "bg-red-100 text-red-700"
-                        }`}>{field.confidence}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 

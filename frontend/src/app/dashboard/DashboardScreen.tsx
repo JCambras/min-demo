@@ -12,6 +12,7 @@ import { RiskRadar } from "./components/RiskRadar";
 import { WeeklyComparison } from "./components/WeeklyComparison";
 import { OpsWorkload } from "./components/OpsWorkload";
 import { DataQuality } from "./components/DataQuality";
+import { HouseholdRiskScore } from "./components/HouseholdRiskScore";
 
 export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorName }: {
   onExit: () => void;
@@ -112,6 +113,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
                 <AdvisorScoreboard data={data} advisorName={advisorName} isAdvisor={isAdvisor} />
                 {(role === "operations" || role === "principal") && <OpsWorkload data={data} firmName={firmName} />}
                 {(role === "operations" || role === "principal") && <DataQuality data={data} goToFamily={goToFamily} />}
+                {(role === "operations" || role === "principal") && <HouseholdRiskScore data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} />}
                 <PipelineSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} goToFamily={goToFamily} />
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <RiskRadar data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} />

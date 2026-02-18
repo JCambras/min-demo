@@ -370,6 +370,8 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   const [batchPdfLoading, setBatchPdfLoading] = useState(false);
+  const [individualPdfLoading, setIndividualPdfLoading] = useState(false);
+  const [individualPdfProgress, setIndividualPdfProgress] = useState({ current: 0, total: 0 });
 
   const addEv = useCallback((label: string, url?: string) => {
     d({ type: "ADD_EVIDENCE", ev: { label, url, timestamp: timestamp() } });
@@ -538,6 +540,47 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
       }
     } catch { /* swallow */ }
     setBatchPdfLoading(false);
+  };
+
+  const downloadIndividualPDFs = async () => {
+    setIndividualPdfLoading(true);
+    setIndividualPdfProgress({ current: 0, total: batchResults.length });
+    const reviewDate = new Date().toLocaleDateString();
+    const quarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}-${new Date().getFullYear()}`;
+
+    for (let i = 0; i < batchResults.length; i++) {
+      setIndividualPdfProgress({ current: i + 1, total: batchResults.length });
+      const r = batchResults[i];
+      try {
+        const res = await fetch("/api/pdf/compliance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            familyName: r.household,
+            householdUrl: "",
+            contacts: [],
+            tasksScanned: r.checks.length,
+            checks: r.checks.map(c => ({
+              label: c.label, category: c.category, regulation: c.regulation,
+              status: c.status, detail: c.detail,
+            })),
+            reviewDate,
+            nextReviewDate: new Date(Date.now() + 90 * 86400000).toLocaleDateString(),
+            firmName: firmName || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.pdf) {
+          const link = document.createElement("a");
+          link.href = data.pdf;
+          link.download = `${r.household.replace(/\s+/g, "_")}_Compliance_${quarter}.pdf`;
+          link.click();
+        }
+        // Small delay between downloads to prevent browser blocking
+        if (i < batchResults.length - 1) await new Promise(r => setTimeout(r, 300));
+      } catch { /* skip failed household */ }
+    }
+    setIndividualPdfLoading(false);
   };
 
   // Record the review in Salesforce
@@ -747,6 +790,10 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                       <button onClick={downloadBatchPDF} disabled={batchPdfLoading}
                         className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors text-sm disabled:opacity-50">
                         {batchPdfLoading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Download Firm Report
+                      </button>
+                      <button onClick={downloadIndividualPDFs} disabled={individualPdfLoading}
+                        className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm disabled:opacity-50">
+                        {individualPdfLoading ? <><Loader2 size={16} className="animate-spin" /> {individualPdfProgress.current}/{individualPdfProgress.total}</> : <><Download size={16} /> Individual PDFs</>}
                       </button>
                       <button onClick={() => { setBatchMode(false); setBatchResults([]); }}
                         className="px-5 py-3 rounded-xl border border-slate-200 text-slate-500 font-medium hover:bg-slate-50 transition-colors text-sm">Back to Search</button>
