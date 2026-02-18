@@ -1,6 +1,6 @@
 "use client";
 import { useReducer, useEffect, useCallback } from "react";
-import { Search, Loader2, User, FileText, Shield, Clock, AlertTriangle, CheckCircle, ExternalLink, ChevronRight } from "lucide-react";
+import { Search, Loader2, User, FileText, Shield, Clock, AlertTriangle, CheckCircle, ExternalLink, ChevronRight, PieChart, TrendingUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
@@ -484,6 +484,54 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
                         <span className={s.intel.hasComplianceReview ? "text-slate-700" : "text-slate-400"}>Compliance review</span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Portfolio Summary (Black Diamond / Orion) */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-3">
+                      <PieChart size={12} className="inline mr-1" /> Portfolio
+                    </p>
+                    {(() => {
+                      // Generate mock portfolio data from household context
+                      const hhAccounts = s.intel.accountsOpened;
+                      const hasRetirement = hhAccounts.some(a => a.type.toLowerCase().includes("ira") || a.type.toLowerCase().includes("roth") || a.type.toLowerCase().includes("rollover"));
+                      const accountCount = Math.max(hhAccounts.length, 1);
+                      // Deterministic mock AUM based on family name hash
+                      const hash = (s.intel.householdName || "").split("").reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
+                      const baseAum = 500000 + Math.abs(hash % 4500000);
+                      const aum = Math.round(baseAum / 1000) * 1000;
+                      const ytdReturn = ((hash % 20) - 5) / 10 + 7; // roughly 2% to 12%
+                      const allocations = [
+                        { label: "Equities", pct: 55 + (hash % 15), color: "bg-blue-500" },
+                        { label: "Fixed Income", pct: 20 + (hash % 10), color: "bg-green-500" },
+                        { label: "Alternatives", pct: 5 + (hash % 8), color: "bg-purple-500" },
+                      ];
+                      const totalAlloc = allocations.reduce((s, a) => s + a.pct, 0);
+                      allocations.push({ label: "Cash", pct: Math.max(0, 100 - totalAlloc), color: "bg-slate-300" });
+
+                      return (
+                        <div className="space-y-3">
+                          <div className="flex items-baseline justify-between">
+                            <span className="text-lg font-semibold text-slate-900">${(aum / 1000000).toFixed(2)}M</span>
+                            <span className={`text-xs font-medium flex items-center gap-0.5 ${ytdReturn >= 0 ? "text-green-600" : "text-red-600"}`}>
+                              <TrendingUp size={10} /> {ytdReturn >= 0 ? "+" : ""}{ytdReturn.toFixed(1)}% YTD
+                            </span>
+                          </div>
+                          <div className="flex h-2 rounded-full overflow-hidden">
+                            {allocations.map((a, i) => <div key={i} className={`${a.color}`} style={{ width: `${a.pct}%` }} />)}
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 text-[10px]">
+                            {allocations.map((a, i) => (
+                              <div key={i} className="flex items-center gap-1">
+                                <div className={`w-1.5 h-1.5 rounded-full ${a.color}`} />
+                                <span className="text-slate-500">{a.label} {a.pct}%</span>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-slate-300 pt-1 border-t border-slate-100">{accountCount} account{accountCount > 1 ? "s" : ""}{hasRetirement ? " · Retirement assets included" : ""}</p>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Timeline */}

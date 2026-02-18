@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { FileText, BookOpen, MessageSquare, Briefcase, Shield, Clock, CheckCircle, Send, ExternalLink, Loader2, Users, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { FileText, BookOpen, MessageSquare, Briefcase, Shield, Clock, CheckCircle, Send, ExternalLink, Loader2, Users, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp, Building2, ArrowRight } from "lucide-react";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
 import { classifyTask, TASK_TYPE_LABELS, isComplianceReview, isMeetingNote } from "@/lib/task-subjects";
@@ -324,6 +324,65 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
               </div>
             </div>
           )}
+
+          {/* Custodian Status (Schwab Advisor Center) */}
+          {(() => {
+            // Derive custodian processing status from SF task data
+            const docuTasks = data.tasks.filter(t => t.subject.toUpperCase().includes("DOCU"));
+            const hasSigned = docuTasks.some(t => t.status === "Completed");
+            const hasAcctOpen = data.tasks.some(t => t.subject.toUpperCase().includes("ACCOUNT") && t.status === "Completed");
+            const hasFunding = data.tasks.some(t => t.subject.toUpperCase().includes("FUND") || t.subject.toUpperCase().includes("MONEYLINK"));
+            const hasACAT = data.tasks.some(t => t.subject.toUpperCase().includes("TRANSFER") || t.subject.toUpperCase().includes("ACAT"));
+
+            // Only show if there's some custodian activity
+            if (!hasSigned && docuTasks.length === 0) return null;
+
+            const steps = [
+              { label: "Application Submitted", done: docuTasks.length > 0, detail: docuTasks.length > 0 ? `${docuTasks.length} envelope(s) sent` : "Pending" },
+              { label: "Signatures Complete", done: hasSigned, detail: hasSigned ? "All parties signed" : "Awaiting signatures" },
+              { label: "Account Number Assigned", done: hasAcctOpen, detail: hasAcctOpen ? "Account active at Schwab" : "Processing (1-2 business days)" },
+              { label: "Funding Initiated", done: hasFunding, detail: hasFunding ? "Transfer/contribution in progress" : "Pending account setup" },
+              ...(hasACAT ? [{ label: "ACAT Transfer", done: false, detail: "In transit (3-5 business days typical)" }] : []),
+            ];
+
+            const completedSteps = steps.filter(s => s.done).length;
+
+            return (
+              <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Building2 size={12} className="text-slate-400" />
+                    <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Schwab Advisor Center</p>
+                  </div>
+                  <span className="text-[10px] text-slate-400">{completedSteps}/{steps.length} complete</span>
+                </div>
+                <div className="px-4 py-3">
+                  {/* Progress bar */}
+                  <div className="flex h-1.5 rounded-full overflow-hidden bg-slate-100 mb-4">
+                    <div className="bg-green-400 rounded-full transition-all duration-500" style={{ width: `${(completedSteps / steps.length) * 100}%` }} />
+                  </div>
+                  {/* Steps */}
+                  <div className="relative">
+                    <div className="absolute left-[9px] top-3 bottom-3 w-px bg-slate-200" />
+                    <div className="space-y-3">
+                      {steps.map((step, i) => (
+                        <div key={i} className="relative flex items-start gap-3 pl-7">
+                          <div className={`absolute left-0 top-0.5 w-[19px] h-[19px] rounded-full border-2 flex items-center justify-center ${step.done ? "border-green-400 bg-green-50" : i === completedSteps ? "border-blue-400 bg-blue-50 animate-pulse" : "border-slate-200 bg-white"}`}>
+                            {step.done && <CheckCircle size={11} className="text-green-500" />}
+                            {!step.done && i === completedSteps && <ArrowRight size={9} className="text-blue-500" />}
+                          </div>
+                          <div>
+                            <p className={`text-sm ${step.done ? "text-slate-700 font-medium" : i === completedSteps ? "text-blue-700 font-medium" : "text-slate-400"}`}>{step.label}</p>
+                            <p className="text-[10px] text-slate-400">{step.detail}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Open Action Items */}
           <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">

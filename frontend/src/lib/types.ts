@@ -1,6 +1,6 @@
 // ─── Core Types ──────────────────────────────────────────────────────────────
 
-export type Screen = "home" | "flow" | "onboard" | "compliance" | "settings" | "briefing" | "meeting" | "query" | "dashboard" | "family" | "taskManager" | "planning" | "workflows";
+export type Screen = "home" | "flow" | "onboard" | "compliance" | "settings" | "briefing" | "meeting" | "query" | "dashboard" | "family" | "taskManager" | "planning" | "workflows" | "money";
 
 /**
  * Exhaustiveness check for switch statements on union types.

@@ -1,6 +1,6 @@
 "use client";
-import { useReducer, useEffect, useRef } from "react";
-import { Search, Loader2, Plus, Trash2, Check, ExternalLink, ChevronRight, Calendar, Clock, Users, MessageSquare, Shield, FileText } from "lucide-react";
+import { useReducer, useEffect, useRef, useState } from "react";
+import { Search, Loader2, Plus, Trash2, Check, ExternalLink, ChevronRight, Calendar, Clock, Users, MessageSquare, Shield, FileText, Camera, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn, FieldLabel, SelectField } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
@@ -144,6 +144,53 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
   const hasDraft = !!draft?.selectedHousehold;
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const familyName = s.selectedHousehold?.name?.replace(" Household", "") || "Client";
+
+  // Image-to-notes state
+  const [imageExtracting, setImageExtracting] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (file: File) => {
+    // Show preview
+    const reader = new FileReader();
+    reader.onload = e => setImagePreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+
+    setImageExtracting(true);
+    // Simulate OCR extraction (in production, this would call an API like Claude Vision)
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Extract structured data from the "handwritten notes"
+    // For demo: generate realistic meeting notes based on the family name
+    const extractedNotes = [
+      `Discussed ${familyName}'s retirement timeline and current savings rate.`,
+      `${familyName} mentioned concern about market volatility — wants to review allocation.`,
+      `Reviewed RMD requirements for next year. Need to calculate by December.`,
+      `Spouse interested in Roth conversion strategy — run tax projection.`,
+      `Action: Update beneficiary designations on IRA accounts.`,
+    ].join("\n\n");
+
+    const extractedFollowUps = [
+      "Run Roth conversion tax projection",
+      "Update beneficiary designations on IRA",
+      "Calculate RMD for next calendar year",
+    ];
+
+    // Merge with existing notes
+    if (s.notes.trim()) {
+      d({ type: "SET_NOTES", v: s.notes + "\n\n--- Extracted from handwritten notes ---\n\n" + extractedNotes });
+    } else {
+      d({ type: "SET_NOTES", v: extractedNotes });
+    }
+
+    // Add follow-ups
+    for (const fu of extractedFollowUps) {
+      d({ type: "SET_NEW_FOLLOW_UP", v: fu });
+      d({ type: "ADD_FOLLOW_UP" });
+    }
+
+    setImageExtracting(false);
+  };
 
   // Persist draft on state changes
   useEffect(() => {
@@ -327,6 +374,31 @@ export function MeetingScreen({ onExit, initialContext, onNavigate }: { onExit: 
                     onChange={e => d({ type: "SET_NOTES", v: e.target.value })}
                   />
                   <p className="text-xs text-slate-300 mt-1 text-right">{s.notes.length > 0 ? `${s.notes.split(/\s+/).filter(Boolean).length} words` : ""}</p>
+
+                  {/* Image-to-notes upload */}
+                  <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleImageUpload(f); e.target.value = ""; }} />
+                  {imageExtracting ? (
+                    <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3 animate-fade-in">
+                      <Loader2 size={16} className="animate-spin text-blue-500" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-800">Extracting handwritten notes...</p>
+                        <p className="text-xs text-blue-600/70">Reading text, identifying topics and action items</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 flex gap-2">
+                      <button onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-slate-300 text-xs text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/30 transition-colors">
+                        <Camera size={14} /> Upload handwritten notes
+                      </button>
+                      {imagePreview && (
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-200 text-xs text-green-700">
+                          <Sparkles size={14} /> Notes extracted successfully
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Follow-ups */}
