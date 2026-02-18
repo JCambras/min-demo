@@ -1,7 +1,8 @@
 "use client";
 import { Input } from "@/components/ui/input";
 import { ClientReviewCard } from "@/components/shared/ClientReviewCard";
-import { Plus, Pencil, Trash2, Check, ExternalLink, Search, Clock, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { Plus, Pencil, Trash2, Check, ExternalLink, Search, Clock, Loader2, Circle, CheckCircle2 } from "lucide-react";
 import { Choice, ContinueBtn, BypassLink, FieldLabel, SelectField } from "@/components/shared/FormControls";
 import { ClientForm } from "@/components/shared/ClientForm";
 import { ProgressSteps } from "@/components/shared/ProgressSteps";
@@ -33,6 +34,9 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
 }) {
   const flow = useFlowState(initialClient);
   const { state, dispatch: d, hasDraft, p1Name, p2Name, fam, jLabel, progressPct, curFund, hasAcct, acctsFor, totalDocs, estMinutes, genStepLabels, householdUrl, householdId, primaryContactId, goBack, nextFund, nextP1, nextP2, nextJoint, executeGen } = flow;
+
+  // Post-signature fulfillment checklist state
+  const [fulfillment, setFulfillment] = useState<Record<string, boolean>>({});
 
   const combinedResults = state.sfSearchResults;
 
@@ -505,6 +509,45 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
                     <p className="text-[10px] text-slate-300 text-center mt-2">Auto-refreshing every 10 seconds</p>
                   </div>
                 )}
+                {/* Post-signature fulfillment checklist */}
+                <div className="text-left max-w-md mx-auto mb-8">
+                  <p className="text-xs uppercase tracking-wider text-slate-400 mb-3 text-center">Post-Signature Fulfillment</p>
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                    {[
+                      { id: "download", label: "Download signed packet from DocuSign", detail: "Verify all signatures are present on every document" },
+                      { id: "verify", label: "Verify packet completeness", detail: "Application, beneficiary form, CRS, advisory addendum — all signed" },
+                      { id: "upload", label: "Upload to Schwab Advisor Center", detail: "Submit via Backstage Builder or manual upload" },
+                      { id: "confirm", label: "Confirm account number generated", detail: "Schwab typically processes within 1-2 business days" },
+                      { id: "ach", label: "Set up ACH / MoneyLink", detail: "Link bank account if ACH authorization was included" },
+                      { id: "fund", label: "Initiate funding", detail: "Process rollover, transfer, or contribution as specified" },
+                      { id: "update-sf", label: "Update Salesforce with account number", detail: "Record the new account number on the household record" },
+                      { id: "close", label: "Close onboarding task", detail: "Mark all related tasks as completed in Salesforce" },
+                    ].map((step, i) => {
+                      const done = fulfillment[step.id] || false;
+                      const completedCount = Object.values(fulfillment).filter(Boolean).length;
+                      return (
+                        <button key={step.id} onClick={() => setFulfillment(prev => ({ ...prev, [step.id]: !prev[step.id] }))}
+                          className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${done ? "bg-green-50/50" : ""}`}>
+                          <div className="mt-0.5 flex-shrink-0">
+                            {done ? <CheckCircle2 size={18} className="text-green-500" /> : <Circle size={18} className="text-slate-300" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium ${done ? "text-green-700 line-through" : "text-slate-700"}`}>{step.label}</p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">{step.detail}</p>
+                          </div>
+                          <span className="text-[10px] text-slate-300 mt-1 flex-shrink-0">{i + 1}/8</span>
+                        </button>
+                      );
+                    })}
+                    <div className="px-4 py-3 bg-slate-50 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-slate-500">{Object.values(fulfillment).filter(Boolean).length} of 8 steps complete</p>
+                        <div className="flex gap-0.5">{Array.from({ length: 8 }).map((_, i) => <div key={i} className={`w-4 h-1.5 rounded-full ${Object.values(fulfillment).filter(Boolean).length > i ? "bg-green-400" : "bg-slate-200"}`} />)}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap gap-3 justify-center">
                   {onNavigate && householdId && (
                     <>

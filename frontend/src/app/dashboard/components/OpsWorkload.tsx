@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Clock, AlertTriangle, Users, CheckCircle } from "lucide-react";
+import { Clock, AlertTriangle, Users, CheckCircle, Download, Loader2 } from "lucide-react";
 import type { PracticeData } from "../usePracticeData";
 
 interface TaskCategory {
@@ -12,8 +12,9 @@ interface TaskCategory {
   bgColor: string;
 }
 
-export function OpsWorkload({ data }: { data: PracticeData }) {
+export function OpsWorkload({ data, firmName }: { data: PracticeData; firmName?: string }) {
   const [expanded, setExpanded] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   // Build task categories from practice data
   const categories: TaskCategory[] = [
@@ -62,6 +63,40 @@ export function OpsWorkload({ data }: { data: PracticeData }) {
   const capacityColor = capacityPct >= 80 ? "bg-red-400" : capacityPct >= 50 ? "bg-amber-400" : "bg-green-400";
   const capacityLabel = capacityPct >= 80 ? "Heavy" : capacityPct >= 50 ? "Moderate" : "Light";
 
+  const downloadOpsReport = async () => {
+    setPdfLoading(true);
+    try {
+      const res = await fetch("/api/pdf/operations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firmName,
+          reportDate: new Date().toLocaleDateString(),
+          healthScore: data.healthScore,
+          healthBreakdown: data.healthBreakdown,
+          categories: categories.map(c => ({ label: c.label, count: c.count, urgent: c.urgent, estMinutes: c.estMinutes })),
+          totalItems, totalUrgent, totalHours, capacityPct,
+          risks: data.risks.slice(0, 15).map(r => ({ label: r.label, household: r.household, severity: r.severity, category: r.category, daysStale: r.daysStale })),
+          advisors: data.advisors.map(a => ({ name: a.name, households: a.households, openTasks: a.openTasks, overdueTasks: a.overdueTasks, unsigned: a.unsigned, compliancePct: a.compliancePct, score: a.score })),
+          weeklyComparison: data.weeklyComparison,
+          totalHouseholds: data.totalHouseholds,
+          openTasks: data.openTasks,
+          completedTasks: data.completedTasks,
+          complianceReviews: data.complianceReviews,
+          unsigned: data.unsigned,
+        }),
+      });
+      const result = await res.json();
+      if (result.success && result.pdf) {
+        const link = document.createElement("a");
+        link.href = result.pdf;
+        link.download = result.filename;
+        link.click();
+      }
+    } catch { /* swallow */ }
+    setPdfLoading(false);
+  };
+
   return (
     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -70,6 +105,9 @@ export function OpsWorkload({ data }: { data: PracticeData }) {
           <p className="text-xs text-slate-400 mt-0.5">Task queue by category with capacity estimate</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={downloadOpsReport} disabled={pdfLoading} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-50">
+            {pdfLoading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Ops Report
+          </button>
           <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${capacityPct >= 80 ? "bg-red-100 text-red-600" : capacityPct >= 50 ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600"}`}>
             {capacityLabel} Load
           </span>

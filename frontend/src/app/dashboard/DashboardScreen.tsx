@@ -109,7 +109,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
                 <HealthScoreSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} firmName={firmName} />
                 <RevenueSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} />
                 <AdvisorScoreboard data={data} advisorName={advisorName} isAdvisor={isAdvisor} />
-                {(role === "operations" || role === "principal") && <OpsWorkload data={data} />}
+                {(role === "operations" || role === "principal") && <OpsWorkload data={data} firmName={firmName} />}
                 <PipelineSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} goToFamily={goToFamily} />
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <RiskRadar data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} />

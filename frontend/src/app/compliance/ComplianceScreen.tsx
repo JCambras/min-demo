@@ -1,6 +1,6 @@
 "use client";
-import { useReducer, useEffect, useCallback, useRef } from "react";
-import { Search, Loader2, Check, X, AlertTriangle, ExternalLink, Shield, ChevronDown, ChevronUp, Download, MessageSquare, Fingerprint, BarChart3, FileText, Briefcase, Scale } from "lucide-react";
+import { useReducer, useEffect, useCallback, useRef, useState } from "react";
+import { Search, Loader2, Check, X, AlertTriangle, ExternalLink, Shield, ChevronDown, ChevronUp, Download, MessageSquare, Fingerprint, BarChart3, FileText, Briefcase, Scale, Calendar, Clock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ContinueBtn } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
@@ -363,6 +363,14 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
   const progressPct = (stepsOrder.indexOf(state.step) + 1) / stepsOrder.length * 100;
   const familyName = state.selectedHousehold?.name?.replace(" Household", "") || "Client";
 
+  // Batch scan state
+  interface BatchResult { household: string; householdId: string; checks: CheckResult[]; pass: number; warn: number; fail: number }
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
+  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
+  const [batchPdfLoading, setBatchPdfLoading] = useState(false);
+
   const addEv = useCallback((label: string, url?: string) => {
     d({ type: "ADD_EVIDENCE", ev: { label, url, timestamp: timestamp() } });
   }, []);
@@ -461,6 +469,77 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
     }
   };
 
+  // Batch scan all households
+  const runBatchScan = async () => {
+    setBatchLoading(true);
+    setBatchResults([]);
+    try {
+      const res = await callSF("queryTasks", { limit: 200 });
+      if (!res.success) { setBatchLoading(false); return; }
+      const households = (res.households || []) as SFHousehold[];
+      setBatchProgress({ current: 0, total: households.length });
+      const results: BatchResult[] = [];
+      for (let i = 0; i < households.length; i++) {
+        setBatchProgress({ current: i + 1, total: households.length });
+        try {
+          const detail = await callSF("getHouseholdDetail", { householdId: households[i].id });
+          if (detail.success) {
+            const checks = runComplianceChecks(
+              { id: households[i].id, name: households[i].name, description: households[i].description || "", createdAt: households[i].createdAt },
+              detail.contacts || [],
+              detail.tasks || [],
+            );
+            results.push({
+              household: households[i].name.replace(" Household", ""),
+              householdId: households[i].id,
+              checks,
+              pass: checks.filter(c => c.status === "pass").length,
+              warn: checks.filter(c => c.status === "warn").length,
+              fail: checks.filter(c => c.status === "fail").length,
+            });
+          }
+        } catch { /* skip failed household */ }
+      }
+      results.sort((a, b) => b.fail - a.fail || b.warn - a.warn);
+      setBatchResults(results);
+    } catch { /* swallow */ }
+    setBatchLoading(false);
+  };
+
+  const downloadBatchPDF = async () => {
+    setBatchPdfLoading(true);
+    try {
+      const reviewDate = new Date().toLocaleDateString();
+      const checks = batchResults.flatMap(r => r.checks.map(c => ({
+        label: c.label, category: c.category, regulation: c.regulation, status: c.status,
+        detail: `[${r.household}] ${c.detail}`,
+      })));
+      const totalFail = batchResults.reduce((s, r) => s + r.fail, 0);
+      const res = await fetch("/api/pdf/compliance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          familyName: `Firm-Wide (${batchResults.length} Households)`,
+          householdUrl: "",
+          contacts: [],
+          tasksScanned: batchResults.length,
+          checks: checks.slice(0, 100),
+          reviewDate,
+          nextReviewDate: new Date(Date.now() + 90 * 86400000).toLocaleDateString(),
+          firmName: firmName || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.pdf) {
+        const link = document.createElement("a");
+        link.href = data.pdf;
+        link.download = `Firm-Wide-Compliance-${reviewDate.replace(/\//g, "-")}.pdf`;
+        link.click();
+      }
+    } catch { /* swallow */ }
+    setBatchPdfLoading(false);
+  };
+
   // Record the review in Salesforce
   const recordReview = async () => {
     d({ type: "SET_STEP", step: "cc-recording" });
@@ -526,6 +605,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
   const categories = [...new Set(state.checks.map(c => c.category))];
 
   const goBack = () => {
+    if (batchMode) { setBatchMode(false); setBatchResults([]); setBatchLoading(false); return; }
     if (state.step === "cc-search") { d({ type: "RESET" }); onExit(); }
     else if (state.step === "cc-scanning") { d({ type: "RESET" }); if (initialContext) onExit(); else d({ type: "SET_STEP", step: "cc-search" }); }
     else if (state.step === "cc-results") { if (initialContext) { d({ type: "RESET" }); onExit(); } else d({ type: "SET_STEP", step: "cc-search" }); }
@@ -541,7 +621,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 pt-4 pb-16">
           <div className="max-w-xl w-full mx-auto">
 
-            {state.step === "cc-search" && (
+            {state.step === "cc-search" && !batchMode && (
               <div className="animate-fade-in">
                 <h2 className="text-3xl font-light text-slate-900 mb-2">Which household?</h2>
                 <p className="text-slate-400 mb-8">Search for a client household to run a compliance review.</p>
@@ -567,6 +647,114 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                     ))}
                   </div>
                 )}
+
+                {/* Batch Scan Option */}
+                <div className="mt-8 pt-6 border-t border-slate-200">
+                  <button onClick={() => { setBatchMode(true); runBatchScan(); }}
+                    className="w-full flex items-center gap-4 p-4 rounded-2xl border border-slate-200 hover:border-green-300 hover:bg-green-50/50 transition-colors text-left">
+                    <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                      <Shield size={20} className="text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Scan All Households</p>
+                      <p className="text-xs text-slate-400">Run compliance checks across every household in Salesforce. Export firm-wide report.</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Batch scan mode */}
+            {batchMode && state.step === "cc-search" && (
+              <div className="animate-fade-in">
+                {batchLoading ? (
+                  <div className="text-center pt-8">
+                    <Loader2 size={40} className="animate-spin text-green-500 mx-auto mb-4" />
+                    <h2 className="text-2xl font-light text-slate-900 mb-2">Scanning All Households</h2>
+                    <p className="text-slate-400 mb-4">Checking {batchProgress.current} of {batchProgress.total} households...</p>
+                    <div className="max-w-xs mx-auto">
+                      <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-green-400 rounded-full transition-all duration-300" style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                ) : batchResults.length > 0 ? (
+                  <div>
+                    <h2 className="text-3xl font-light text-slate-900 mb-2">Firm-Wide Compliance</h2>
+                    <p className="text-slate-400 mb-6">{batchResults.length} households scanned · {new Date().toLocaleDateString()}</p>
+
+                    {/* Summary card */}
+                    {(() => {
+                      const totalFails = batchResults.reduce((s, r) => s + r.fail, 0);
+                      const totalWarns = batchResults.reduce((s, r) => s + r.warn, 0);
+                      const totalPasses = batchResults.reduce((s, r) => s + r.pass, 0);
+                      const cleanHouseholds = batchResults.filter(r => r.fail === 0).length;
+                      return (
+                        <div className={`rounded-2xl p-5 mb-6 ${totalFails === 0 ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
+                          <div className="flex items-center gap-4 mb-3">
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${totalFails === 0 ? "bg-green-500" : "bg-amber-500"} text-white`}>
+                              {totalFails === 0 ? <Shield size={24} /> : <AlertTriangle size={24} />}
+                            </div>
+                            <div>
+                              <p className={`text-lg font-medium ${totalFails === 0 ? "text-green-900" : "text-amber-900"}`}>
+                                {totalFails === 0 ? "All Households Pass" : `${batchResults.length - cleanHouseholds} Household${batchResults.length - cleanHouseholds > 1 ? "s" : ""} Need Attention`}
+                              </p>
+                              <p className="text-xs text-slate-500">{cleanHouseholds}/{batchResults.length} fully compliant</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-white/60 rounded-xl p-3 text-center">
+                              <p className="text-lg font-semibold text-green-700">{totalPasses}</p>
+                              <p className="text-[10px] text-slate-500">Passed</p>
+                            </div>
+                            <div className="bg-white/60 rounded-xl p-3 text-center">
+                              <p className="text-lg font-semibold text-amber-600">{totalWarns}</p>
+                              <p className="text-[10px] text-slate-500">Warnings</p>
+                            </div>
+                            <div className="bg-white/60 rounded-xl p-3 text-center">
+                              <p className="text-lg font-semibold text-red-600">{totalFails}</p>
+                              <p className="text-[10px] text-slate-500">Failed</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Household-level results */}
+                    <div className="space-y-2 mb-6">
+                      {batchResults.map((r, i) => (
+                        <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${r.fail === 0 ? "bg-green-100" : "bg-red-100"}`}>
+                            {r.fail === 0 ? <Check size={14} className="text-green-600" /> : <X size={14} className="text-red-600" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800">{r.household}</p>
+                            <div className="flex items-center gap-3 text-[10px] mt-0.5">
+                              <span className="text-green-600">{r.pass} pass</span>
+                              {r.warn > 0 && <span className="text-amber-500">{r.warn} warn</span>}
+                              {r.fail > 0 && <span className="text-red-500">{r.fail} fail</span>}
+                            </div>
+                          </div>
+                          {onNavigate && (
+                            <button onClick={() => onNavigate("compliance", { householdId: r.householdId, familyName: r.household })}
+                              className="text-[10px] text-blue-600 hover:text-blue-800 font-medium">Details →</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 justify-center">
+                      <button onClick={downloadBatchPDF} disabled={batchPdfLoading}
+                        className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors text-sm disabled:opacity-50">
+                        {batchPdfLoading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Download Firm Report
+                      </button>
+                      <button onClick={() => { setBatchMode(false); setBatchResults([]); }}
+                        className="px-5 py-3 rounded-xl border border-slate-200 text-slate-500 font-medium hover:bg-slate-50 transition-colors text-sm">Back to Search</button>
+                      <button onClick={() => { setBatchMode(false); setBatchResults([]); onExit(); }}
+                        className="px-5 py-3 rounded-xl border border-slate-200 text-slate-400 font-medium hover:bg-slate-50 transition-colors text-sm">Home</button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
 
@@ -721,6 +909,68 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                     <p className="text-xs text-slate-400">Manual review time: ~30 minutes per household</p>
                   </div>
                 </div>
+
+                {/* Compliance Audit Timeline */}
+                {(() => {
+                  const complianceTasks = state.tasks
+                    .filter(t => {
+                      const subj = (t.subject || "").toUpperCase();
+                      return subj.includes("COMPLIANCE") || subj.includes("KYC") || subj.includes("SUITABILITY") ||
+                        subj.includes("FORM CRS") || subj.includes("ADV") || subj.includes("IDENTITY") ||
+                        subj.includes("TRUSTED CONTACT") || subj.includes("BENEFICIAR") || subj.includes("COMPLETENESS");
+                    })
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+                  if (complianceTasks.length === 0) return null;
+
+                  const daysSince = (d: string) => Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+
+                  return (
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 text-left max-w-md mx-auto mb-8">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Calendar size={14} className="text-slate-400" />
+                        <p className="text-xs uppercase tracking-wider text-slate-400">Compliance Timeline</p>
+                      </div>
+                      <div className="relative">
+                        <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200" />
+                        <div className="space-y-4">
+                          {complianceTasks.slice(0, 8).map((t, i) => {
+                            const isCompleted = t.status === "Completed";
+                            const ds = daysSince(t.createdAt);
+                            return (
+                              <div key={i} className="relative flex items-start gap-3 pl-6">
+                                <div className={`absolute left-0 top-1 w-[15px] h-[15px] rounded-full border-2 ${isCompleted ? "border-green-400 bg-green-50" : "border-amber-400 bg-amber-50"}`}>
+                                  {isCompleted && <Check size={9} className="text-green-600 absolute top-[1px] left-[1px]" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-slate-700 leading-tight">{t.subject}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] text-slate-400">{new Date(t.createdAt).toLocaleDateString()}</span>
+                                    <span className="text-[10px] text-slate-300">·</span>
+                                    <span className={`text-[10px] font-medium ${isCompleted ? "text-green-600" : ds > 14 ? "text-red-500" : "text-amber-500"}`}>
+                                      {isCompleted ? "Completed" : `Open ${ds}d`}
+                                    </span>
+                                    {t.priority === "High" && <span className="text-[10px] text-red-400 font-medium">High Priority</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {complianceTasks.length > 8 && (
+                        <p className="text-[10px] text-slate-400 text-center mt-3">+ {complianceTasks.length - 8} more compliance records</p>
+                      )}
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                          <Clock size={10} />
+                          <span>Earliest: {new Date(complianceTasks[complianceTasks.length - 1].createdAt).toLocaleDateString()}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">{complianceTasks.filter(t => t.status === "Completed").length}/{complianceTasks.length} resolved</span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Next Best Action */}
                 {onNavigate && state.selectedHousehold && (() => {
