@@ -11,7 +11,7 @@ import type { Screen, ClientInfo, WorkflowContext, UserRole } from "@/lib/types"
 
 export interface AppState {
   // Setup
-  setupStep: "role" | "name" | "crm" | "connect" | "ready";
+  setupStep: "role" | "name" | "crm" | "connect" | "discovering" | "ready";
   role: UserRole | null;
   advisorName: string;
 

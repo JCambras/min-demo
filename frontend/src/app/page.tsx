@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import { User, Wrench, Crown, Database, ChevronDown, CheckCircle, Shield, Lock, Eye, Server } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, Wrench, Crown, Database, ChevronDown, CheckCircle, Shield, Lock, Eye, Server, AlertTriangle, X } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
 import { HomeScreen, DEMO_ADVISORS, ROLES } from "./home/HomeScreen";
 import { FlowScreen } from "./flow/FlowScreen";
@@ -32,6 +32,239 @@ const CRMS = [
   { id: "wealthbox", label: "Wealthbox", desc: "Wealthbox CRM integration", Icon: Database, live: false },
 ];
 
+// ─── OAuth Error Messages ───────────────────────────────────────────────────
+// Maps sf_error URL params from the OAuth callback to human-readable messages.
+// Each message tells the COO: what happened, why, and what to do next.
+
+interface OAuthError {
+  title: string;
+  detail: string;
+  action: string;
+}
+
+function parseOAuthError(raw: string): OAuthError {
+  const lower = raw.toLowerCase();
+
+  if (lower.includes("denied") || lower.includes("end-user denied") || lower.includes("user_denied")) {
+    return {
+      title: "Salesforce access was denied",
+      detail: "Someone clicked \"Deny\" on the Salesforce authorization screen. Min needs read/write access to your Salesforce org to pull in households, tasks, and compliance data.",
+      action: "Click \"Salesforce\" below to try again. When Salesforce asks for permission, click \"Allow.\"",
+    };
+  }
+
+  if (lower === "no_code") {
+    return {
+      title: "Salesforce didn't send an authorization code",
+      detail: "The connection started but Salesforce didn't complete the handshake. This usually happens if the browser window was closed during sign-in or if a popup blocker interfered.",
+      action: "Try connecting again. Make sure popups are allowed for this site.",
+    };
+  }
+
+  if (lower === "session_expired") {
+    return {
+      title: "Your connection session timed out",
+      detail: "The Salesforce sign-in took longer than 10 minutes, so the session expired for security. This is normal — it just means you need to start the connection again.",
+      action: "Click \"Salesforce\" below to reconnect. The sign-in usually takes under a minute.",
+    };
+  }
+
+  if (lower.includes("invalid_grant")) {
+    return {
+      title: "Salesforce rejected the login credentials",
+      detail: "The authorization code was invalid or expired. This can happen if you used the browser back button during sign-in, or if the same code was used twice.",
+      action: "Try connecting again from scratch. If this keeps happening, check that your Salesforce Connected App is configured correctly.",
+    };
+  }
+
+  // Generic fallback
+  return {
+    title: "Something went wrong connecting to Salesforce",
+    detail: `Salesforce returned an error: "${raw}". This is usually temporary.`,
+    action: "Try connecting again. If this keeps happening, contact your Salesforce admin or reach out to Min support.",
+  };
+}
+
+// ─── OAuthErrorBanner ───────────────────────────────────────────────────────
+
+function OAuthErrorBanner({ error, onDismiss }: { error: OAuthError; onDismiss: () => void }) {
+  return (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-lg animate-fade-in">
+      <div className="mx-4 bg-white border border-red-200 rounded-2xl shadow-lg overflow-hidden">
+        <div className="bg-red-50 px-5 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-red-500" />
+            <span className="text-sm font-semibold text-red-800">{error.title}</span>
+          </div>
+          <button onClick={onDismiss} className="text-red-400 hover:text-red-600 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-2">
+          <p className="text-sm text-slate-600 leading-relaxed">{error.detail}</p>
+          <p className="text-sm text-slate-800 font-medium">{error.action}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── DiscoveryInterstitial ───────────────────────────────────────────────────
+// Shown after Salesforce connects. Runs schema discovery automatically and
+// shows the COO what Min is finding in their org — in real time.
+
+interface DiscoveryStep {
+  label: string;
+  status: "pending" | "active" | "done" | "error";
+  detail?: string;
+}
+
+function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void; onSkip: () => void }) {
+  const [steps, setSteps] = useState<DiscoveryStep[]>([
+    { label: "Connecting to your Salesforce org", status: "active" },
+    { label: "Reading your data model", status: "pending" },
+    { label: "Detecting households and accounts", status: "pending" },
+    { label: "Checking compliance and automation", status: "pending" },
+    { label: "Building your dashboard", status: "pending" },
+  ]);
+  const [error, setError] = useState<string | null>(null);
+  const [healthSummary, setHealthSummary] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function runDiscovery() {
+      // Step 1: Connecting (brief pause so it feels intentional, not instant)
+      await sleep(600);
+      if (cancelled) return;
+      advance(0, "done");
+      advance(1, "active");
+
+      // Step 2–4: Run actual discovery
+      await sleep(400);
+      if (cancelled) return;
+      advance(1, "done");
+      advance(2, "active");
+
+      try {
+        const res = await fetch("/api/salesforce/discover", { method: "POST" });
+        if (cancelled) return;
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.error?.message || `Discovery failed (${res.status})`);
+        }
+
+        const data = await res.json();
+        if (cancelled) return;
+
+        const hr = data.healthReport;
+        advance(2, "done", hr ? `${hr.householdCount ?? 0} households, ${hr.contactCount ?? 0} contacts` : undefined);
+        advance(3, "active");
+
+        await sleep(500);
+        if (cancelled) return;
+
+        const riskNote = hr?.automationRiskLevel === "high" ? "Some automation risks detected"
+          : hr?.automationRiskLevel === "medium" ? "Low automation risk"
+          : "No automation risks";
+        advance(3, "done", riskNote);
+        advance(4, "active");
+
+        // Build a summary line for the COO
+        if (hr) {
+          const parts: string[] = [];
+          if (hr.householdCount) parts.push(`${hr.householdCount} households`);
+          if (hr.contactCount) parts.push(`${hr.contactCount} contacts`);
+          if (hr.fscInstalled) parts.push("FSC detected");
+          if (hr.orgType) parts.push(hr.orgType);
+          setHealthSummary(parts.join(" · "));
+        }
+
+        await sleep(600);
+        if (cancelled) return;
+        advance(4, "done", "Ready");
+
+        // Brief pause to let them read the results, then advance
+        await sleep(1200);
+        if (!cancelled) onComplete();
+
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : "Discovery failed";
+        setError(msg);
+        // Mark current active step as error
+        setSteps(prev => prev.map(s => s.status === "active" ? { ...s, status: "error" } : s));
+      }
+    }
+
+    runDiscovery();
+    return () => { cancelled = true; };
+  }, []);
+
+  function advance(index: number, status: DiscoveryStep["status"], detail?: string) {
+    setSteps(prev => prev.map((s, i) => i === index ? { ...s, status, detail: detail ?? s.detail } : s));
+  }
+
+  return (
+    <div className="flex h-screen bg-surface">
+      <div className="flex-1 flex flex-col items-center justify-center px-8">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-10">
+            <h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1>
+            <p className="text-lg text-slate-400 font-light">Reading your firm&rsquo;s Salesforce...</p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+            {steps.map((step, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <div className="mt-0.5">
+                  {step.status === "done" && <CheckCircle size={18} className="text-green-500" />}
+                  {step.status === "active" && <div className="w-[18px] h-[18px] rounded-full border-2 border-slate-300 border-t-slate-700 animate-spin" />}
+                  {step.status === "pending" && <div className="w-[18px] h-[18px] rounded-full border-2 border-slate-200" />}
+                  {step.status === "error" && <AlertTriangle size={18} className="text-red-500" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm ${step.status === "done" ? "text-slate-700" : step.status === "active" ? "text-slate-900 font-medium" : step.status === "error" ? "text-red-700 font-medium" : "text-slate-400"}`}>
+                    {step.label}
+                  </p>
+                  {step.detail && (
+                    <p className="text-xs text-slate-400 mt-0.5">{step.detail}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {healthSummary && !error && (
+            <div className="mt-4 text-center">
+              <p className="text-xs text-slate-400">{healthSummary}</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-4 space-y-3">
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-sm text-red-800 font-medium">Discovery hit a snag</p>
+                <p className="text-xs text-red-600 mt-1">{error}</p>
+                <p className="text-xs text-slate-600 mt-2">You can skip this step and run discovery later from Settings, or try again.</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => window.location.reload()} className="flex-1 h-10 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors">Try again</button>
+                <button onClick={onSkip} className="flex-1 h-10 rounded-xl bg-slate-900 text-sm text-white hover:bg-slate-800 transition-colors">Skip for now</button>
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs text-slate-300 text-center mt-8">This is read-only — nothing in your Salesforce will be changed.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+
 // ─── NamePicker ─────────────────────────────────────────────────────────────
 
 function NamePicker({ advisorName, onSelect, onContinue, onBack, role }: { advisorName: string; onSelect: (n: string) => void; onContinue: () => void; onBack: () => void; role: UserRole | null }) {
@@ -62,6 +295,38 @@ export default function Home() {
   const { state, dispatch, goTo, goBack, goHome, loadStats, showToast } = useAppState();
   const { setupStep, role, advisorName, screen, wfCtx, handoff, sfConnected, toast, tourActive } = state;
   const [showSecurity, setShowSecurity] = useState(false);
+  const [oauthError, setOauthError] = useState<OAuthError | null>(null);
+
+  // Read OAuth callback URL params on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+
+    // Error case: sf_error present
+    const rawError = params.get("sf_error");
+    if (rawError) {
+      setOauthError(parseOAuthError(rawError));
+      const cleaned = new URL(window.location.href);
+      cleaned.searchParams.delete("sf_error");
+      window.history.replaceState({}, "", cleaned.pathname + cleaned.search);
+      return;
+    }
+
+    // Success case: sf_connected present — skip setup, auto-discover
+    const connected = params.get("sf_connected");
+    if (connected === "true") {
+      const orgUrl = params.get("sf_org") || "";
+      const inst = orgUrl.replace("https://", "").split(".")[0]
+        .replace(/-[a-f0-9]{10,}-dev-ed$/i, "").replace(/-/g, " ") || "";
+      dispatch({ type: "SF_STATUS", connected: true, instance: inst });
+      dispatch({ type: "SET_SETUP_STEP", step: "discovering" });
+      // Clean URL
+      const cleaned = new URL(window.location.href);
+      cleaned.searchParams.delete("sf_connected");
+      cleaned.searchParams.delete("sf_org");
+      window.history.replaceState({}, "", cleaned.pathname + cleaned.search);
+    }
+  }, []);
 
   // Session timeout: 15 min idle → clear OAuth session + back to role selection (SEC/FINRA compliance)
   useIdleTimeout(
@@ -78,6 +343,9 @@ export default function Home() {
   // SETUP SCREENS
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // OAuth error banner — rendered as a fixed overlay on any setup screen
+  const errorBanner = oauthError ? <OAuthErrorBanner error={oauthError} onDismiss={() => setOauthError(null)} /> : null;
+
   if (setupStep === "role") return (
     <div className="flex h-screen bg-surface"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">
       <div className="text-center mb-10"><h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1><p className="text-lg text-slate-400 font-light">Your practice, simplified.</p></div>
@@ -91,15 +359,15 @@ export default function Home() {
           </button>); })}
       </div>
       <p className="text-xs text-slate-300 text-center mt-8">Powered by Impacting Advisors</p>
-    </div></div></div>
+    </div></div>{errorBanner}</div>
   );
 
   if (setupStep === "name") return <NamePicker advisorName={advisorName} onSelect={n => dispatch({ type: "SET_ADVISOR_NAME", name: n })} onContinue={() => dispatch({ type: "SET_SETUP_STEP", step: "crm" })} onBack={() => dispatch({ type: "SET_SETUP_STEP", step: "role" })} role={role} />;
 
   const handleCrmSelect = async () => {
-    // If we already know SF is connected, skip straight to ready
+    // If we already know SF is connected, go to discovery
     if (sfConnected) {
-      dispatch({ type: "SET_SETUP_STEP", step: "ready" });
+      dispatch({ type: "SET_SETUP_STEP", step: "discovering" });
       return;
     }
     // sfConnected is null (still loading) or false — check fresh
@@ -110,7 +378,7 @@ export default function Home() {
         const inst = d.instanceUrl?.replace("https://", "").split(".")[0]
           .replace(/-[a-f0-9]{10,}-dev-ed$/i, "").replace(/-/g, " ") || "";
         dispatch({ type: "SF_STATUS", connected: true, instance: inst });
-        dispatch({ type: "SET_SETUP_STEP", step: "ready" });
+        dispatch({ type: "SET_SETUP_STEP", step: "discovering" });
       } else {
         dispatch({ type: "SET_SETUP_STEP", step: "connect" });
       }
@@ -193,9 +461,16 @@ export default function Home() {
       <SettingsScreen onExit={() => { fetch("/api/salesforce/connection").then(r => r.json()).then(d => {
         const inst = d.instanceUrl?.replace("https://", "").split(".")[0].replace(/-[a-f0-9]{10,}-dev-ed$/i, "").replace(/-/g, " ") || "";
         dispatch({ type: "SF_STATUS", connected: d.connected, instance: inst });
-        dispatch({ type: "SET_SETUP_STEP", step: d.connected ? "ready" : "crm" });
+        dispatch({ type: "SET_SETUP_STEP", step: d.connected ? "discovering" : "crm" });
       }).catch(() => { dispatch({ type: "SF_STATUS", connected: false, instance: "" }); dispatch({ type: "SET_SETUP_STEP", step: "crm" }); }); }} />
     </ErrorBoundary>
+  );
+
+  if (setupStep === "discovering") return (
+    <DiscoveryInterstitial
+      onComplete={() => dispatch({ type: "SET_SETUP_STEP", step: "ready" })}
+      onSkip={() => dispatch({ type: "SET_SETUP_STEP", step: "ready" })}
+    />
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
