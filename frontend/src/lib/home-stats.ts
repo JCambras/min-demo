@@ -185,7 +185,7 @@ export function buildHomeStats(
     })),
     recentItems: completed.slice(0, 5).map(t => ({
       subject: describeActivity(t.subject, t.householdName),
-      household: formatDate(t.createdAt),
+      household: (t.householdName || "").replace(" Household", "") || formatDate(t.createdAt),
       url: `${instanceUrl}/${t.id}`,
       type: classifyTask(t.subject),
     })),

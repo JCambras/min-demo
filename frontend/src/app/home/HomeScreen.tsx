@@ -47,6 +47,7 @@ interface HomeScreenProps {
   goHome: () => void;
   loadStats: (filterAdv?: string) => void;
   showToast: (msg: string) => void;
+  firmName?: string;
 }
 
 // ─── Extracted Sub-Components ────────────────────────────────────────────────
@@ -128,7 +129,7 @@ function RecentActivityRow({ item, icon }: {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast }: HomeScreenProps) {
+export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast, firmName }: HomeScreenProps) {
   const { role, advisorName, sfConnected, sfInstance, stats, statsLoading, tourActive, principalAdvisor } = state;
 
   // ── Keyboard shortcut: Cmd+R / Ctrl+R to cycle role ──
@@ -181,6 +182,10 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const actions = ALL_ACTIONS.filter(a => a.roles.includes(role!));
   const roleLabel = ROLES.find(r => r.id === role)?.label || "User";
   const firstName = advisorName.split(" ")[0] || roleLabel;
+
+  // Time-of-day greeting
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const isAdvisor = role === "advisor";
   const isOps = role === "operations";
 
@@ -219,8 +224,14 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div data-tour="home-greeting">
-          <h1 className="text-4xl font-light tracking-tight text-slate-900">Hi, {firstName}</h1>
-          <p className="text-sm text-slate-400 font-light mt-1">{role === "principal" && principalAdvisor !== "all" ? `Viewing ${principalAdvisor}'s households` : role === "advisor" ? "Your day, simplified." : role === "operations" ? "Your workflows, simplified." : "Your practice, simplified."}</p>
+          <h1 className="text-4xl font-light tracking-tight text-slate-900">{timeGreeting}, {firstName}</h1>
+          <p className="text-sm text-slate-400 font-light mt-1">
+            {role === "principal" && principalAdvisor !== "all"
+              ? `Viewing ${principalAdvisor}'s households`
+              : stats && (stats.overdueTasks > 0 || stats.unsignedEnvelopes > 0 || stats.readyForReview > 0)
+                ? `${[stats.overdueTasks > 0 ? `${stats.overdueTasks} overdue` : "", stats.unsignedEnvelopes > 0 ? `${stats.unsignedEnvelopes} unsigned` : "", stats.readyForReview > 0 ? `${stats.readyForReview} need review` : ""].filter(Boolean).join(", ")}`
+                : firmName || "Your practice, simplified."}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => { cycleRole(); setExpandedStat(null); }}
@@ -255,9 +266,9 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           {([
             { key: "overdueTasks", label: "Overdue", value: stats.overdueTasks, Icon: Clock, color: stats.overdueTasks > 0 ? "text-red-500" : "text-green-500", vColor: stats.overdueTasks > 0 ? "text-red-600" : "text-green-600", peek: stats.overdueTaskItems, subtitle: "past due", tier: (stats.overdueTasks === 0 ? "good" : stats.overdueTasks <= 3 ? "ok" : "bad") as "good" | "ok" | "bad" },
             { key: "openTasks", label: "Open Tasks", value: stats.openTasks, Icon: CheckCircle, color: "text-amber-500", vColor: stats.openTasks > 0 ? "text-amber-600" : "", peek: stats.openTaskItems, subtitle: "in progress", tier: (stats.openTasks === 0 ? "good" : stats.openTasks <= 5 ? "ok" : "bad") as "good" | "ok" | "bad" },
-            { key: "readyForReview", label: "Ready for Review", value: stats.readyForReview, Icon: Shield, color: stats.readyForReview > 0 ? "text-amber-500" : "text-green-500", vColor: stats.readyForReview > 0 ? "text-amber-600" : "", peek: stats.readyForReviewItems, subtitle: "need review", tier: (stats.readyForReview === 0 ? "good" : stats.readyForReview <= 3 ? "ok" : "bad") as "good" | "ok" | "bad" },
+            { key: "readyForReview", label: "Needs Review", value: stats.readyForReview, Icon: Shield, color: stats.readyForReview > 0 ? "text-amber-500" : "text-green-500", vColor: stats.readyForReview > 0 ? "text-amber-600" : "", peek: stats.readyForReviewItems, subtitle: "never reviewed", tier: (stats.readyForReview === 0 ? "good" : stats.readyForReview <= 3 ? "ok" : "bad") as "good" | "ok" | "bad" },
             { key: "unsignedEnvelopes", label: "Unsigned", value: stats.unsignedEnvelopes, Icon: Send, color: stats.unsignedEnvelopes > 0 ? "text-blue-500" : "text-slate-400", vColor: stats.unsignedEnvelopes > 0 ? "text-blue-600" : "", peek: stats.unsignedItems, subtitle: "awaiting signature", tier: (stats.unsignedEnvelopes === 0 ? "good" : stats.unsignedEnvelopes <= 2 ? "ok" : "bad") as "good" | "ok" | "bad" },
-            { key: "upcomingMeetings", label: "Meetings (7d)", value: stats.upcomingMeetings, Icon: MessageSquare, color: "text-purple-500", vColor: "", peek: stats.upcomingMeetingItems, subtitle: "this week", tier: "good" as const },
+            { key: "upcomingMeetings", label: "Meetings Logged", value: stats.upcomingMeetings, Icon: MessageSquare, color: "text-purple-500", vColor: "", peek: stats.upcomingMeetingItems, subtitle: "past 7 days", tier: "good" as const },
           ] as const).map(s => (
             <StatCard key={s.key} tourKey={s.key} label={s.label} value={s.value} Icon={s.Icon}
               color={s.color} vColor={s.vColor} expanded={expandedStat === s.key}
@@ -272,9 +283,9 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           const pm: Record<string, { title: string; items: typeof stats.openTaskItems; showAction?: string; showReminder?: boolean; sortable?: boolean }> = {
             overdueTasks: { title: "Overdue Tasks", items: stats.overdueTaskItems, sortable: true },
             openTasks: { title: "Open Tasks", items: stats.openTaskItems, sortable: true },
-            readyForReview: { title: "Ready for Review", items: stats.readyForReviewItems, showAction: "compliance" },
+            readyForReview: { title: "Needs Review", items: stats.readyForReviewItems, showAction: "compliance" },
             unsignedEnvelopes: { title: "Unsigned Envelopes", items: stats.unsignedItems, showReminder: true },
-            upcomingMeetings: { title: "Meetings This Week", items: stats.upcomingMeetingItems },
+            upcomingMeetings: { title: "Meetings Logged (Past 7 Days)", items: stats.upcomingMeetingItems },
           };
           const p = pm[expandedStat]; if (!p) return null;
           const q = panelFilter.toLowerCase();
