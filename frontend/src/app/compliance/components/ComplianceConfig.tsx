@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Loader2, Settings, Calendar, Plus, Trash2 } from "lucide-react";
+import { Loader2, Settings, Calendar, Plus, Trash2, AlertTriangle, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ComplianceTemplates } from "@/components/shared/ComplianceTemplates";
 import { callSF } from "@/lib/salesforce";
@@ -26,6 +26,7 @@ export function ComplianceConfig() {
   const [showAddSchedule, setShowAddSchedule] = useState(false);
   const [newSchedule, setNewSchedule] = useState<{ name: string; frequency: "daily" | "weekly" | "monthly"; criteria: "all" | "below-threshold"; threshold: number; emailReport: boolean; emailTo: string }>({ name: "", frequency: "weekly", criteria: "all", threshold: 70, emailReport: true, emailTo: "" });
   const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
 
   const addCustomCheck = () => {
     if (!newCheck.label.trim() || !newCheck.keyword.trim()) return;
@@ -72,12 +73,14 @@ export function ComplianceConfig() {
 
   const runScheduleNow = async (schedId: string) => {
     setRunningScheduleId(schedId);
+    setScheduleError(null);
     try {
       const res = await callSF("queryTasks", { limit: 200 });
-      if (!res.success) { setRunningScheduleId(null); return; }
+      if (!res.success) { setScheduleError("Failed to load households"); setRunningScheduleId(null); return; }
       const households = (res.households || []) as SFHousehold[];
       let failCount = 0;
       let scannedCount = 0;
+      let skippedCount = 0;
       for (const h of households) {
         try {
           const detail = await callSF("getHouseholdDetail", { householdId: h.id });
@@ -88,13 +91,22 @@ export function ComplianceConfig() {
             );
             failCount += checks.filter(c => c.status === "fail").length;
             scannedCount++;
+          } else {
+            skippedCount++;
           }
-        } catch { /* skip */ }
+        } catch {
+          skippedCount++;
+        }
       }
-      const updated = schedules.map(s => s.id === schedId ? { ...s, lastRunAt: new Date().toISOString(), lastRunHouseholds: scannedCount, lastRunFails: failCount } : s);
+      const updated = schedules.map(s => s.id === schedId ? { ...s, lastRunAt: new Date().toISOString(), lastRunHouseholds: scannedCount, lastRunFails: failCount, lastRunSkipped: skippedCount } : s);
       setSchedules(updated);
       saveSchedules(updated);
-    } catch { /* swallow */ }
+      if (skippedCount > 0) {
+        setScheduleError(`Scan complete: ${scannedCount} scanned, ${skippedCount} skipped due to errors`);
+      }
+    } catch {
+      setScheduleError("Schedule execution failed");
+    }
     setRunningScheduleId(null);
   };
 
@@ -213,6 +225,14 @@ export function ComplianceConfig() {
               </button>
             </div>
 
+            {scheduleError && (
+              <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-100 animate-fade-in">
+                <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />
+                <p className="text-[10px] text-amber-700 flex-1">{scheduleError}</p>
+                <button onClick={() => setScheduleError(null)} className="text-amber-400 hover:text-amber-600 flex-shrink-0"><X size={12} /></button>
+              </div>
+            )}
+
             {schedules.length === 0 && !showAddSchedule && (
               <div className="px-4 py-6 text-center">
                 <Calendar size={20} className="mx-auto text-slate-200 mb-2" />
@@ -237,8 +257,9 @@ export function ComplianceConfig() {
                       {sched.emailReport && <><span>·</span><span>Email: {sched.emailTo || "configured"}</span></>}
                     </div>
                     {sched.lastRunAt && (
-                      <p className="text-[10px] text-green-600 mt-0.5">
+                      <p className={`text-[10px] mt-0.5 ${sched.lastRunSkipped ? "text-amber-600" : "text-green-600"}`}>
                         Last run: {new Date(sched.lastRunAt).toLocaleDateString()} — {sched.lastRunHouseholds} scanned, {sched.lastRunFails} fails
+                        {sched.lastRunSkipped ? `, ${sched.lastRunSkipped} skipped` : ""}
                       </p>
                     )}
                   </div>

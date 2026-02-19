@@ -23,9 +23,13 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [results, setResults] = useState<BatchResult[]>([]);
+  const [skippedCount, setSkippedCount] = useState(0);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [individualPdfLoading, setIndividualPdfLoading] = useState(false);
   const [individualPdfProgress, setIndividualPdfProgress] = useState({ current: 0, total: 0 });
+  const [individualPdfFailed, setIndividualPdfFailed] = useState(0);
 
   // Start batch scan on mount
   const [started, setStarted] = useState(false);
@@ -34,10 +38,11 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
     (async () => {
       try {
         const res = await callSF("queryTasks", { limit: 200 });
-        if (!res.success) { setLoading(false); return; }
+        if (!res.success) { setScanError("Failed to load households from Salesforce"); setLoading(false); return; }
         const households = (res.households || []) as SFHousehold[];
         setProgress({ current: 0, total: households.length });
         const batch: BatchResult[] = [];
+        let skipped = 0;
         for (let i = 0; i < households.length; i++) {
           setProgress({ current: i + 1, total: households.length });
           try {
@@ -56,18 +61,26 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
                 warn: checks.filter(c => c.status === "warn").length,
                 fail: checks.filter(c => c.status === "fail").length,
               });
+            } else {
+              skipped++;
             }
-          } catch { /* skip */ }
+          } catch {
+            skipped++;
+          }
         }
+        setSkippedCount(skipped);
         batch.sort((a, b) => b.fail - a.fail || b.warn - a.warn);
         setResults(batch);
-      } catch { /* swallow */ }
+      } catch (err) {
+        setScanError(err instanceof Error ? err.message : "Batch scan failed");
+      }
       setLoading(false);
     })();
   }
 
   const downloadBatchPDF = async () => {
     setPdfLoading(true);
+    setPdfError(null);
     try {
       const reviewDate = new Date().toLocaleDateString();
       const checks = results.flatMap(r => r.checks.map(c => ({
@@ -94,16 +107,22 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
         link.href = data.pdf;
         link.download = `Firm-Wide-Compliance-${reviewDate.replace(/\//g, "-")}.pdf`;
         link.click();
+      } else {
+        setPdfError("PDF generation failed");
       }
-    } catch { /* swallow */ }
+    } catch {
+      setPdfError("Failed to download firm report");
+    }
     setPdfLoading(false);
   };
 
   const downloadIndividualPDFs = async () => {
     setIndividualPdfLoading(true);
     setIndividualPdfProgress({ current: 0, total: results.length });
+    setIndividualPdfFailed(0);
     const reviewDate = new Date().toLocaleDateString();
     const quarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}-${new Date().getFullYear()}`;
+    let failed = 0;
 
     for (let i = 0; i < results.length; i++) {
       setIndividualPdfProgress({ current: i + 1, total: results.length });
@@ -132,10 +151,15 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
           link.href = data.pdf;
           link.download = `${r.household.replace(/\s+/g, "_")}_Compliance_${quarter}.pdf`;
           link.click();
+        } else {
+          failed++;
         }
         if (i < results.length - 1) await new Promise(r => setTimeout(r, 300));
-      } catch { /* skip */ }
+      } catch {
+        failed++;
+      }
     }
+    setIndividualPdfFailed(failed);
     setIndividualPdfLoading(false);
   };
 
@@ -154,6 +178,17 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
     );
   }
 
+  if (scanError) {
+    return (
+      <div className="animate-fade-in text-center pt-8">
+        <AlertTriangle size={40} className="text-red-400 mx-auto mb-4" />
+        <h2 className="text-2xl font-light text-slate-900 mb-2">Scan Failed</h2>
+        <p className="text-sm text-slate-500 mb-6">{scanError}</p>
+        <button onClick={onBack} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-500 font-medium hover:bg-slate-50 transition-colors text-sm">Back to Search</button>
+      </div>
+    );
+  }
+
   if (results.length === 0) return null;
 
   const totalFails = results.reduce((s, r) => s + r.fail, 0);
@@ -165,6 +200,28 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
     <div className="animate-fade-in">
       <h2 className="text-3xl font-light text-slate-900 mb-2">Firm-Wide Compliance</h2>
       <p className="text-slate-400 mb-6">{results.length} households scanned · {new Date().toLocaleDateString()}</p>
+
+      {skippedCount > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 mb-4 animate-fade-in">
+          <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />
+          <p className="text-xs text-amber-700">{skippedCount} household{skippedCount > 1 ? "s" : ""} skipped due to errors. Results below reflect {results.length} successfully scanned.</p>
+        </div>
+      )}
+
+      {pdfError && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 border border-red-200 mb-4 animate-fade-in">
+          <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />
+          <p className="text-xs text-red-700">{pdfError}</p>
+          <button onClick={() => setPdfError(null)} className="text-red-400 hover:text-red-600 ml-auto flex-shrink-0"><X size={14} /></button>
+        </div>
+      )}
+
+      {individualPdfFailed > 0 && !individualPdfLoading && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 mb-4 animate-fade-in">
+          <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />
+          <p className="text-xs text-amber-700">{individualPdfFailed} of {results.length} individual PDF{individualPdfFailed > 1 ? "s" : ""} failed to generate.</p>
+        </div>
+      )}
 
       {/* Summary card */}
       <div className={`rounded-2xl p-5 mb-6 ${totalFails === 0 ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>

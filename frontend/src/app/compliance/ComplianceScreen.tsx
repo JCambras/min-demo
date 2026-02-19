@@ -1,6 +1,6 @@
 "use client";
 import { useReducer, useEffect, useCallback, useRef, useState } from "react";
-import { Search, Loader2, Shield } from "lucide-react";
+import { Search, Loader2, Shield, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import { ProgressSteps } from "@/components/shared/ProgressSteps";
@@ -127,6 +127,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
   const familyName = state.selectedHousehold?.name?.replace(" Household", "") || "Client";
 
   const [batchMode, setBatchMode] = useState(false);
+  const [searchError, setSearchError] = useState(false);
 
   const addEv = useCallback((label: string, url?: string) => {
     d({ type: "ADD_EVIDENCE", ev: { label, url, timestamp: timestamp() } });
@@ -147,6 +148,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
       return;
     }
     d({ type: "SET_IS_SEARCHING", value: true });
+    setSearchError(false);
     const timer = setTimeout(async () => {
       try {
         const res = await callSF("searchHouseholds", { query: state.searchQuery });
@@ -157,7 +159,9 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
             contactNames: "",
           })) });
         }
-      } catch { /* swallow */ }
+      } catch {
+        setSearchError(true);
+      }
       d({ type: "SET_IS_SEARCHING", value: false });
     }, 400);
     return () => clearTimeout(timer);
@@ -301,7 +305,15 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                 {state.searchQuery.length >= 2 && (
                   <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
                     {state.searchResults.length === 0 ? (
-                      <p className="px-4 py-6 text-sm text-slate-400 text-center">{state.isSearching ? "Searching Salesforce..." : `No households matching \u201c${state.searchQuery}\u201d`}</p>
+                      <p className="px-4 py-6 text-sm text-center">
+                        {state.isSearching ? (
+                          <span className="text-slate-400">Searching Salesforce...</span>
+                        ) : searchError ? (
+                          <span className="text-red-500 flex items-center justify-center gap-2"><AlertTriangle size={14} /> Search failed — check your Salesforce connection</span>
+                        ) : (
+                          <span className="text-slate-400">No households matching &ldquo;{state.searchQuery}&rdquo;</span>
+                        )}
+                      </p>
                     ) : state.searchResults.map((h, i) => (
                       <button key={i} onClick={() => runScan(h)}
                         className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">

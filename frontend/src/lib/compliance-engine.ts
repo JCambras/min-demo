@@ -43,6 +43,7 @@ export interface ComplianceSchedule {
   lastRunAt?: string;
   lastRunHouseholds?: number;
   lastRunFails?: number;
+  lastRunSkipped?: number;
 }
 
 // Lightweight SF record shapes used by the compliance engine.
