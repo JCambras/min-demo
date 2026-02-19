@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Loader2, Settings, Calendar, Plus, Trash2, AlertTriangle, X } from "lucide-react";
+import { Loader2, Settings, Calendar, Plus, Trash2, AlertTriangle, X, Tag, RotateCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ComplianceTemplates } from "@/components/shared/ComplianceTemplates";
 import { callSF } from "@/lib/salesforce";
@@ -9,9 +9,14 @@ import {
   saveCustomChecks,
   loadSchedules,
   saveSchedules,
+  loadKeywordMap,
+  saveKeywordMap,
+  getEffectiveKeywordMap,
+  DEFAULT_KEYWORD_MAP,
+  KEYWORD_CHECK_LABELS,
   runComplianceChecks,
 } from "@/lib/compliance-engine";
-import type { CustomCheck, ComplianceSchedule, SFHousehold, SFContact, SFTask } from "@/lib/compliance-engine";
+import type { CustomCheck, ComplianceSchedule, KeywordMap, SFHousehold, SFContact, SFTask } from "@/lib/compliance-engine";
 
 export function ComplianceConfig() {
   // Custom checks
@@ -27,6 +32,44 @@ export function ComplianceConfig() {
   const [newSchedule, setNewSchedule] = useState<{ name: string; frequency: "daily" | "weekly" | "monthly"; criteria: "all" | "below-threshold"; threshold: number; emailReport: boolean; emailTo: string }>({ name: "", frequency: "weekly", criteria: "all", threshold: 70, emailReport: true, emailTo: "" });
   const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
+
+  // Keyword mapping
+  const [showKeywords, setShowKeywords] = useState(false);
+  const [keywordOverrides, setKeywordOverrides] = useState<KeywordMap>(loadKeywordMap);
+  const [newKeywordInputs, setNewKeywordInputs] = useState<Record<string, string>>({});
+
+  const effectiveMap = getEffectiveKeywordMap(keywordOverrides);
+  const overrideCount = Object.keys(keywordOverrides).length;
+
+  const addKeyword = (checkId: string) => {
+    const kw = (newKeywordInputs[checkId] || "").trim().toLowerCase();
+    if (!kw) return;
+    const current = effectiveMap[checkId] || [];
+    if (current.includes(kw)) return;
+    const updated = { ...keywordOverrides, [checkId]: [...current, kw] };
+    setKeywordOverrides(updated);
+    saveKeywordMap(updated);
+    setNewKeywordInputs(prev => ({ ...prev, [checkId]: "" }));
+  };
+
+  const removeKeyword = (checkId: string, kw: string) => {
+    const current = effectiveMap[checkId] || [];
+    const filtered = current.filter(k => k !== kw);
+    const updated = { ...keywordOverrides, [checkId]: filtered };
+    setKeywordOverrides(updated);
+    saveKeywordMap(updated);
+  };
+
+  const resetCheck = (checkId: string) => {
+    const { [checkId]: _, ...rest } = keywordOverrides;
+    setKeywordOverrides(rest);
+    saveKeywordMap(rest);
+  };
+
+  const resetAllKeywords = () => {
+    setKeywordOverrides({});
+    saveKeywordMap({});
+  };
 
   const addCustomCheck = () => {
     if (!newCheck.label.trim() || !newCheck.keyword.trim()) return;
@@ -196,6 +239,78 @@ export function ComplianceConfig() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Keyword Mapping */}
+      <div className="mt-4">
+        <button onClick={() => setShowKeywords(!showKeywords)}
+          className="w-full flex items-center gap-4 p-4 rounded-2xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50 transition-colors text-left">
+          <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+            <Tag size={20} className="text-emerald-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-slate-800">Keyword Mapping</p>
+            <p className="text-xs text-slate-400">Customize which keywords each compliance check matches in your Salesforce tasks.</p>
+          </div>
+          {overrideCount > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 font-medium">{overrideCount} customized</span>
+          )}
+        </button>
+
+        {showKeywords && (
+          <div className="mt-3 bg-white border border-slate-200 rounded-2xl overflow-hidden animate-fade-in">
+            <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Check Keywords</p>
+              {overrideCount > 0 && (
+                <button onClick={resetAllKeywords} className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500 font-medium hover:bg-slate-200 transition-colors flex items-center gap-1">
+                  <RotateCcw size={10} /> Reset All
+                </button>
+              )}
+            </div>
+
+            {Object.keys(DEFAULT_KEYWORD_MAP).map(checkId => {
+              const isCustomized = checkId in keywordOverrides;
+              const keywords = effectiveMap[checkId] || [];
+              return (
+                <div key={checkId} className="px-4 py-3 border-b border-slate-50 last:border-0">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-sm font-medium text-slate-700">{KEYWORD_CHECK_LABELS[checkId] || checkId}</p>
+                    {isCustomized && (
+                      <button onClick={() => resetCheck(checkId)} className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors flex items-center gap-0.5">
+                        <RotateCcw size={8} /> Reset
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {keywords.map(kw => (
+                      <span key={kw} className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${isCustomized ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                        {kw}
+                        <button onClick={() => removeKeyword(checkId, kw)} className="hover:text-red-500 transition-colors">
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                    {keywords.length === 0 && (
+                      <span className="text-[10px] text-red-400 italic">No keywords — this check will always fail</span>
+                    )}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Input
+                      className="h-7 rounded-lg text-xs flex-1"
+                      placeholder="Add keyword..."
+                      value={newKeywordInputs[checkId] || ""}
+                      onChange={e => setNewKeywordInputs(prev => ({ ...prev, [checkId]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addKeyword(checkId); } }}
+                    />
+                    <button onClick={() => addKeyword(checkId)} className="text-[10px] px-2 py-1 rounded-lg bg-emerald-100 text-emerald-600 hover:bg-emerald-200 transition-colors font-medium flex-shrink-0">
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

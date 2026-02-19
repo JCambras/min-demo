@@ -54,10 +54,56 @@ export type SFContact = { id: string; firstName: string; lastName: string; email
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SFTask = { id: string; subject: string; status: string; priority: string; description: string; createdAt: string; dueDate: string };
 
+// ─── Keyword Mapping ────────────────────────────────────────────────────────
+// Each compliance check matches against one or more keywords in task text.
+// Firms can override the defaults to match their own naming conventions.
+// e.g. a firm using "Client Profile Update" instead of "KYC" can add that keyword.
+
+/** Maps check IDs → arrays of keywords to search for in task subjects/descriptions. */
+export type KeywordMap = Record<string, string[]>;
+
+/**
+ * Default keywords for each built-in compliance check.
+ * These match common Salesforce task naming conventions.
+ */
+export const DEFAULT_KEYWORD_MAP: KeywordMap = {
+  "kyc-profile":              ["kyc", "suitability"],
+  "trusted-contact":          ["trusted contact"],
+  "identity-verified":        ["identity verified", "gov id"],
+  "suitability-profile":      ["risk", "investment objective", "suitability"],
+  "pte-trigger":              ["rollover", "pte"],
+  "pte-compliance":           ["pte"],
+  "form-crs":                 ["form crs", "client relationship summary"],
+  "adv-delivery":             ["adv", "advisory", "brochure"],
+  "privacy-notice":           ["privacy"],
+  "beneficiary-designation":  ["beneficiar"],
+  "signatures":               ["docusign", "docu"],
+  "ach-authorization":        ["moneylink", "ach"],
+  "completeness-check":       ["completeness"],
+};
+
+/** Human-readable labels for keyword map entries (used in config UI). */
+export const KEYWORD_CHECK_LABELS: Record<string, string> = {
+  "kyc-profile":              "KYC Profile Completed",
+  "trusted-contact":          "Trusted Contact Designated",
+  "identity-verified":        "Identity Verification",
+  "suitability-profile":      "Suitability Profile Current",
+  "pte-trigger":              "PTE Rollover Detection",
+  "pte-compliance":           "PTE 2020-02 Documentation",
+  "form-crs":                 "Form CRS Delivered",
+  "adv-delivery":             "ADV Part 2A Disclosure",
+  "privacy-notice":           "Privacy Notice Delivered",
+  "beneficiary-designation":  "Beneficiary Designations",
+  "signatures":               "Signatures Obtained",
+  "ach-authorization":        "ACH Authorization",
+  "completeness-check":       "Completeness Check",
+};
+
 // ─── Persistence Keys ───────────────────────────────────────────────────────
 
 export const CUSTOM_CHECKS_KEY = "min-custom-compliance-checks";
 export const SCHEDULES_KEY = "min-compliance-schedules";
+export const KEYWORD_MAP_KEY = "min-compliance-keyword-map";
 
 // ─── Load / Save Helpers ────────────────────────────────────────────────────
 
@@ -79,6 +125,26 @@ export function saveSchedules(schedules: ComplianceSchedule[]) {
   localStorage.setItem(SCHEDULES_KEY, JSON.stringify(schedules));
 }
 
+/** Load firm-specific keyword overrides. Only contains check IDs that were customized. */
+export function loadKeywordMap(): KeywordMap {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(KEYWORD_MAP_KEY) || "{}"); } catch { return {}; }
+}
+
+/** Save firm-specific keyword overrides. */
+export function saveKeywordMap(overrides: KeywordMap) {
+  localStorage.setItem(KEYWORD_MAP_KEY, JSON.stringify(overrides));
+}
+
+/**
+ * Merge default keywords with firm overrides.
+ * If a check ID exists in overrides, those keywords replace the defaults entirely.
+ * Check IDs not in overrides keep their defaults.
+ */
+export function getEffectiveKeywordMap(overrides?: KeywordMap): KeywordMap {
+  return { ...DEFAULT_KEYWORD_MAP, ...(overrides ?? loadKeywordMap()) };
+}
+
 // ─── Compliance Check Runner ────────────────────────────────────────────────
 // Given a household's SF data, produce compliance check results.
 
@@ -86,14 +152,22 @@ export function runComplianceChecks(
   household: SFHousehold,
   contacts: SFContact[],
   tasks: SFTask[],
+  keywordOverrides?: KeywordMap,
 ): CheckResult[] {
   const checks: CheckResult[] = [];
+  const map = getEffectiveKeywordMap(keywordOverrides);
   const taskSubjects = tasks.map(t => (t.subject || "").toLowerCase());
   const taskDescs = tasks.map(t => (t.description || "").toLowerCase());
   const allTaskText = [...taskSubjects, ...taskDescs].join(" ");
 
   // Helper: does any task mention this keyword?
   const hasTask = (keyword: string) => allTaskText.includes(keyword.toLowerCase());
+
+  // Helper: does any keyword for this check match?
+  const hasCheck = (checkId: string) => (map[checkId] || []).some(kw => hasTask(kw));
+
+  // Helper: which keywords for this check matched? (for evidence building)
+  const matchedKeywords = (checkId: string) => (map[checkId] || []).filter(kw => hasTask(kw));
 
   // ── IDENTITY & KYC ──
 
@@ -109,11 +183,11 @@ export function runComplianceChecks(
     category: "identity",
     label: "KYC Profile Completed",
     regulation: "FINRA Rule 2090 (Know Your Customer)",
-    status: hasTask("kyc") || hasTask("suitability") ? "pass" : "fail",
-    detail: hasTask("kyc") || hasTask("suitability")
+    status: hasCheck("kyc-profile") ? "pass" : "fail",
+    detail: hasCheck("kyc-profile")
       ? `KYC recorded for ${contacts.length} contact(s)`
       : "No KYC/suitability record found — required before account activity",
-    evidence: hasTask("kyc") || hasTask("suitability") ? kycEvidence : undefined,
+    evidence: hasCheck("kyc-profile") ? kycEvidence : undefined,
     whyItMatters: "FINRA requires firms to know the essential facts about every customer. Without a KYC profile, the firm cannot demonstrate suitability of recommendations during an examination.",
   });
 
@@ -122,8 +196,8 @@ export function runComplianceChecks(
     category: "identity",
     label: "Trusted Contact Designated",
     regulation: "FINRA Rule 4512",
-    status: hasTask("trusted contact") ? "pass" : "warn",
-    detail: hasTask("trusted contact")
+    status: hasCheck("trusted-contact") ? "pass" : "warn",
+    detail: hasCheck("trusted-contact")
       ? "Trusted contact on file"
       : "No trusted contact task found — required for new accounts opened after Feb 2018",
     whyItMatters: "A trusted contact allows the firm to reach someone if there are concerns about the client's wellbeing or potential financial exploitation. Required for all accounts opened after February 5, 2018.",
@@ -134,8 +208,8 @@ export function runComplianceChecks(
     category: "identity",
     label: "Identity Verification",
     regulation: "USA PATRIOT Act / CIP Rule",
-    status: hasTask("identity verified") || hasTask("gov id") ? "pass" : "fail",
-    detail: hasTask("identity verified") || hasTask("gov id")
+    status: hasCheck("identity-verified") ? "pass" : "fail",
+    detail: hasCheck("identity-verified")
       ? "Government ID verified and on file"
       : "No identity verification record — required by Customer Identification Program",
     whyItMatters: "The Customer Identification Program (CIP) requires firms to verify each customer's identity using government-issued documents. Failure creates AML compliance risk and potential enforcement action.",
@@ -143,11 +217,14 @@ export function runComplianceChecks(
 
   // ── SUITABILITY ──
 
-  const hasSuitability = hasTask("risk") || hasTask("investment objective") || hasTask("suitability");
+  const hasSuitability = hasCheck("suitability-profile");
+  const suitKeywords = matchedKeywords("suitability-profile");
   const suitEvidence: string[] = [];
-  if (hasTask("risk")) suitEvidence.push("Risk tolerance documented");
-  if (hasTask("investment objective")) suitEvidence.push("Investment objectives documented");
-  if (hasTask("suitability")) suitEvidence.push("Suitability questionnaire completed");
+  if (suitKeywords.some(kw => kw === "risk")) suitEvidence.push("Risk tolerance documented");
+  if (suitKeywords.some(kw => kw === "investment objective")) suitEvidence.push("Investment objectives documented");
+  if (suitKeywords.some(kw => kw === "suitability")) suitEvidence.push("Suitability questionnaire completed");
+  // If matched via custom keywords not in the default evidence set, show generic evidence
+  if (suitEvidence.length === 0 && hasSuitability) suitEvidence.push("Suitability profile documented");
 
   checks.push({
     id: "suitability-profile",
@@ -163,15 +240,15 @@ export function runComplianceChecks(
   });
 
   // Check if any rollover was done — needs PTE documentation
-  const hasRollover = hasTask("rollover") || hasTask("pte");
+  const hasRollover = hasCheck("pte-trigger");
   if (hasRollover) {
     checks.push({
       id: "pte-compliance",
       category: "suitability",
       label: "PTE 2020-02 Documentation",
       regulation: "DOL Prohibited Transaction Exemption",
-      status: hasTask("pte") ? "pass" : "warn",
-      detail: hasTask("pte")
+      status: hasCheck("pte-compliance") ? "pass" : "warn",
+      detail: hasCheck("pte-compliance")
         ? "Rollover Recommendation + PTE form generated and signed"
         : "Rollover detected but no PTE documentation found",
       whyItMatters: "DOL PTE 2020-02 requires documented proof that a rollover recommendation is in the client's best interest. Missing PTE documentation is a top enforcement priority — fines can exceed $100K per violation.",
@@ -185,8 +262,8 @@ export function runComplianceChecks(
     category: "documents",
     label: "Form CRS Delivered",
     regulation: "SEC Rule 17a-14 / Reg BI",
-    status: hasTask("form crs") || hasTask("client relationship summary") ? "pass" : "fail",
-    detail: hasTask("form crs") || hasTask("client relationship summary")
+    status: hasCheck("form-crs") ? "pass" : "fail",
+    detail: hasCheck("form-crs")
       ? "Form CRS delivered and acknowledged"
       : "No Form CRS delivery record — required at or before account opening",
     whyItMatters: "Form CRS must be delivered before or at the time of an investment recommendation. SEC examiners check for delivery records as a priority item. Missing CRS is a common deficiency finding.",
@@ -197,8 +274,8 @@ export function runComplianceChecks(
     category: "documents",
     label: "ADV Part 2A Disclosure",
     regulation: "SEC Rule 204-3 (Brochure Rule)",
-    status: hasTask("adv") || hasTask("advisory") || hasTask("brochure") ? "pass" : "warn",
-    detail: hasTask("adv") || hasTask("advisory") || hasTask("brochure")
+    status: hasCheck("adv-delivery") ? "pass" : "warn",
+    detail: hasCheck("adv-delivery")
       ? "Advisory business practices addendum delivered"
       : "No ADV delivery record found — required within 48 hours of engagement",
     whyItMatters: "The Brochure Rule requires delivery of ADV Part 2A before or at the time of entering an advisory contract. It must also be offered annually. This is one of the first items SEC examiners request.",
@@ -209,8 +286,8 @@ export function runComplianceChecks(
     category: "documents",
     label: "Privacy Notice Delivered",
     regulation: "Regulation S-P",
-    status: hasTask("privacy") ? "pass" : "warn",
-    detail: hasTask("privacy")
+    status: hasCheck("privacy-notice") ? "pass" : "warn",
+    detail: hasCheck("privacy-notice")
       ? "Privacy notice delivered"
       : "No privacy notice record — required annually and at account opening",
     whyItMatters: "Regulation S-P requires initial and annual privacy notice delivery. While often overlooked, missing privacy notices can result in enforcement actions during routine examinations.",
@@ -223,15 +300,15 @@ export function runComplianceChecks(
     category: "account",
     label: "Beneficiary Designations Complete",
     regulation: "Firm Best Practice / ERISA",
-    status: hasTask("beneficiar") ? "pass" : "warn",
-    detail: hasTask("beneficiar")
+    status: hasCheck("beneficiary-designation") ? "pass" : "warn",
+    detail: hasCheck("beneficiary-designation")
       ? "Beneficiary designations recorded for all applicable accounts"
       : "No beneficiary designation record — recommended for all retirement accounts",
     whyItMatters: "Missing beneficiary designations cause assets to default to the estate, potentially conflicting with the client's planning intent. This is also the #1 Schwab NIGO rejection reason for IRA applications.",
   });
 
-  const hasDocusign = hasTask("docusign") || hasTask("docu");
-  const docuTasks = tasks.filter(t => (t.subject || "").toLowerCase().includes("docu"));
+  const hasDocusign = hasCheck("signatures");
+  const docuTasks = tasks.filter(t => (map["signatures"] || []).some(kw => (t.subject || "").toLowerCase().includes(kw)));
   checks.push({
     id: "signatures",
     category: "account",
@@ -245,7 +322,7 @@ export function runComplianceChecks(
     whyItMatters: `${custodian.shortName} requires signed originals (or DocuSign equivalents) for all account applications. Unsigned applications will be rejected as NIGO.`,
   });
 
-  if (hasTask("moneylink") || hasTask("ach")) {
+  if (hasCheck("ach-authorization")) {
     checks.push({
       id: "ach-authorization",
       category: "account",
@@ -260,7 +337,7 @@ export function runComplianceChecks(
   // ── REGULATORY ──
 
   const complEvidence: string[] = [];
-  if (hasTask("completeness")) {
+  if (hasCheck("completeness-check")) {
     complEvidence.push(`${tasks.length} total SF records scanned`);
     complEvidence.push(`${contacts.length} contact(s) on file`);
     const compCount = tasks.filter(t => t.status === "Completed").length;
@@ -272,11 +349,11 @@ export function runComplianceChecks(
     category: "regulatory",
     label: "Completeness Check Passed",
     regulation: "SEC Examination Readiness",
-    status: hasTask("completeness") ? "pass" : "fail",
-    detail: hasTask("completeness")
+    status: hasCheck("completeness-check") ? "pass" : "fail",
+    detail: hasCheck("completeness-check")
       ? "All required information verified and completeness check recorded"
       : "No completeness check on file — creates audit risk during SEC examination",
-    evidence: hasTask("completeness") ? complEvidence : undefined,
+    evidence: hasCheck("completeness-check") ? complEvidence : undefined,
     whyItMatters: "SEC examiners expect a documented completeness check showing all client information was verified before account funding. This is your first line of defense during an exam.",
   });
 
