@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, ensureSchema } from "@/lib/db";
+import { sanitizeStatsForAnalytics } from "@/lib/analytics";
 
 export async function POST(req: NextRequest) {
   try {
     await ensureSchema();
     const { orgId, stats, advisorFilter } = await req.json();
+    const safeStats = sanitizeStatsForAnalytics(stats);
     const today = new Date().toISOString().slice(0, 10);
     const db = getDb();
     await db.execute({
@@ -13,7 +15,7 @@ export async function POST(req: NextRequest) {
             ON CONFLICT(org_id, snapshot_date, advisor_filter) DO UPDATE SET
               stats_json = excluded.stats_json,
               created_at = datetime('now')`,
-      args: [orgId || "default", today, JSON.stringify(stats), advisorFilter || null],
+      args: [orgId || "default", today, JSON.stringify(safeStats), advisorFilter || null],
     });
     return NextResponse.json({ success: true });
   } catch (error) {

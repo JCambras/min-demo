@@ -3,7 +3,7 @@ import { useReducer, useEffect, useCallback, useRef } from "react";
 import { callSF } from "@/lib/salesforce";
 import { buildHomeStats } from "@/lib/home-stats";
 import { log } from "@/lib/logger";
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, sanitizeStatsForAnalytics } from "@/lib/analytics";
 import type { HomeStats, SFTask, SFHousehold } from "@/lib/home-stats";
 import type { Screen, ClientInfo, WorkflowContext, UserRole } from "@/lib/types";
 
@@ -238,11 +238,11 @@ export function useAppState() {
       if (res.success) {
         const stats = buildHomeStats(res.tasks as SFTask[], res.households as SFHousehold[], res.instanceUrl as string, filterAdv === "all" ? undefined : filterAdv);
         dispatch({ type: "STATS_LOADED", stats, tasks: res.tasks as SFTask[], households: res.households as SFHousehold[], instanceUrl: res.instanceUrl as string });
-        // Persist snapshot (fire-and-forget)
+        // Persist snapshot (fire-and-forget) — only safe aggregate numbers
         fetch("/api/analytics/snapshot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stats, advisorFilter: filterAdv }),
+          body: JSON.stringify({ stats: sanitizeStatsForAnalytics(stats), advisorFilter: filterAdv }),
         }).catch(() => {});
         trackEvent("stats_loaded", { advisorFilter: filterAdv });
       } else {
