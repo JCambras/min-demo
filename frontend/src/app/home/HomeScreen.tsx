@@ -10,6 +10,7 @@ import { callSF } from "@/lib/salesforce";
 import { log } from "@/lib/logger";
 import { formatDate } from "@/lib/format";
 import type { AppState, AppAction } from "@/lib/app-state";
+import { loadLastSession, clearLastSession } from "@/lib/app-state";
 import type { Screen, WorkflowContext, UserRole } from "@/lib/types";
 import type { HomeStats } from "@/lib/home-stats";
 
@@ -228,16 +229,8 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
 
   // ── Session resume (read once on mount) ──
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("min_last_session");
-      if (raw) {
-        const s = JSON.parse(raw);
-        // Only show if less than 24 hours old and not the home screen
-        if (s.screen && s.screen !== "home" && Date.now() - s.ts < 86400000) {
-          setLastSession(s);
-        }
-      }
-    } catch {}
+    const s = loadLastSession();
+    if (s) setLastSession(s);
   }, []);
 
   // ── Derived values ──
@@ -447,12 +440,12 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {lastSession && (
         <div className="mb-6 flex items-center gap-3 px-4 py-3 rounded-xl border border-blue-100 bg-blue-50/50 group">
           <RotateCcw size={15} className="text-blue-400 flex-shrink-0" />
-          <button onClick={() => { goTo(lastSession.screen, lastSession.ctx); setLastSession(null); try { localStorage.removeItem("min_last_session"); } catch {} }}
+          <button onClick={() => { goTo(lastSession.screen, lastSession.ctx); setLastSession(null); clearLastSession(); }}
             className="flex-1 text-left">
             <p className="text-sm text-blue-700 font-medium">{describeSession(lastSession)}</p>
             <p className="text-[11px] text-blue-400">Pick up where you left off</p>
           </button>
-          <button onClick={() => { setLastSession(null); try { localStorage.removeItem("min_last_session"); } catch {} }}
+          <button onClick={() => { setLastSession(null); clearLastSession(); }}
             className="text-blue-300 hover:text-blue-500 transition-colors flex-shrink-0"><X size={14} /></button>
         </div>
       )}

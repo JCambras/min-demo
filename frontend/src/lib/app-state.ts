@@ -7,6 +7,34 @@ import { trackEvent } from "@/lib/analytics";
 import type { HomeStats, SFTask, SFHousehold } from "@/lib/home-stats";
 import type { Screen, ClientInfo, WorkflowContext, UserRole } from "@/lib/types";
 
+// ─── Session Resume Helpers ─────────────────────────────────────────────────
+
+const SESSION_KEY = "min_last_session";
+
+export interface LastSession {
+  screen: Screen;
+  ctx?: WorkflowContext;
+  ts: number;
+}
+
+/** Load a persisted session if it exists and is less than 24 hours old. */
+export function loadLastSession(): LastSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as LastSession;
+    if (s.screen && s.screen !== "home" && Date.now() - s.ts < 86400000) return s;
+  } catch { /* corrupted — ignore */ }
+  return null;
+}
+
+/** Remove the persisted session. */
+export function clearLastSession(): void {
+  if (typeof window === "undefined") return;
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+}
+
 // ─── State Shape ────────────────────────────────────────────────────────────
 
 export interface AppState {
@@ -233,7 +261,7 @@ export function useAppState() {
     trackEvent("screen_view", { screen });
     // Persist session for resume — skip home since that's the default
     if (screen !== "home") {
-      try { localStorage.setItem("min_last_session", JSON.stringify({ screen, ctx, ts: Date.now() })); } catch {}
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify({ screen, ctx, ts: Date.now() })); } catch {}
     }
   }, []);
 
@@ -243,7 +271,7 @@ export function useAppState() {
 
   const goHome = useCallback(() => {
     dispatch({ type: "GO_HOME" });
-    try { localStorage.removeItem("min_last_session"); } catch {}
+    clearLastSession();
   }, []);
 
   // ── Toast ──
