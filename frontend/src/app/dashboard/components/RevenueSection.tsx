@@ -3,17 +3,39 @@ import { DollarSign, BarChart3, Users } from "lucide-react";
 import type { PracticeData } from "../usePracticeData";
 import { DetailDrawer } from "./DashboardPrimitives";
 
+function aumLabel(mode: "full" | "partial" | "none"): string {
+  if (mode === "full") return "Actual";
+  if (mode === "partial") return "Blended";
+  return "Est.";
+}
+
+function sourceBadge(mode: "full" | "partial" | "none") {
+  if (mode === "full")
+    return <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-emerald-100 text-emerald-700">FSC Verified</span>;
+  if (mode === "partial")
+    return <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-amber-100 text-amber-700">Blended</span>;
+  return <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-slate-100 text-slate-500">Estimated</span>;
+}
+
 export function RevenueSection({ data, detailPanel, toggleDetail }: {
   data: PracticeData;
   detailPanel: string | null;
   toggleDetail: (id: string) => void;
 }) {
+  const { mode, actualAum, householdsWithFsc, estimatedGapAum, householdsWithoutFsc, blendedAum, accountCount } = data.aumCoverage;
+
+  const subtitle = mode === "full"
+    ? `Actual AUM from ${accountCount} FSC accounts across ${householdsWithFsc} households`
+    : mode === "partial"
+    ? `${householdsWithFsc} households with FSC data ($${(actualAum / 1_000_000).toFixed(1)}M) + ${householdsWithoutFsc} estimated ($${(estimatedGapAum / 1_000_000).toFixed(1)}M)`
+    : `Estimated from ${data.totalHouseholds} households`;
+
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Revenue Intelligence</h3>
-          <p className="text-xs text-slate-400 mt-0.5">{data.fscAvailable && data.realAum ? `Real AUM from ${data.financialAccountCount} accounts` : `Estimated from ${data.totalHouseholds} households`} · {data.assumptions.feeScheduleBps}bps blended fee</p>
+          <p className="text-xs text-slate-400 mt-0.5">{subtitle} · {data.assumptions.feeScheduleBps}bps blended fee</p>
         </div>
         <DollarSign size={18} className="text-emerald-500" />
       </div>
@@ -21,7 +43,11 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
       {/* Revenue headline cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
         <button onClick={() => toggleDetail("rev-aum")} className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
-          <p className="text-[10px] text-emerald-600 font-medium uppercase tracking-wider">Est. <abbr title="Assets Under Management" className="no-underline cursor-help">AUM</abbr><span className="text-emerald-400 ml-0.5">▾</span></p>
+          <p className="text-[10px] text-emerald-600 font-medium uppercase tracking-wider">
+            {aumLabel(mode)} <abbr title="Assets Under Management" className="no-underline cursor-help">AUM</abbr>
+            {sourceBadge(mode)}
+            <span className="text-emerald-400 ml-0.5">▾</span>
+          </p>
           <p className="text-2xl font-light text-emerald-700 mt-1">${(data.revenue.estimatedAum / 1_000_000).toFixed(0)}M</p>
         </button>
         <button onClick={() => toggleDetail("rev-fee")} className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
@@ -41,7 +67,15 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
 
       {/* Revenue detail drawers */}
       <DetailDrawer id="rev-aum" activeId={detailPanel}>
-        <p className="text-xs text-slate-600">{data.fscAvailable && data.realAum ? <>AUM = <strong>${(data.realAum / 1_000_000).toFixed(1)}M</strong> from {data.financialAccountCount} financial accounts in Salesforce FSC. This is live data from your custodial feed.</> : <>Estimated AUM = <strong>{data.totalHouseholds} households</strong> × <strong>${(data.assumptions.avgAumPerHousehold / 1_000_000).toFixed(1)}M</strong> average AUM per household. Connect FSC Financial Accounts for real AUM data.</>}</p>
+        <p className="text-xs text-slate-600">
+          {mode === "full" ? (
+            <>Actual AUM = <strong>${(actualAum / 1_000_000).toFixed(1)}M</strong> from {accountCount} financial accounts across {householdsWithFsc} households in Salesforce FSC. This is live data from your custodial feed.</>
+          ) : mode === "partial" ? (
+            <>Blended AUM = <strong>${(actualAum / 1_000_000).toFixed(1)}M actual</strong> ({householdsWithFsc} households with FSC data) + <strong>${(estimatedGapAum / 1_000_000).toFixed(1)}M estimated</strong> ({householdsWithoutFsc} households × ${(data.assumptions.avgAumPerHousehold / 1_000_000).toFixed(1)}M avg) = <strong>${(blendedAum / 1_000_000).toFixed(1)}M total</strong>. Connect remaining households to FSC for full coverage.</>
+          ) : (
+            <>Estimated AUM = <strong>{data.totalHouseholds} households</strong> × <strong>${(data.assumptions.avgAumPerHousehold / 1_000_000).toFixed(1)}M</strong> average AUM per household. Connect FSC Financial Accounts for real AUM data.</>
+          )}
+        </p>
       </DetailDrawer>
       <DetailDrawer id="rev-fee" activeId={detailPanel}>
         <p className="text-xs text-slate-600">Annual fee income = ${(data.revenue.estimatedAum / 1_000_000).toFixed(0)}M AUM × <strong>{data.assumptions.feeScheduleBps} basis points</strong> blended advisory fee = <strong>${(data.revenue.monthlyFeeIncome / 1_000).toFixed(0)}K/month</strong>. Adjust fee schedule to match your tiered pricing.</p>
@@ -77,7 +111,13 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
             </div>
           </button>
           <DetailDrawer id="rev-trend" activeId={detailPanel}>
-            <p className="text-xs text-slate-600">Quarterly fee income estimated from cumulative household count at each quarter-end. Growth from Q-3 to Current reflects new household onboarding velocity. Connect actual AUM data for precise tracking.</p>
+            <p className="text-xs text-slate-600">
+              {mode === "full"
+                ? "Quarterly fee income based on actual FSC AUM data. Growth reflects real asset changes from custodial feeds."
+                : mode === "partial"
+                ? `Quarterly fee income blends actual FSC data (${householdsWithFsc} households) with estimates for ${householdsWithoutFsc} uncovered households. Connect remaining accounts for precise tracking.`
+                : "Quarterly fee income estimated from cumulative household count at each quarter-end. Growth from Q-3 to Current reflects new household onboarding velocity. Connect actual AUM data for precise tracking."}
+            </p>
           </DetailDrawer>
         </div>
 
@@ -99,7 +139,13 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
                     <span className="text-xs font-medium text-slate-700 w-16 text-right">${(a.annualFee / 1_000).toFixed(0)}K</span>
                   </button>
                   <DetailDrawer id={`rev-adv-${i}`} activeId={detailPanel}>
-                    <p className="text-xs text-slate-600"><strong>{a.name}</strong>: {a.households} households × ${(data.assumptions.avgAumPerHousehold / 1_000_000).toFixed(1)}M avg = ${(a.estimatedAum / 1_000_000).toFixed(1)}M AUM → <strong>${(a.annualFee / 1_000).toFixed(0)}K/year</strong> in fees ({Math.round(a.annualFee / (data.revenue.annualFeeIncome || 1) * 100)}% of firm total).</p>
+                    <p className="text-xs text-slate-600">
+                      {mode === "none" ? (
+                        <><strong>{a.name}</strong>: {a.households} households × ${(data.assumptions.avgAumPerHousehold / 1_000_000).toFixed(1)}M avg = ${(a.estimatedAum / 1_000_000).toFixed(1)}M AUM → <strong>${(a.annualFee / 1_000).toFixed(0)}K/year</strong> in fees ({Math.round(a.annualFee / (data.revenue.annualFeeIncome || 1) * 100)}% of firm total).</>
+                      ) : (
+                        <><strong>{a.name}</strong>: ${(a.estimatedAum / 1_000_000).toFixed(1)}M AUM ({mode === "full" ? "FSC verified" : "FSC + estimated blend"}) → <strong>${(a.annualFee / 1_000).toFixed(0)}K/year</strong> in fees ({Math.round(a.annualFee / (data.revenue.annualFeeIncome || 1) * 100)}% of firm total).</>
+                      )}
+                    </p>
                   </DetailDrawer>
                 </div>
               );

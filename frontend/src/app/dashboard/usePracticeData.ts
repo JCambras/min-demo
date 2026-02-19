@@ -116,6 +116,15 @@ export interface PracticeData {
   realAum: number | null;        // null = FSC not available, use assumptions
   aumByHousehold: Record<string, number>;
   financialAccountCount: number;
+  aumCoverage: {
+    mode: "full" | "partial" | "none";
+    actualAum: number;
+    householdsWithFsc: number;
+    estimatedGapAum: number;
+    householdsWithoutFsc: number;
+    blendedAum: number;
+    accountCount: number;
+  };
   // Ops staff workload
   opsStaff: OpsStaffScore[];
   // Internal: household name → advisor name mapping (used for FSC AUM overlay)
@@ -406,6 +415,12 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
     revenue, assumptions,
     openTaskItems, unsignedItems, reviewItems, meetingItems,
     fscAvailable: false, realAum: null, aumByHousehold: {}, financialAccountCount: 0,
+    aumCoverage: {
+      mode: "none", actualAum: 0, householdsWithFsc: 0,
+      estimatedGapAum: households.length * assumptions.avgAumPerHousehold,
+      householdsWithoutFsc: households.length,
+      blendedAum: households.length * assumptions.avgAumPerHousehold, accountCount: 0,
+    },
     opsStaff,
     hhAdvisorMap,
     weeklyComparison: [
@@ -463,47 +478,77 @@ export function usePracticeData() {
           const firmOverrides = parseFirmConfig(households);
           const practiceData = buildPracticeData(res.tasks as SFTask[], households, res.instanceUrl as string, firmOverrides);
 
-          // Apply real AUM from FSC FinancialAccounts if available
-          {
-            if (fscRes?.success && fscRes.fscAvailable) {
-              practiceData.fscAvailable = true;
-              practiceData.realAum = fscRes.totalAum as number;
-              practiceData.aumByHousehold = (fscRes.aumByHousehold as Record<string, number>) || {};
-              practiceData.financialAccountCount = (fscRes.count as number) || 0;
+          // Apply real AUM from FSC FinancialAccounts with partial coverage support
+          if (fscRes?.success && fscRes.fscAvailable) {
+            practiceData.fscAvailable = true;
+            practiceData.realAum = fscRes.totalAum as number;
+            practiceData.aumByHousehold = (fscRes.aumByHousehold as Record<string, number>) || {};
+            practiceData.financialAccountCount = (fscRes.count as number) || 0;
 
-              // Override revenue with real AUM if available and non-zero
-              if (practiceData.realAum > 0) {
-                const bps = practiceData.assumptions.feeScheduleBps;
-                practiceData.revenue.estimatedAum = practiceData.realAum;
-                practiceData.revenue.annualFeeIncome = practiceData.realAum * (bps / 10000);
-                practiceData.revenue.monthlyFeeIncome = practiceData.revenue.annualFeeIncome / 12;
+            const bps = practiceData.assumptions.feeScheduleBps;
+            const avgAum = practiceData.assumptions.avgAumPerHousehold;
 
-                // Build advisor → real AUM using household-level data.
-                // aumByHousehold is keyed by SF Account Id.
-                // hhAdvisorMap is keyed by household Name.
-                // We need Name→Id to bridge them.
-                const hhNameToId = new Map<string, string>();
-                for (const h of households) { hhNameToId.set(h.name, h.id); }
+            // Build Name→Id bridge for household lookups
+            const hhNameToId = new Map<string, string>();
+            for (const h of households) { hhNameToId.set(h.name, h.id); }
 
-                const advisorRealAum = new Map<string, number>();
-                for (const [hhName, advName] of practiceData.hhAdvisorMap) {
-                  const hhId = hhNameToId.get(hhName);
-                  if (!hhId) continue;
-                  const hhAum = practiceData.aumByHousehold[hhId] || 0;
-                  advisorRealAum.set(advName, (advisorRealAum.get(advName) || 0) + hhAum);
-                }
+            // Determine which households have real FSC data (balance > 0)
+            const hhIdsWithFsc = new Set<string>();
+            for (const [hhId, balance] of Object.entries(practiceData.aumByHousehold)) {
+              if (balance > 0) hhIdsWithFsc.add(hhId);
+            }
 
-                for (const advisor of practiceData.revenue.revenuePerAdvisor) {
-                  const realAum = advisorRealAum.get(advisor.name);
-                  if (realAum !== undefined) {
-                    advisor.estimatedAum = Math.round(realAum);
-                    advisor.annualFee = Math.round(realAum * (bps / 10000));
-                  }
-                }
-                // Re-sort by actual AUM
-                practiceData.revenue.revenuePerAdvisor.sort((a, b) => b.annualFee - a.annualFee);
+            const householdsWithFsc = households.filter(h => hhIdsWithFsc.has(h.id)).length;
+            const householdsWithoutFsc = households.length - householdsWithFsc;
+
+            // Compute actual AUM (only from households with balance > 0)
+            let actualAum = 0;
+            for (const balance of Object.values(practiceData.aumByHousehold)) {
+              if (balance > 0) actualAum += balance;
+            }
+
+            const estimatedGapAum = householdsWithoutFsc * avgAum;
+            const blendedAum = actualAum + estimatedGapAum;
+
+            // Determine mode
+            const mode: "full" | "partial" | "none" =
+              householdsWithFsc === 0 ? "none" :
+              householdsWithoutFsc === 0 ? "full" : "partial";
+
+            practiceData.aumCoverage = {
+              mode, actualAum, householdsWithFsc, estimatedGapAum,
+              householdsWithoutFsc, blendedAum, accountCount: practiceData.financialAccountCount,
+            };
+
+            // Override revenue with blended AUM
+            if (blendedAum > 0) {
+              practiceData.revenue.estimatedAum = blendedAum;
+              practiceData.revenue.annualFeeIncome = blendedAum * (bps / 10000);
+              practiceData.revenue.monthlyFeeIncome = practiceData.revenue.annualFeeIncome / 12;
+            }
+
+            // Per-advisor: real AUM for FSC households + estimated for non-FSC households
+            const advisorRealAum = new Map<string, number>();
+            const advisorEstAum = new Map<string, number>();
+            for (const [hhName, advName] of practiceData.hhAdvisorMap) {
+              const hhId = hhNameToId.get(hhName);
+              if (!hhId) continue;
+              if (hhIdsWithFsc.has(hhId)) {
+                const hhAum = practiceData.aumByHousehold[hhId] || 0;
+                advisorRealAum.set(advName, (advisorRealAum.get(advName) || 0) + hhAum);
+              } else {
+                advisorEstAum.set(advName, (advisorEstAum.get(advName) || 0) + avgAum);
               }
             }
+
+            for (const advisor of practiceData.revenue.revenuePerAdvisor) {
+              const real = advisorRealAum.get(advisor.name) || 0;
+              const est = advisorEstAum.get(advisor.name) || 0;
+              advisor.estimatedAum = Math.round(real + est);
+              advisor.annualFee = Math.round((real + est) * (bps / 10000));
+            }
+            // Re-sort by actual AUM
+            practiceData.revenue.revenuePerAdvisor.sort((a, b) => b.annualFee - a.annualFee);
           }
 
           setData(practiceData);
