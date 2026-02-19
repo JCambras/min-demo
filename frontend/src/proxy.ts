@@ -33,11 +33,15 @@ function checkRateLimit(ip: string): boolean {
   return entry.count <= RATE_LIMIT_MAX;
 }
 
-// Routes exempt from CSRF (OAuth callbacks, connection checks)
+// Routes exempt from CSRF (OAuth callbacks, connection checks, PDF generation)
 const CSRF_EXEMPT = new Set([
   "/api/salesforce/callback",   // OAuth redirect from Salesforce
   "/api/salesforce/connection", // GET only, but path-matched
   "/api/csrf",                  // Token issuer
+  "/api/pdf/compliance",        // PDF generation (read-only, no state mutation)
+  "/api/pdf/dashboard",         // PDF generation (read-only, no state mutation)
+  "/api/pdf/operations",        // PDF generation (read-only, no state mutation)
+  "/api/pdf",                   // PDF generation (read-only, no state mutation)
 ]);
 
 export function proxy(request: NextRequest) {
@@ -66,6 +70,10 @@ export function proxy(request: NextRequest) {
     "/api/salesforce/callback",
     "/api/salesforce/connection",
     "/api/csrf",
+    "/api/pdf",
+    "/api/pdf/compliance",
+    "/api/pdf/dashboard",
+    "/api/pdf/operations",
   ]);
 
   if (!SESSION_EXEMPT.has(pathname)) {
