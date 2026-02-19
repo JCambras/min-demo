@@ -22,7 +22,11 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
   detailPanel: string | null;
   toggleDetail: (id: string) => void;
 }) {
-  const { mode, actualAum, householdsWithFsc, estimatedGapAum, householdsWithoutFsc, blendedAum, accountCount } = data.aumCoverage;
+  const { mode, actualAum, householdsWithFsc, estimatedGapAum, householdsWithoutFsc, blendedAum, accountCount } = data.aumCoverage ?? {
+    mode: "none" as const, actualAum: 0, householdsWithFsc: 0,
+    estimatedGapAum: data.revenue.estimatedAum, householdsWithoutFsc: data.totalHouseholds,
+    blendedAum: data.revenue.estimatedAum, accountCount: 0,
+  };
 
   const subtitle = mode === "full"
     ? `Actual AUM from ${accountCount} FSC accounts across ${householdsWithFsc} households`
