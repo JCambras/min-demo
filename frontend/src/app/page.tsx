@@ -25,6 +25,7 @@ import { DemoMode } from "./tour/DemoMode";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { useIdleTimeout } from "@/lib/use-idle-timeout";
+import { DemoProvider, useDemoMode } from "@/lib/demo-context";
 import { assertNever } from "@/lib/types";
 import type { UserRole } from "@/lib/types";
 
@@ -346,7 +347,16 @@ function NamePicker({ advisorName, onSelect, onContinue, onBack, role }: { advis
 
 export default function Home() {
   const { state, dispatch, goTo, goBack, goHome, loadStats, showToast } = useAppState();
+  return (
+    <DemoProvider sfConnected={state.sfConnected}>
+      <HomeInner state={state} dispatch={dispatch} goTo={goTo} goBack={goBack} goHome={goHome} loadStats={loadStats} showToast={showToast} />
+    </DemoProvider>
+  );
+}
+
+function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast }: Pick<ReturnType<typeof useAppState>, "state" | "dispatch" | "goTo" | "goBack" | "goHome" | "loadStats" | "showToast">) {
   const { setupStep, role, advisorName, screen, wfCtx, handoff, sfConnected, toast, tourActive } = state;
+  const { isDemoMode } = useDemoMode();
   const [showSecurity, setShowSecurity] = useState(false);
   const [oauthError, setOauthError] = useState<OAuthError | null>(null);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
@@ -463,6 +473,12 @@ export default function Home() {
       dispatch({ type: "SET_SETUP_STEP", step: "connect" });
     }
   };
+
+  // Demo mode: when user clicks Salesforce but there's no connection, skip to ready
+  if (setupStep === "crm" && isDemoMode && sfConnected === false) {
+    // Auto-advance to ready — demo data will be used
+    dispatch({ type: "SET_SETUP_STEP", step: "ready" });
+  }
 
   if (setupStep === "crm") return (
     <div className="flex h-screen bg-surface"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">

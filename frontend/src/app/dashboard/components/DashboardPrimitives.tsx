@@ -44,6 +44,25 @@ export function Delta({ thisWeek, lastWeek }: { thisWeek: number; lastWeek: numb
   );
 }
 
+export function MiniHealthRing({ score, size = 60 }: { score: number; size?: number }) {
+  const r = size * 0.4;
+  const cx = size / 2, cy = size / 2, stroke = size * 0.06;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - score / 100);
+  const color = score >= 80 ? "#22c55e" : score >= 60 ? "#f59e0b" : "#ef4444";
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="absolute">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke} />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset}
+          transform={`rotate(-90 ${cx} ${cy})`} className="transition-all duration-700 ease-out" />
+      </svg>
+      <p className="text-center z-10 font-light leading-none" style={{ fontSize: size * 0.3, color }}>{score}</p>
+    </div>
+  );
+}
+
 export function SeverityBadge({ severity }: { severity: string }) {
   const styles: Record<string, string> = { critical: "bg-red-100 text-red-700", high: "bg-amber-100 text-amber-700", medium: "bg-slate-100 text-slate-600" };
   return <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${styles[severity] || styles.medium}`}>{severity}</span>;

@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { callSF } from "@/lib/salesforce";
+import { useDemoMode } from "@/lib/demo-context";
+import { getDemoSFData, DEMO_FSC_DATA } from "@/lib/demo-data";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -464,8 +466,51 @@ export function usePracticeData() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<PracticeData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { isDemoMode } = useDemoMode();
 
   useEffect(() => {
+    // ── Demo mode: skip SF calls, feed seeded data ──
+    if (isDemoMode) {
+      const demoData = getDemoSFData();
+      const tasks = demoData.tasks.map(t => ({ ...t, description: t.description || "" })) as SFTask[];
+      const households = demoData.households as SFHousehold[];
+      const { instanceUrl } = demoData;
+      const firmOverrides = parseFirmConfig(households);
+      const practiceData = buildPracticeData(tasks, households, instanceUrl, firmOverrides);
+
+      // Apply demo FSC data for aumCoverage
+      practiceData.fscAvailable = true;
+      practiceData.realAum = DEMO_FSC_DATA.totalAum;
+      practiceData.aumByHousehold = DEMO_FSC_DATA.aumByHousehold;
+      practiceData.financialAccountCount = DEMO_FSC_DATA.count;
+
+      const bps = practiceData.assumptions.feeScheduleBps;
+      const avgAum = practiceData.assumptions.avgAumPerHousehold;
+      const hhNameToId = new Map<string, string>();
+      for (const h of households) hhNameToId.set(h.name, h.id);
+      const hhIdsWithFsc = new Set(Object.keys(DEMO_FSC_DATA.aumByHousehold).filter(id => DEMO_FSC_DATA.aumByHousehold[id] > 0));
+      const householdsWithFsc = households.filter(h => hhIdsWithFsc.has(h.id)).length;
+      const householdsWithoutFsc = households.length - householdsWithFsc;
+      let actualAum = 0;
+      for (const balance of Object.values(DEMO_FSC_DATA.aumByHousehold)) if (balance > 0) actualAum += balance;
+      const estimatedGapAum = householdsWithoutFsc * avgAum;
+      const blendedAum = actualAum + estimatedGapAum;
+      practiceData.aumCoverage = {
+        mode: householdsWithFsc === 0 ? "none" : householdsWithoutFsc === 0 ? "full" : "partial",
+        actualAum, householdsWithFsc, estimatedGapAum, householdsWithoutFsc, blendedAum,
+        accountCount: DEMO_FSC_DATA.count,
+      };
+      if (blendedAum > 0) {
+        practiceData.revenue.estimatedAum = blendedAum;
+        practiceData.revenue.annualFeeIncome = blendedAum * (bps / 10000);
+        practiceData.revenue.monthlyFeeIncome = practiceData.revenue.annualFeeIncome / 12;
+      }
+
+      setData(practiceData);
+      setLoading(false);
+      return;
+    }
+
     (async () => {
       try {
         // Fire both queries in parallel — FSC may 404 (not installed) and that's fine
@@ -562,7 +607,7 @@ export function usePracticeData() {
       } catch { setError("Failed to load dashboard data."); }
       setLoading(false);
     })();
-  }, []);
+  }, [isDemoMode]);
 
   return { loading, data, error };
 }

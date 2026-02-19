@@ -5,6 +5,10 @@ import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
 import { classifyTask, TASK_TYPE_LABELS, isComplianceReview, isMeetingNote } from "@/lib/task-subjects";
 import { custodian } from "@/lib/custodian";
+import { useDemoMode } from "@/lib/demo-context";
+import { getDemoHouseholdDetail, getDemoHouseholdHealth } from "@/lib/demo-data";
+import { MiniHealthRing } from "@/app/dashboard/components/DashboardPrimitives";
+import { WhyDecomposition } from "@/components/shared/WhyDecomposition";
 import type { Screen, WorkflowContext } from "@/lib/types";
 
 interface Contact {
@@ -75,14 +79,43 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
   const [completing, setCompleting] = useState<string | null>(null);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [showAcctNumbers, setShowAcctNumbers] = useState(false);
+  const { isDemoMode } = useDemoMode();
+  const [showToastMsg, setShowToastMsg] = useState<string | null>(null);
+
+  const demoHealth = isDemoMode ? getDemoHouseholdHealth(context.householdId) : undefined;
 
   useEffect(() => {
     loadFamilyData();
   }, [context.householdId]);
 
+  // Toast timer
+  useEffect(() => {
+    if (!showToastMsg) return;
+    const t = setTimeout(() => setShowToastMsg(null), 3000);
+    return () => clearTimeout(t);
+  }, [showToastMsg]);
+
   const loadFamilyData = async () => {
     setLoading(true);
     setError("");
+
+    // Demo mode: use seeded data
+    if (isDemoMode) {
+      const demo = getDemoHouseholdDetail(context.householdId);
+      if (demo) {
+        setData({
+          household: demo.household as FamilyData["household"],
+          contacts: demo.contacts as FamilyData["contacts"],
+          tasks: demo.tasks as FamilyData["tasks"],
+          instanceUrl: demo.householdUrl ? (demo.householdUrl as string).replace(`/${context.householdId}`, "") : "",
+        });
+      } else {
+        setError("Household not found in demo data.");
+      }
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await callSF("getHouseholdDetail", { householdId: context.householdId });
       if (res.success) {
@@ -162,6 +195,23 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           <div className="mb-2">
             <FlowHeader title={`${familyName} Household`} stepLabel="Household Detail" onBack={onExit} />
           </div>
+
+          {/* Demo Health Score Header */}
+          {isDemoMode && demoHealth && (
+            <div className="mb-6 bg-white border border-slate-200 rounded-2xl p-5">
+              <div className="flex items-center gap-4 mb-3">
+                <MiniHealthRing score={demoHealth.healthScore} size={56} />
+                <div>
+                  <p className="text-lg font-light text-slate-900">Health Score: {demoHealth.healthScore}</p>
+                  <p className="text-xs text-slate-400">
+                    {demoHealth.status === "on-track" ? "On track" : demoHealth.status === "needs-attention" ? "Needs attention" : "At risk"}
+                    {" · "}${(demoHealth.aum / 1_000_000).toFixed(1)}M AUM
+                  </p>
+                </div>
+              </div>
+              <WhyDecomposition household={demoHealth} showToast={setShowToastMsg} />
+            </div>
+          )}
 
           {/* Header */}
           <div className="flex items-start justify-between mb-6" data-tour="family-header">
@@ -537,6 +587,11 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
 
         </div>
       </div>
+      {showToastMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl bg-slate-900 text-white text-sm font-medium shadow-lg animate-fade-in z-50 flex items-center gap-2">
+          <CheckCircle size={16} className="text-green-400" />{showToastMsg}
+        </div>
+      )}
     </div>
   );
 }

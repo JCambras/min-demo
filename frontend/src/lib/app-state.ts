@@ -219,8 +219,9 @@ export function useAppState() {
   useEffect(() => {
     if (state.setupStep === "ready" && state.screen === "home" && state.sfConnected && !state.stats) {
       loadStats();
-    } else if (state.setupStep === "ready" && state.screen === "home" && !state.sfConnected) {
-      dispatch({ type: "STATS_FAILED" });
+    } else if (state.setupStep === "ready" && state.screen === "home" && state.sfConnected === false && !state.stats) {
+      // Don't set failed — demo mode will inject data via loadDemoStats
+      // Only mark failed if explicitly not in demo (no stats after a moment)
     }
   }, [state.setupStep, state.screen, state.sfConnected]);
 

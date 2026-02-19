@@ -25,8 +25,9 @@ const RULES_TYPE_MAP: Record<string, string> = {
   "Joint TIC": "Joint TIC", "Community Property": "JTWROS", "Trust": "Trust",
 };
 
-import { Lightbulb } from "lucide-react";
+import { Lightbulb, Zap } from "lucide-react";
 import { checkIncomeEligibility } from "@/lib/custodian-rules";
+import { useDemoMode } from "@/lib/demo-context";
 import type { Screen, WorkflowContext, ClientInfo } from "@/lib/types";
 
 /** Recommend account types based on client profile */
@@ -84,9 +85,52 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
 }) {
   const flow = useFlowState(initialClient);
   const { state, dispatch: d, hasDraft, p1Name, p2Name, fam, jLabel, progressPct, curFund, hasAcct, acctsFor, totalDocs, estMinutes, genStepLabels, householdUrl, householdId, primaryContactId, goBack, nextFund, nextP1, nextP2, nextJoint, executeGen } = flow;
+  const { isDemoMode } = useDemoMode();
 
   // Post-signature fulfillment checklist state
   const [fulfillment, setFulfillment] = useState<Record<string, boolean>>({});
+
+  const handleQuickFill = () => {
+    // Prefill Thompson family data
+    d({ type: "TOGGLE_INTENT", intent: "Open new accounts" });
+    d({ type: "TOGGLE_INTENT", intent: "Transfer assets" });
+    d({ type: "SET_CLIENT_TYPE", value: "new" });
+    d({ type: "SET_P1", value: {
+      firstName: "Robert", lastName: "Thompson",
+      email: "robert.thompson@email.com", phone: "(555) 890-1234",
+      street: "742 Evergreen Terrace", city: "Springfield", state: "IL", zip: "62704",
+      dob: "1958-03-15", ssn: "***-**-4567", citizenship: "US Citizen",
+      idType: "Driver's License", idNumber: "T550-1234-5678", idState: "IL", idExpiration: "2028-03-15",
+      maritalStatus: "Married", employmentStatus: "Employed",
+      employer: "Thompson Capital Group", annualIncome: "425,000",
+      netWorth: "6,200,000", liquidNetWorth: "4,700,000",
+      investmentExperience: "Extensive", riskTolerance: "Moderate",
+      investmentObjective: "Growth & Income",
+      trustedContactName: "Linda", trustedContactLastName: "Thompson",
+      trustedContactPhone: "(555) 890-1235", trustedContactRelationship: "Spouse",
+    } as ClientInfo });
+    d({ type: "SET_HAS_P2", value: true });
+    d({ type: "SET_P2", value: {
+      firstName: "Linda", lastName: "Thompson",
+      email: "linda.thompson@email.com", phone: "(555) 890-1235",
+      street: "742 Evergreen Terrace", city: "Springfield", state: "IL", zip: "62704",
+      dob: "1960-07-22", ssn: "***-**-8901", citizenship: "US Citizen",
+      idType: "Driver's License", idNumber: "T550-8901-2345", idState: "IL", idExpiration: "2027-07-22",
+      maritalStatus: "Married", employmentStatus: "Retired",
+      employer: "", annualIncome: "85,000",
+      netWorth: "6,200,000", liquidNetWorth: "4,700,000",
+      investmentExperience: "Good", riskTolerance: "Moderate",
+      investmentObjective: "Growth & Income",
+      trustedContactName: "Robert", trustedContactLastName: "Thompson",
+      trustedContactPhone: "(555) 890-1234", trustedContactRelationship: "Spouse",
+    } as ClientInfo });
+    d({ type: "SET_HAS_JOINT", value: true });
+    // Add accounts
+    d({ type: "ADD_ACCOUNT", owner: "Robert Thompson", acctType: "Roth IRA", signers: 1 });
+    d({ type: "ADD_ACCOUNT", owner: "Robert & Linda Thompson", acctType: "JTWROS", signers: 2 });
+    // Skip to review step
+    setTimeout(() => d({ type: "SET_STEP", step: "review" }), 100);
+  };
 
   const combinedResults = state.sfSearchResults;
 
@@ -120,6 +164,17 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
 
             {state.step === "context" && (
               <div className="animate-fade-in">
+                {isDemoMode && (
+                  <button onClick={handleQuickFill}
+                    className="w-full mb-6 flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 text-amber-800 hover:shadow-md hover:border-amber-300 transition-all group"
+                    data-tour="quick-fill">
+                    <Zap size={16} className="text-amber-600 group-hover:scale-110 transition-transform" />
+                    <div className="text-left">
+                      <p className="text-sm font-medium">Quick-fill: Thompson family</p>
+                      <p className="text-[11px] text-amber-600/70">Prefill Roth IRA + JTWROS — skip to review</p>
+                    </div>
+                  </button>
+                )}
                 <h2 className="text-3xl font-light text-slate-900 mb-2">What are we doing today?</h2>
                 <p className="text-slate-400 mb-8">Select all that apply.</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -524,7 +579,7 @@ export function FlowScreen({ onExit, initialClient, onNavigate }: {
                         return sum + (rulesType ? getNIGORisks(ACTIVE_CUSTODIAN, rulesType).length : 0);
                       }, 0);
                       return totalNigo > 0 ? (
-                        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2">
+                        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2" data-tour="nigo-summary">
                           <ShieldCheck size={14} className="text-green-600" />
                           <p className="text-xs text-green-700 font-medium">{totalNigo} total NIGO rejection risks prevented across {state.accounts.length} account{state.accounts.length !== 1 ? "s" : ""}</p>
                         </div>

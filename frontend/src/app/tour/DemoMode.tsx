@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Play, X, ChevronRight, Sparkles } from "lucide-react";
+import { useDemoMode } from "@/lib/demo-context";
+import { DEMO_HOUSEHOLDS } from "@/lib/demo-data";
 import type { Screen, WorkflowContext } from "@/lib/types";
 import type { HomeStats } from "@/lib/home-stats";
 
@@ -97,6 +99,71 @@ export const GOLDEN_PATH: TourStep[] = [
     advance: "next",
     position: "bottom",
     screen: "home",
+  },
+];
+
+export const DEMO_GOLDEN_PATH: TourStep[] = [
+  {
+    id: "demo-households",
+    target: "[data-tour='household-cards']",
+    title: "Your Monday morning",
+    body: "8 households at a glance — color-coded by health. Red means something needs your attention today.",
+    advance: "next",
+    position: "bottom",
+    screen: "dashboard",
+  },
+  {
+    id: "demo-pipeline",
+    target: "[data-tour='household-cards']",
+    title: "Accounts stuck in process",
+    body: "The pipeline shows where every household sits in your onboarding flow — and which ones are stuck.",
+    advance: "navigate",
+    position: "bottom",
+    screen: "dashboard",
+    navigateTo: { screen: "family", ctxSource: "firstHousehold" },
+    buttonLabel: "Drill into a problem →",
+  },
+  {
+    id: "demo-family",
+    target: "[data-tour='family-header']",
+    title: "Drill into the problem",
+    body: "Click any red household to see the full picture — contacts, tasks, compliance gaps, custodian status.",
+    advance: "next",
+    position: "bottom",
+    screen: "family",
+    requiresData: true,
+  },
+  {
+    id: "demo-why",
+    target: "[data-tour='why-button']",
+    title: "Plain English decomposition",
+    body: "Click 'Why this score?' to see exactly what's dragging this household's health down — weighted and sourced.",
+    advance: "next",
+    position: "bottom",
+    screen: "family",
+    requiresData: true,
+  },
+  {
+    id: "demo-actions",
+    target: "[data-tour='suggested-actions']",
+    title: "One click: send to CRM",
+    body: "Each suggested action becomes a task in Salesforce with one click. Undo within 10 seconds if you change your mind.",
+    advance: "navigate",
+    position: "bottom",
+    screen: "family",
+    navigateTo: { screen: "flow" as Screen },
+    requiresData: true,
+    buttonLabel: "See Account Opening →",
+  },
+  {
+    id: "demo-nigo",
+    target: "[data-tour='nigo-summary']",
+    title: "The custodian knows",
+    body: "Min embeds Schwab's NIGO rejection rules directly into the paperwork flow. No more kicked-back applications.",
+    advance: "next",
+    position: "top",
+    screen: "flow",
+    requiresData: true,
   },
 ];
 
@@ -201,15 +268,24 @@ export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [waitSatisfied, setWaitSatisfied] = useState(false);
+  const { isDemoMode } = useDemoMode();
 
   const hasData = !!(stats && stats.readyForReviewItems.length > 0);
 
-  const activeSteps = GOLDEN_PATH.filter(s => !s.requiresData || hasData);
+  const tourPath = isDemoMode ? DEMO_GOLDEN_PATH : GOLDEN_PATH;
+  const activeSteps = tourPath.filter(s => !s.requiresData || hasData || isDemoMode);
   const step = activeSteps[stepIndex];
   const isLastStep = stepIndex === activeSteps.length - 1;
 
-  // ─── Resolve household context from stats ───
+  // ─── Resolve household context from stats or demo data ───
   const resolveContext = useCallback((): WorkflowContext | undefined => {
+    // In demo mode, pick a red household (Thompson) for maximum impact
+    if (isDemoMode) {
+      const thompson = DEMO_HOUSEHOLDS.find(h => h.id === "hh-thompson");
+      if (thompson) {
+        return { householdId: thompson.id, familyName: thompson.name.replace(" Household", "") };
+      }
+    }
     if (!stats) return undefined;
     const lists = [
       stats.readyForReviewItems,
@@ -228,7 +304,7 @@ export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
       }
     }
     return undefined;
-  }, [stats]);
+  }, [stats, isDemoMode]);
 
   const advance = useCallback(() => {
     if (!step) return;

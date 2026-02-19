@@ -13,6 +13,9 @@ import type { AppState, AppAction } from "@/lib/app-state";
 import { loadLastSession, clearLastSession } from "@/lib/app-state";
 import type { Screen, WorkflowContext, UserRole } from "@/lib/types";
 import type { HomeStats } from "@/lib/home-stats";
+import { buildHomeStats } from "@/lib/home-stats";
+import { useDemoMode } from "@/lib/demo-context";
+import { getDemoSFData } from "@/lib/demo-data";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -151,6 +154,16 @@ function RecentActivityRow({ item, icon }: {
 
 export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast, firmName }: HomeScreenProps) {
   const { role, advisorName, sfConnected, sfInstance, stats, statsLoading, tourActive, principalAdvisor } = state;
+  const { isDemoMode } = useDemoMode();
+
+  // Demo mode: inject demo data into stats if not already loaded
+  useEffect(() => {
+    if (isDemoMode && !stats && !statsLoading) {
+      const { tasks, households, instanceUrl } = getDemoSFData();
+      const demoStats = buildHomeStats(tasks, households, instanceUrl);
+      dispatch({ type: "STATS_LOADED", stats: demoStats, tasks, households, instanceUrl });
+    }
+  }, [isDemoMode, stats, statsLoading, dispatch]);
 
   // ── Keyboard shortcut: Cmd+R / Ctrl+R to cycle role ──
   const cycleRole = useCallback(() => {
@@ -317,7 +330,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   };
 
   // ── Loading state ──
-  if ((isAdvisor || role === "principal") && sfConnected && statsLoading) {
+  if ((isAdvisor || role === "principal") && !isDemoMode && sfConnected && statsLoading) {
     return (
       <div className="flex h-screen bg-surface items-center justify-center">
         <div className="flex items-center gap-3 text-slate-400"><Loader2 size={22} className="animate-spin" /><span className="text-sm">Loading your practice data...</span></div>
@@ -356,7 +369,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       )}
 
       {/* Insights — the "surprise" moment */}
-      {(isAdvisor || role === "principal") && sfConnected && stats && stats.insights.length > 0 && (
+      {(isAdvisor || role === "principal") && (sfConnected || isDemoMode) && stats && stats.insights.length > 0 && (
         <div className="mb-6 space-y-2" data-tour="insights">
           {stats.insights.map((insight, i) => {
             const colors = insight.severity === "critical"
@@ -397,7 +410,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       )}
 
       {/* Daily Triage — "do this before noon" */}
-      {(isAdvisor || isOps || role === "principal") && sfConnected && stats && stats.triageItems.length > 0 && (
+      {(isAdvisor || isOps || role === "principal") && (sfConnected || isDemoMode) && stats && stats.triageItems.length > 0 && (
         <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden" data-tour="triage">
           <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
             <Target size={13} className="text-slate-500" />
@@ -451,7 +464,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       )}
 
       {/* Zero-data welcome state */}
-      {(isAdvisor || role === "principal") && sfConnected && stats && stats.openTasks === 0 && stats.readyForReview === 0 && stats.unsignedEnvelopes === 0 && stats.upcomingMeetings === 0 && stats.recentItems.length === 0 && (
+      {(isAdvisor || role === "principal") && (sfConnected || isDemoMode) && stats && stats.openTasks === 0 && stats.readyForReview === 0 && stats.unsignedEnvelopes === 0 && stats.upcomingMeetings === 0 && stats.recentItems.length === 0 && (
         <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-8 text-center">
           <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4"><Users size={24} className="text-slate-400" /></div>
           <h2 className="text-lg font-medium text-slate-900 mb-2">Welcome to Min</h2>
@@ -464,7 +477,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       )}
 
       {/* Stat Cards (Advisor + Principal only) */}
-      {(isAdvisor || role === "principal") && sfConnected && stats && (<div className="mb-8" data-tour="stat-cards">
+      {(isAdvisor || role === "principal") && (sfConnected || isDemoMode) && stats && (<div className="mb-8" data-tour="stat-cards">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {([
             { key: "overdueTasks", label: "Overdue", value: stats.overdueTasks, Icon: Clock, color: stats.overdueTasks > 0 ? "text-red-500" : "text-green-500", vColor: stats.overdueTasks > 0 ? "text-red-600" : "text-green-600", peek: stats.overdueTaskItems, subtitle: "past due", tier: (stats.overdueTasks === 0 ? "good" : stats.overdueTasks <= 3 ? "ok" : "bad") as "good" | "ok" | "bad" },
@@ -565,7 +578,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       </div>
 
       {/* Recent Activity */}
-      {sfConnected && stats && stats.recentItems.length > 0 && (isOps || !expandedStat) && (
+      {(sfConnected || isDemoMode) && stats && stats.recentItems.length > 0 && (isOps || !expandedStat) && (
         <div className="mb-8 bg-white border border-slate-200 rounded-2xl overflow-hidden">
           <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3"><Clock size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Recent Activity</p></div>
           {stats.recentItems.map((t, i) => (
@@ -577,8 +590,8 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {/* Footer */}
       <div className="flex items-center justify-center gap-3 text-xs text-slate-500 font-medium">
         <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} className="inline-flex items-center gap-1.5 hover:text-slate-600 transition-colors">
-          {sfConnected === null ? <div className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse" role="img" aria-label="Checking connection" /> : sfConnected ? <div className="w-1.5 h-1.5 rounded-full bg-green-500" role="img" aria-label="Connected" /> : <div className="w-1.5 h-1.5 rounded-full bg-red-400" role="img" aria-label="Not connected" />}
-          <span>{sfConnected === null ? "Checking..." : sfConnected ? `Connected to Salesforce: ${sfInstance || "Org"}` : "Not connected"}</span>
+          {isDemoMode ? <div className="w-1.5 h-1.5 rounded-full bg-amber-400" role="img" aria-label="Demo mode" /> : sfConnected === null ? <div className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse" role="img" aria-label="Checking connection" /> : sfConnected ? <div className="w-1.5 h-1.5 rounded-full bg-green-500" role="img" aria-label="Connected" /> : <div className="w-1.5 h-1.5 rounded-full bg-red-400" role="img" aria-label="Not connected" />}
+          <span>{isDemoMode ? "Demo Mode — Ctrl+Shift+D to toggle" : sfConnected === null ? "Checking..." : sfConnected ? `Connected to Salesforce: ${sfInstance || "Org"}` : "Not connected"}</span>
         </button>
         <span>·</span><span>Powered by Impacting Advisors</span>
       </div>

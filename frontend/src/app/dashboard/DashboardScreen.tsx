@@ -17,6 +17,8 @@ import { HouseholdRiskScore } from "./components/HouseholdRiskScore";
 import { StaffWorkload } from "./components/StaffWorkload";
 import { SuccessionPlanning } from "./components/SuccessionPlanning";
 import { PracticePlaybook } from "@/components/shared/PracticePlaybook";
+import { HouseholdHealthCards } from "./components/HouseholdHealthCards";
+import { useDemoMode } from "@/lib/demo-context";
 
 // ─── Section Definitions ────────────────────────────────────────────────────
 
@@ -168,6 +170,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
   advisorName?: string;
 }) {
   const isAdvisor = role === "advisor";
+  const { isDemoMode } = useDemoMode();
   const { loading, data, error } = usePracticeData();
   const [detailPanel, setDetailPanel] = useState<string | null>(null);
   const toggleDetail = (id: string) => setDetailPanel(prev => prev === id ? null : id);
@@ -269,6 +272,11 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
             {data && (
               <div className="animate-fade-in space-y-8">
                 <SectionWrapper id="health"><HealthScoreSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} firmName={firmName} /></SectionWrapper>
+                {isDemoMode && (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6">
+                    <HouseholdHealthCards onNavigate={onNavigate} />
+                  </div>
+                )}
                 <SectionWrapper id="revenue"><RevenueSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} /></SectionWrapper>
                 <SectionWrapper id="advisors"><AdvisorScoreboard data={data} advisorName={advisorName} isAdvisor={isAdvisor} /></SectionWrapper>
                 {(role === "operations" || role === "principal") && <SectionWrapper id="staff"><StaffWorkload data={data} /></SectionWrapper>}
