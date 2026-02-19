@@ -49,7 +49,7 @@ export interface HomeStats {
   readyForReviewItems: StatDetailItem[];
   unsignedItems: StatDetailItem[];
   upcomingMeetingItems: StatDetailItem[];
-  recentItems: { subject: string; household: string; url: string; type: string }[];
+  recentItems: { subject: string; household: string; url: string; type: string; householdId?: string; householdName?: string }[];
   insights: Insight[];
   triageItems: TriageItem[];
 }
@@ -376,6 +376,8 @@ export function buildHomeStats(
       household: (t.householdName || "").replace(" Household", "") || formatDate(t.createdAt),
       url: `${instanceUrl}/${t.id}`,
       type: classifyTask(t.subject),
+      householdId: t.householdId || undefined,
+      householdName: t.householdName || undefined,
     })),
     insights: topInsights,
     triageItems: topTriage,

@@ -10,6 +10,7 @@ export interface RegulatoryUpdate {
   summary: string;
   impact: "high" | "medium" | "low";
   actionRequired: string;
+  sourceUrl?: string;
   checkSuggestion?: { label: string; keyword: string };
 }
 
@@ -22,6 +23,7 @@ export const UPDATES: RegulatoryUpdate[] = [
     summary: "SEC staff issued new FAQ guidance on testimonial and endorsement arrangements under Rule 206(4)-1. Clarifies documentation requirements for social media testimonials and third-party ratings.",
     impact: "high",
     actionRequired: "Review all marketing materials and social media policies. Document any testimonial or endorsement arrangements. Update compliance manual section on advertising.",
+    sourceUrl: "https://www.sec.gov/investment/marketing-rule-faq",
     checkSuggestion: { label: "Marketing Rule Compliance", keyword: "marketing rule" },
   },
   {
@@ -32,6 +34,7 @@ export const UPDATES: RegulatoryUpdate[] = [
     summary: "New Rule 10 under the Exchange Act requires written cybersecurity incident response policies and annual risk assessments. Applies to all registered investment advisers.",
     impact: "high",
     actionRequired: "Conduct annual cybersecurity risk assessment. Document incident response procedures. Train all staff on cyber hygiene protocols.",
+    sourceUrl: "https://www.sec.gov/rules/final/2023/33-11216.pdf",
     checkSuggestion: { label: "Cybersecurity Risk Assessment", keyword: "cybersecurity" },
   },
   {
@@ -42,6 +45,7 @@ export const UPDATES: RegulatoryUpdate[] = [
     summary: "FINRA extended the Phase 2d implementation timeline for small introducing brokers. New deadline for full CAT compliance is Q3 2026.",
     impact: "low",
     actionRequired: "Review CAT reporting obligations. Confirm your clearing firm handles CAT submissions. No immediate action for most RIAs.",
+    sourceUrl: "https://www.catnmsplan.com/specifications/technical",
   },
   {
     id: "reg-4",
@@ -51,6 +55,7 @@ export const UPDATES: RegulatoryUpdate[] = [
     summary: "DOL published final rule expanding the definition of fiduciary advice for retirement accounts. Affects rollover recommendations and annuity sales.",
     impact: "high",
     actionRequired: "Review all rollover recommendation procedures. Update IRA rollover documentation to include comparative analysis. Train advisors on new fiduciary obligations for retirement assets.",
+    sourceUrl: "https://www.dol.gov/agencies/ebsa/laws-and-regulations/rules-and-regulations/completed-rulemaking/1210-AC02",
     checkSuggestion: { label: "Rollover Fiduciary Compliance", keyword: "rollover" },
   },
   {
@@ -61,6 +66,7 @@ export const UPDATES: RegulatoryUpdate[] = [
     summary: "Firms with December fiscal year-end must file their annual ADV amendment by March 31, 2026. Updated instructions include new Item 5 fee reporting requirements.",
     impact: "medium",
     actionRequired: "Begin compiling ADV amendment data. Review Item 5 fee disclosures for accuracy. Schedule ADV delivery to existing clients within 120 days.",
+    sourceUrl: "https://www.sec.gov/about/forms/formadv-instructions.pdf",
   },
 ];
 

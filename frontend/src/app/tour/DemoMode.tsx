@@ -20,6 +20,11 @@ export interface TourStep {
   waitFor?: string;
   requiresData?: boolean;
   buttonLabel?: string;
+  clickTarget?: boolean; // Auto-click the target element when this step activates
+  autoDelay?: number;    // ms before auto-advance (replaces hardcoded 5s/6s)
+  clickDelay?: number;   // ms before auto-click (replaces hardcoded 600ms)
+  waitTimeout?: number;  // max ms to wait for waitFor element
+  targetTimeout?: number; // max ms to wait for target element before skipping
 }
 
 export const GOLDEN_PATH: TourStep[] = [
@@ -111,9 +116,10 @@ export const DEMO_GOLDEN_PATH: TourStep[] = [
     advance: "next",
     position: "bottom",
     screen: "dashboard",
+    autoDelay: 5000,
   },
   {
-    id: "demo-pipeline",
+    id: "demo-drill",
     target: "[data-tour='household-cards']",
     title: "Accounts stuck in process",
     body: "The pipeline shows where every household sits in your onboarding flow — and which ones are stuck.",
@@ -122,6 +128,7 @@ export const DEMO_GOLDEN_PATH: TourStep[] = [
     screen: "dashboard",
     navigateTo: { screen: "family", ctxSource: "firstHousehold" },
     buttonLabel: "Drill into a problem →",
+    autoDelay: 6000,
   },
   {
     id: "demo-family",
@@ -132,6 +139,8 @@ export const DEMO_GOLDEN_PATH: TourStep[] = [
     position: "bottom",
     screen: "family",
     requiresData: true,
+    autoDelay: 5000,
+    targetTimeout: 3000,
   },
   {
     id: "demo-why",
@@ -142,6 +151,10 @@ export const DEMO_GOLDEN_PATH: TourStep[] = [
     position: "bottom",
     screen: "family",
     requiresData: true,
+    clickTarget: true,
+    autoDelay: 6000,
+    clickDelay: 800,
+    targetTimeout: 3000,
   },
   {
     id: "demo-actions",
@@ -154,6 +167,24 @@ export const DEMO_GOLDEN_PATH: TourStep[] = [
     navigateTo: { screen: "flow" as Screen },
     requiresData: true,
     buttonLabel: "See Account Opening →",
+    autoDelay: 6000,
+    targetTimeout: 5000,
+  },
+  {
+    id: "demo-quickfill",
+    target: "[data-tour='quick-fill']",
+    title: "One click: paperwork done",
+    body: "Quick-fill pulls CRM data into every form field. No retyping names, SSNs, or addresses.",
+    advance: "next",
+    position: "bottom",
+    screen: "flow",
+    requiresData: true,
+    clickTarget: true,
+    clickDelay: 800,
+    waitFor: "[data-tour='nigo-summary']",
+    waitTimeout: 5000,
+    autoDelay: 7000,
+    targetTimeout: 3000,
   },
   {
     id: "demo-nigo",
@@ -164,12 +195,14 @@ export const DEMO_GOLDEN_PATH: TourStep[] = [
     position: "top",
     screen: "flow",
     requiresData: true,
+    autoDelay: 5000,
+    targetTimeout: 3000,
   },
 ];
 
 // ─── Tooltip ────────────────────────────────────────────────────────────────
 
-function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect, hasData }: {
+function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect, hasData, autoPlay }: {
   step: TourStep;
   stepIndex: number;
   totalSteps: number;
@@ -177,6 +210,7 @@ function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect, hasDat
   onSkip: () => void;
   rect: DOMRect | null;
   hasData: boolean;
+  autoPlay?: boolean;
 }) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -251,6 +285,18 @@ function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect, hasDat
             {buttonText} <ChevronRight size={12} />
           </button>
         </div>
+
+        {/* Auto-play progress bar */}
+        {autoPlay && (
+          <div className="h-0.5 bg-slate-100">
+            <div
+              key={stepIndex}
+              className="h-full bg-amber-400"
+              style={{ animation: `demo-progress ${(step.autoDelay ?? (step.advance === "navigate" ? 6000 : 5000)) / 1000}s linear forwards` }}
+            />
+            <style>{`@keyframes demo-progress { from { width: 0% } to { width: 100% } }`}</style>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -258,16 +304,18 @@ function TooltipCard({ step, stepIndex, totalSteps, onNext, onSkip, rect, hasDat
 
 // ─── Main DemoMode Component ──────────────────────────────────────────────
 
-export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
+export function DemoMode({ active, onEnd, screen, navigateTo, stats, autoPlay = false }: {
   active: boolean;
   onEnd: () => void;
   screen: string;
   navigateTo: (screen: Screen, ctx?: WorkflowContext) => void;
   stats: HomeStats | null;
+  autoPlay?: boolean;
 }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [waitSatisfied, setWaitSatisfied] = useState(false);
+  const [targetReady, setTargetReady] = useState(false);
   const { isDemoMode } = useDemoMode();
 
   const hasData = !!(stats && stats.readyForReviewItems.length > 0);
@@ -324,7 +372,61 @@ export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
 
     setStepIndex(prev => prev + 1);
     setWaitSatisfied(false);
+    setTargetReady(false);
   }, [step, isLastStep, onEnd, navigateTo, resolveContext]);
+
+  // ─── Target readiness: poll for target element with graceful skip ───
+  useEffect(() => {
+    if (!active || !step) return;
+    setTargetReady(false);
+
+    const timeout = step.targetTimeout ?? 3000;
+    let found = false;
+
+    const poll = setInterval(() => {
+      const el = document.querySelector(step.target);
+      if (el) {
+        found = true;
+        clearInterval(poll);
+        setTargetReady(true);
+      }
+    }, 150);
+
+    // Graceful skip: if target never appears, skip to next step
+    const failsafe = setTimeout(() => {
+      clearInterval(poll);
+      if (!found) {
+        console.warn(`[DemoMode] Target not found for step "${step.id}" (${step.target}), skipping`);
+        // If target didn't render, skip this step entirely
+        if (!isLastStep) {
+          setStepIndex(prev => prev + 1);
+          setWaitSatisfied(false);
+          setTargetReady(false);
+        } else {
+          onEnd();
+        }
+      }
+    }, timeout);
+
+    return () => { clearInterval(poll); clearTimeout(failsafe); };
+  }, [active, step?.id, stepIndex]);
+
+  // ─── Auto-click target when step has clickTarget (only after targetReady) ───
+  const clickedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!active || !step?.clickTarget || !targetReady) return;
+    // Only click once per step
+    if (clickedRef.current === step.id) return;
+    const delay = step.clickDelay ?? 600;
+    const timer = setTimeout(() => {
+      const el = document.querySelector(step.target) as HTMLElement | null;
+      if (el) {
+        clickedRef.current = step.id;
+        el.click();
+      }
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [active, step, stepIndex, targetReady]);
 
   // ─── Rect tracking (poll for target element) ───
   const updateRect = useCallback(() => {
@@ -350,9 +452,11 @@ export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
     };
   }, [active, stepIndex, updateRect]);
 
-  // ─── waitFor polling ───
+  // ─── waitFor polling (per-step timeout) ───
   useEffect(() => {
     if (!active || !step || !step.waitFor || waitSatisfied) return;
+
+    const timeout = step.waitTimeout ?? 5000;
 
     const check = setInterval(() => {
       const el = document.querySelector(step.waitFor!);
@@ -360,13 +464,14 @@ export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
         clearInterval(check);
         setWaitSatisfied(true);
       }
-    }, 300);
+    }, 150);
 
-    // Failsafe: stop waiting after 35 seconds
+    // Timeout: treat as satisfied and continue (never hang)
     const failsafe = setTimeout(() => {
       clearInterval(check);
+      console.warn(`[DemoMode] waitFor timeout for step "${step.id}" (${step.waitFor})`);
       setWaitSatisfied(true);
-    }, 35000);
+    }, timeout);
 
     return () => { clearInterval(check); clearTimeout(failsafe); };
   }, [active, step, waitSatisfied]);
@@ -380,16 +485,28 @@ export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
       } else {
         setStepIndex(prev => prev + 1);
         setWaitSatisfied(false);
+        setTargetReady(false);
       }
     }, 500);
     return () => clearTimeout(timer);
   }, [waitSatisfied, step, isLastStep, onEnd]);
+
+  // ─── Auto-advance in autoPlay mode (per-step delay) ───
+  useEffect(() => {
+    if (!active || !autoPlay || !step || !targetReady) return;
+    // Don't auto-advance while waiting for a waitFor element
+    if (step.waitFor && !waitSatisfied) return;
+    const delay = step.autoDelay ?? (step.advance === "navigate" ? 6000 : 5000);
+    const timer = setTimeout(advance, delay);
+    return () => clearTimeout(timer);
+  }, [active, autoPlay, step, stepIndex, waitSatisfied, targetReady, advance]);
 
   // ─── Reset on tour start ───
   useEffect(() => {
     if (active) {
       setStepIndex(0);
       setWaitSatisfied(false);
+      setTargetReady(false);
     }
   }, [active]);
 
@@ -446,6 +563,7 @@ export function DemoMode({ active, onEnd, screen, navigateTo, stats }: {
         onSkip={onEnd}
         rect={rect}
         hasData={hasData}
+        autoPlay={autoPlay}
       />
     </>
   );

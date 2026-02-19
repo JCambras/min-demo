@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect } from "react";
-import { User, Wrench, Crown, Database, ChevronDown, CheckCircle, Shield, Lock, Eye, Server, AlertTriangle, X } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { User, Wrench, Crown, Database, ChevronDown, CheckCircle, Shield, Lock, Eye, Server, AlertTriangle, X, Play } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
 import { HomeScreen, DEMO_ADVISORS, ROLES } from "./home/HomeScreen";
 import { FlowScreen } from "./flow/FlowScreen";
@@ -26,6 +26,8 @@ import { SettingsScreen } from "./settings/SettingsScreen";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { useIdleTimeout } from "@/lib/use-idle-timeout";
 import { DemoProvider, useDemoMode } from "@/lib/demo-context";
+import { getDemoSFData } from "@/lib/demo-data";
+import { buildHomeStats } from "@/lib/home-stats";
 import { assertNever } from "@/lib/types";
 import type { UserRole } from "@/lib/types";
 
@@ -319,6 +321,64 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
+// ─── DemoInterstitial ────────────────────────────────────────────────────────
+// Shown after "View Demo" click. Animated checkmarks over ~1.2s, then onReady.
+
+function DemoInterstitial({ onReady }: { onReady: () => void }) {
+  const labels = ["Loading practice data...", "Building health scores...", "Preparing dashboard..."];
+  const [done, setDone] = useState<boolean[]>([false, false, false]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      await sleep(400);
+      if (cancelled) return;
+      setDone([true, false, false]);
+      await sleep(400);
+      if (cancelled) return;
+      setDone([true, true, false]);
+      await sleep(400);
+      if (cancelled) return;
+      setDone([true, true, true]);
+      await sleep(200);
+      if (!cancelled) onReady();
+    }
+    run();
+    return () => { cancelled = true; };
+  }, [onReady]);
+
+  return (
+    <div className="flex h-screen bg-surface">
+      <div className="flex-1 flex flex-col items-center justify-center px-8">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-10">
+            <h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1>
+            <p className="text-lg text-slate-400 font-light">Setting up your demo&hellip;</p>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+            {labels.map((label, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <div className="mt-0.5">
+                  {done[i] ? (
+                    <CheckCircle size={18} className="text-green-500" />
+                  ) : i === 0 || done[i - 1] ? (
+                    <div className="w-[18px] h-[18px] rounded-full border-2 border-slate-300 border-t-slate-700 animate-spin" />
+                  ) : (
+                    <div className="w-[18px] h-[18px] rounded-full border-2 border-slate-200" />
+                  )}
+                </div>
+                <p className={`text-sm ${done[i] ? "text-slate-700" : i === 0 || done[i - 1] ? "text-slate-900 font-medium" : "text-slate-400"}`}>
+                  {label}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── NamePicker ─────────────────────────────────────────────────────────────
 
 function NamePicker({ advisorName, onSelect, onContinue, onBack, role }: { advisorName: string; onSelect: (n: string) => void; onContinue: () => void; onBack: () => void; role: UserRole | null }) {
@@ -356,10 +416,13 @@ export default function Home() {
 
 function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast }: Pick<ReturnType<typeof useAppState>, "state" | "dispatch" | "goTo" | "goBack" | "goHome" | "loadStats" | "showToast">) {
   const { setupStep, role, advisorName, screen, wfCtx, handoff, sfConnected, toast, tourActive } = state;
-  const { isDemoMode } = useDemoMode();
+  const demoCtx = useDemoMode();
+  const { isDemoMode } = demoCtx;
   const [showSecurity, setShowSecurity] = useState(false);
   const [oauthError, setOauthError] = useState<OAuthError | null>(null);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+  const [autoPlayTour, setAutoPlayTour] = useState(false);
+  const [demoPhase, setDemoPhase] = useState<'idle' | 'loading'>('idle');
 
   // Global Cmd+K handler
   useEffect(() => {
@@ -372,6 +435,13 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  // Demo mode: auto-skip CRM step when SF isn't connected
+  useEffect(() => {
+    if (setupStep === "crm" && isDemoMode && sfConnected === false) {
+      dispatch({ type: "SET_SETUP_STEP", step: "ready" });
+    }
+  }, [setupStep, isDemoMode, sfConnected, dispatch]);
 
   // Read OAuth callback URL params on mount
   useEffect(() => {
@@ -427,15 +497,64 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // ONE-CLICK DEMO LAUNCHER
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const startDemo = () => {
+    // 1. Activate demo mode context (if not already on)
+    if (!isDemoMode) demoCtx.toggleDemo();
+    // 2. Load all demo data into reducer state
+    const { tasks, households, instanceUrl } = getDemoSFData();
+    const demoStats = buildHomeStats(tasks, households, instanceUrl);
+    dispatch({ type: "SET_ROLE", role: "operations" });
+    dispatch({ type: "SET_ADVISOR_NAME", name: DEMO_ADVISORS[0].name });
+    dispatch({ type: "STATS_LOADED", stats: demoStats, tasks, households, instanceUrl });
+    // 3. Show interstitial — no navigation yet, no setTimeout
+    setDemoPhase('loading');
+  };
+
+  const onDemoReady = useCallback(() => {
+    // By the time this fires, isDemoMode has been true for ~1.2s — no race
+    dispatch({ type: "SET_SETUP_STEP", step: "ready" });
+    dispatch({ type: "NAVIGATE", screen: "dashboard" });
+    setDemoPhase('idle');
+    // Start tour after dashboard mounts
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        setAutoPlayTour(true);
+        dispatch({ type: "SET_TOUR", active: true });
+      }, 600);
+    });
+  }, [dispatch]);
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // SETUP SCREENS
   // ═══════════════════════════════════════════════════════════════════════════
 
   // OAuth error banner — rendered as a fixed overlay on any setup screen
   const errorBanner = oauthError ? <OAuthErrorBanner error={oauthError} onDismiss={() => setOauthError(null)} /> : null;
 
+  if (demoPhase === 'loading') return <DemoInterstitial onReady={onDemoReady} />;
+
   if (setupStep === "role") return (
     <div className="flex h-screen bg-surface"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">
       <div className="text-center mb-10"><h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1><p className="text-lg text-slate-400 font-light">Your practice, simplified.</p></div>
+
+      {/* ── View Demo: one click, zero setup ── */}
+      <button
+        onClick={startDemo}
+        className="group w-full mb-8 flex items-center justify-center gap-3 h-14 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 text-white font-medium text-lg hover:from-slate-800 hover:to-slate-700 hover:shadow-xl hover:scale-[1.01] transition-all"
+      >
+        <Play size={20} className="group-hover:scale-110 transition-transform" />
+        View Demo
+        <span className="text-sm text-slate-400 font-normal ml-1">90 sec</span>
+      </button>
+
+      <div className="relative mb-6">
+        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
+        <div className="relative flex justify-center"><span className="bg-surface px-4 text-xs text-slate-400 uppercase tracking-wider">or connect your CRM</span></div>
+      </div>
+
       <p className="text-sm text-slate-500 text-center mb-6">What&rsquo;s your role?</p>
       <div className="grid grid-cols-3 gap-4">
         {ROLES.map(r => { const Icon = ROLE_ICONS[r.id]; return (
@@ -452,6 +571,11 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
   if (setupStep === "name") return <NamePicker advisorName={advisorName} onSelect={n => dispatch({ type: "SET_ADVISOR_NAME", name: n })} onContinue={() => dispatch({ type: "SET_SETUP_STEP", step: "crm" })} onBack={() => dispatch({ type: "SET_SETUP_STEP", step: "role" })} role={role} />;
 
   const handleCrmSelect = async () => {
+    // Demo mode: skip SF connection, go straight to ready with demo data
+    if (isDemoMode) {
+      dispatch({ type: "SET_SETUP_STEP", step: "ready" });
+      return;
+    }
     // If we already know SF is connected, go to discovery
     if (sfConnected) {
       dispatch({ type: "SET_SETUP_STEP", step: "discovering" });
@@ -474,11 +598,6 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
     }
   };
 
-  // Demo mode: when user clicks Salesforce but there's no connection, skip to ready
-  if (setupStep === "crm" && isDemoMode && sfConnected === false) {
-    // Auto-advance to ready — demo data will be used
-    dispatch({ type: "SET_SETUP_STEP", step: "ready" });
-  }
 
   if (setupStep === "crm") return (
     <div className="flex h-screen bg-surface"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">
@@ -580,10 +699,11 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
   const tourOverlay = (
     <DemoMode
       active={tourActive}
-      onEnd={() => { dispatch({ type: "SET_TOUR", active: false }); if (screen !== "home") goHome(); }}
+      onEnd={() => { setAutoPlayTour(false); dispatch({ type: "SET_TOUR", active: false }); if (screen !== "home") goHome(); }}
       screen={screen}
       navigateTo={goTo}
       stats={state.stats}
+      autoPlay={autoPlayTour}
     />
   );
   const wrap = (el: React.ReactNode, label: string, withTour = true) => <><ErrorBoundary fallbackLabel={`${label} error.`}>{el}</ErrorBoundary>{withTour && tourOverlay}<CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} onNavigate={(s, ctx) => { if (s === "home") goHome(); else goTo(s, ctx); }} /></>;

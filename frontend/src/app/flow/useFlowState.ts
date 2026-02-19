@@ -6,6 +6,8 @@ import { callSF } from "@/lib/salesforce";
 import { timestamp, docsFor } from "@/lib/format";
 import { FLOW_STEPS_ORDER, ROUTING_DB } from "@/lib/constants";
 import { trackEvent } from "@/lib/analytics";
+import { useDemoMode } from "@/lib/demo-context";
+import { DEMO_HOUSEHOLDS } from "@/lib/demo-data";
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -252,6 +254,7 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
 
   const [state, rawDispatch] = useReducer(reducer, init);
   const sfRef = useRef<SFRefs>({});
+  const { isDemoMode } = useDemoMode();
 
   // Wrap dispatch to persist drafts
   const dispatch = useCallback((action: FlowAction) => {
@@ -317,7 +320,7 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
     }
   }, [state.step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Debounced SF search
+  // Debounced SF search (with demo mode fallback)
   useEffect(() => {
     if (state.searchQuery.length < 2 || state.step !== "search-existing") {
       d({ type: "SET_SF_RESULTS", results: [] });
@@ -325,20 +328,37 @@ export function useFlowState(initialClient?: { p1: ClientInfo; p2: ClientInfo; h
     }
     const timer = setTimeout(async () => {
       d({ type: "SET_IS_SEARCHING", value: true });
+
+      // Demo mode: search through DEMO_HOUSEHOLDS contacts locally
+      if (isDemoMode) {
+        const q = state.searchQuery.toLowerCase();
+        const results: SearchResult[] = [];
+        for (const hh of DEMO_HOUSEHOLDS) {
+          for (const c of hh.contacts) {
+            if (c.firstName.toLowerCase().includes(q) || c.lastName.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || hh.name.toLowerCase().includes(q)) {
+              results.push({ firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, household: hh.name, source: "salesforce" as const });
+            }
+          }
+        }
+        d({ type: "SET_SF_RESULTS", results });
+        d({ type: "SET_IS_SEARCHING", value: false });
+        return;
+      }
+
       try {
         const res = await callSF("searchContacts", { query: state.searchQuery });
         if (res.success && res.contacts) {
-          d({ type: "SET_SF_RESULTS", results: (res.contacts as { FirstName: string; LastName: string; Email: string; Phone: string; Account?: { Name: string } }[]).map((c) => ({
-            firstName: c.FirstName || "", lastName: c.LastName || "",
-            email: c.Email || "", phone: c.Phone || "",
-            household: c.Account?.Name || "No Household", source: "salesforce" as const,
+          d({ type: "SET_SF_RESULTS", results: (res.contacts as { firstName: string; lastName: string; email: string; phone: string; householdName?: string | null }[]).map((c) => ({
+            firstName: c.firstName || "", lastName: c.lastName || "",
+            email: c.email || "", phone: c.phone || "",
+            household: c.householdName || "No Household", source: "salesforce" as const,
           })) });
         }
       } catch { /* swallow */ }
       d({ type: "SET_IS_SEARCHING", value: false });
     }, 400);
     return () => clearTimeout(timer);
-  }, [state.searchQuery, state.step]);
+  }, [state.searchQuery, state.step, isDemoMode]);
 
   // Poll DocuSign status
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X, Target, DollarSign, Upload, Activity } from "lucide-react";
+import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, ChevronDown, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X, Target, DollarSign, Upload, Activity } from "lucide-react";
 import { TourButton } from "../tour/DemoMode";
 import { NotificationCenter } from "@/components/shared/NotificationCenter";
 import { TeamTraining } from "@/components/shared/TeamTraining";
@@ -33,12 +33,12 @@ export const ROLES: { id: UserRole; label: string; desc: string }[] = [
 ];
 
 const ALL_ACTIONS: { id: string; label: string; desc: string; Icon: React.ElementType; roles: UserRole[] }[] = [
-  { id: "briefing", label: "Client Briefing", desc: "Full client picture", Icon: BookOpen, roles: ["advisor", "principal"] },
-  { id: "meeting", label: "Meeting Logs", desc: "Record notes & follow-ups", Icon: MessageSquare, roles: ["advisor", "principal"] },
-  { id: "compliance", label: "Compliance Reviews", desc: "ADV, KYC, suitability", Icon: FileText, roles: ["advisor", "operations", "principal"] },
-  { id: "planning", label: "Planning & Goals", desc: "Financial plan progress & milestones", Icon: ClipboardCheck, roles: ["advisor", "principal"] },
   { id: "onboard", label: "Onboard New Client", desc: "Client records & setup", Icon: UserPlus, roles: ["operations", "principal"] },
   { id: "open", label: "Open Account", desc: "Paperwork & e-signatures", Icon: Briefcase, roles: ["operations", "principal"] },
+  { id: "compliance", label: "Compliance Reviews", desc: "ADV, KYC, suitability", Icon: FileText, roles: ["advisor", "operations", "principal"] },
+  { id: "briefing", label: "Client Briefing", desc: "Full client picture", Icon: BookOpen, roles: ["advisor", "principal"] },
+  { id: "meeting", label: "Meeting Logs", desc: "Record notes & follow-ups", Icon: MessageSquare, roles: ["advisor", "principal"] },
+  { id: "planning", label: "Planning & Goals", desc: "Financial plan progress & milestones", Icon: ClipboardCheck, roles: ["advisor", "principal"] },
   { id: "money", label: "Money Movement", desc: "Wires, journals & distributions", Icon: DollarSign, roles: ["operations", "principal"] },
   { id: "documents", label: "Document Intake", desc: "Scan, classify & file documents", Icon: Upload, roles: ["operations", "principal"] },
   { id: "taskManager", label: "Task Manager", desc: "View, assign & complete tasks", Icon: ListTodo, roles: ["operations", "principal"] },
@@ -134,10 +134,26 @@ function StatPanelRow({ item, showAction, showReminder, showComplete, reminderSe
   );
 }
 
-function RecentActivityRow({ item, icon }: {
-  item: { url: string; subject: string; household: string };
+function RecentActivityRow({ item, icon, isDemoMode, goTo }: {
+  item: { url: string; subject: string; household: string; householdId?: string; householdName?: string };
   icon: React.ReactNode;
+  isDemoMode?: boolean;
+  goTo?: (screen: Screen, ctx?: WorkflowContext) => void;
 }) {
+  // In demo mode, navigate to the family screen instead of opening a dead Salesforce link
+  if (isDemoMode && goTo && item.householdId) {
+    return (
+      <button onClick={() => goTo("family", { householdId: item.householdId!, familyName: (item.householdName || item.household || "").replace(" Household", "") })}
+        className="w-full flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors text-left">
+        {icon}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-slate-700 truncate">{item.subject}</p>
+          <p className="text-xs text-slate-400">{item.household}</p>
+        </div>
+        <ChevronRight size={14} className="text-slate-300 flex-shrink-0" />
+      </button>
+    );
+  }
   return (
     <a href={item.url} target="_blank" rel="noopener noreferrer"
       className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
@@ -154,16 +170,17 @@ function RecentActivityRow({ item, icon }: {
 
 export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast, firmName }: HomeScreenProps) {
   const { role, advisorName, sfConnected, sfInstance, stats, statsLoading, tourActive, principalAdvisor } = state;
-  const { isDemoMode } = useDemoMode();
+  const demoCtx = useDemoMode();
+  const { isDemoMode } = demoCtx;
 
-  // Demo mode: inject demo data into stats if not already loaded
+  // Demo mode: inject demo data when demo activates or resets
   useEffect(() => {
-    if (isDemoMode && !stats && !statsLoading) {
+    if (isDemoMode) {
       const { tasks, households, instanceUrl } = getDemoSFData();
       const demoStats = buildHomeStats(tasks, households, instanceUrl);
       dispatch({ type: "STATS_LOADED", stats: demoStats, tasks, households, instanceUrl });
     }
-  }, [isDemoMode, stats, statsLoading, dispatch]);
+  }, [isDemoMode, demoCtx.resetKey, dispatch]);
 
   // ── Keyboard shortcut: Cmd+R / Ctrl+R to cycle role ──
   const cycleRole = useCallback(() => {
@@ -188,6 +205,9 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const [familyQuery, setFamilyQuery] = useState("");
   const [familyResults, setFamilyResults] = useState<FamilyResult[]>([]);
   const [familySearching, setFamilySearching] = useState(false);
+  const [triageOpen, setTriageOpen] = useState(false);
+  const [regOpen, setRegOpen] = useState(false);
+  const [recentOpen, setRecentOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -363,9 +383,59 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         </div>
       </div>
 
-      {/* Tour Button */}
+      {/* Tour + Demo Buttons */}
       {!tourActive && (
-        <div className="mb-6"><TourButton onClick={() => dispatch({ type: "SET_TOUR", active: true })} hasData={!!stats && stats.readyForReviewItems.length > 0} /></div>
+        <div className="mb-6 flex items-center gap-3">
+          <TourButton onClick={() => dispatch({ type: "SET_TOUR", active: true })} hasData={!!stats && stats.readyForReviewItems.length > 0} />
+          {!isDemoMode && (
+            <button
+              onClick={() => {
+                demoCtx.toggleDemo();
+                // Immediately load demo data — don't rely on effect chain
+                const { tasks, households, instanceUrl } = getDemoSFData();
+                const demoStats = buildHomeStats(tasks, households, instanceUrl);
+                dispatch({ type: "STATS_LOADED", stats: demoStats, tasks, households, instanceUrl });
+                showToast("Demo mode activated — 8 households loaded");
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200/60 text-indigo-800 text-sm font-medium hover:shadow-md hover:border-indigo-300 transition-all"
+            >
+              <Zap size={14} className="text-indigo-600" />
+              Try Demo
+            </button>
+          )}
+          {isDemoMode && (
+            <>
+              <button
+                onClick={() => {
+                  demoCtx.resetDemo();
+                  // Clear stats so the effect reloads fresh demo data with a visible flash
+                  dispatch({ type: "STATS_LOADED", stats: null as unknown as HomeStats, tasks: [], households: [], instanceUrl: "" });
+                  setTimeout(() => {
+                    const { tasks, households, instanceUrl } = getDemoSFData();
+                    const demoStats = buildHomeStats(tasks, households, instanceUrl);
+                    dispatch({ type: "STATS_LOADED", stats: demoStats, tasks, households, instanceUrl });
+                    showToast("Demo reset");
+                  }, 150);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200/60 text-indigo-800 text-sm font-medium hover:shadow-md hover:border-indigo-300 transition-all"
+              >
+                <RotateCcw size={14} className="text-indigo-600" />
+                Reset Demo
+              </button>
+              <button
+                onClick={() => {
+                  demoCtx.toggleDemo();
+                  dispatch({ type: "STATS_LOADED", stats: null as unknown as HomeStats, tasks: [], households: [], instanceUrl: "" });
+                  showToast("Demo mode off");
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-200/60 text-slate-600 text-sm font-medium hover:shadow-md hover:border-slate-300 transition-all"
+              >
+                <X size={14} className="text-slate-500" />
+                Exit Demo
+              </button>
+            </>
+          )}
+        </div>
       )}
 
       {/* Insights — the "surprise" moment */}
@@ -409,15 +479,16 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         </div>
       )}
 
-      {/* Daily Triage — "do this before noon" */}
+      {/* Daily Triage — collapsed by default */}
       {(isAdvisor || isOps || role === "principal") && (sfConnected || isDemoMode) && stats && stats.triageItems.length > 0 && (
         <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden" data-tour="triage">
-          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+          <button onClick={() => setTriageOpen(!triageOpen)} className="w-full px-4 py-2.5 border-b border-slate-100 flex items-center gap-2 hover:bg-slate-50 transition-colors">
             <Target size={13} className="text-slate-500" />
             <p className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Today&apos;s Priorities</p>
             <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{stats.triageItems.length}</span>
-          </div>
-          {stats.triageItems.map((item, i) => {
+            <ChevronDown size={14} className={`ml-auto text-slate-400 transition-transform ${triageOpen ? "rotate-180" : ""}`} />
+          </button>
+          {triageOpen && stats.triageItems.map((item, i) => {
             const urgColors = item.urgency === "now"
               ? "border-l-red-400 bg-red-50/30"
               : item.urgency === "today"
@@ -536,6 +607,18 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         })()}
       </div>)}
 
+      {/* Action Grid */}
+      <div className={`grid grid-cols-2 ${actions.length > 4 ? "sm:grid-cols-3" : ""} gap-3 mb-8`}>
+        {actions.map(a => (<button key={a.id} onClick={() => handleAction(a.id)}
+          className="group flex flex-col items-start gap-3 p-5 rounded-2xl bg-white border border-slate-200/80 hover:border-slate-400 hover:shadow-md transition-all text-left">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-slate-100 text-slate-500 group-hover:bg-slate-900 group-hover:text-white transition-all"><a.Icon size={22} strokeWidth={1.5} /></div>
+          <div>
+            <p className="text-base font-semibold text-slate-700 group-hover:text-slate-900">{a.label}</p>
+            <p className="text-sm text-slate-400 mt-0.5">{a.desc}</p>
+          </div>
+        </button>))}
+      </div>
+
       {/* Search for Family */}
       <div className="mb-6 relative">
         <div className="relative">
@@ -553,21 +636,9 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         </div>)}
       </div>
 
-      {/* Action Grid */}
-      <div className={`grid grid-cols-2 ${actions.length > 4 ? "sm:grid-cols-3" : ""} gap-3 mb-8`}>
-        {actions.map(a => (<button key={a.id} onClick={() => handleAction(a.id)}
-          className="group flex flex-col items-start gap-3 p-5 rounded-2xl bg-white border border-slate-200/80 hover:border-slate-400 hover:shadow-md transition-all text-left">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-slate-100 text-slate-500 group-hover:bg-slate-900 group-hover:text-white transition-all"><a.Icon size={22} strokeWidth={1.5} /></div>
-          <div>
-            <p className="text-base font-semibold text-slate-700 group-hover:text-slate-900">{a.label}</p>
-            <p className="text-sm text-slate-400 mt-0.5">{a.desc}</p>
-          </div>
-        </button>))}
-      </div>
-
       {/* Regulatory Feed + Team Training */}
       <div className="mb-8 space-y-6">
-        <RegulatoryFeed onAddCheck={(label, keyword) => {
+        <RegulatoryFeed collapsed={!regOpen} onToggle={() => setRegOpen(!regOpen)} onAddCheck={(label, keyword) => {
           const existing = loadCustomChecks();
           const alreadyExists = existing.some(c => c.keyword === keyword);
           if (!alreadyExists) {
@@ -577,12 +648,17 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         {role === "principal" && <TeamTraining onNavigate={goTo} advisorName={advisorName} />}
       </div>
 
-      {/* Recent Activity */}
+      {/* Recent Activity — collapsed by default */}
       {(sfConnected || isDemoMode) && stats && stats.recentItems.length > 0 && (isOps || !expandedStat) && (
         <div className="mb-8 bg-white border border-slate-200 rounded-2xl overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3"><Clock size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Recent Activity</p></div>
-          {stats.recentItems.map((t, i) => (
-            <RecentActivityRow key={i} item={t} icon={iconForType(t.type)} />
+          <button onClick={() => setRecentOpen(!recentOpen)} className="w-full px-4 py-2.5 border-b border-slate-100 flex items-center gap-3 hover:bg-slate-50 transition-colors">
+            <Clock size={12} className="text-slate-400" />
+            <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Recent Activity</p>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 font-medium">{stats.recentItems.length}</span>
+            <ChevronDown size={14} className={`ml-auto text-slate-400 transition-transform ${recentOpen ? "rotate-180" : ""}`} />
+          </button>
+          {recentOpen && stats.recentItems.map((t, i) => (
+            <RecentActivityRow key={i} item={t} icon={iconForType(t.type)} isDemoMode={isDemoMode} goTo={goTo} />
           ))}
         </div>
       )}

@@ -1,12 +1,14 @@
 "use client";
 import { useState } from "react";
-import { Scale, ChevronRight, X, Plus } from "lucide-react";
+import { Scale, ChevronRight, ChevronDown, X, Plus, ExternalLink } from "lucide-react";
 import { UPDATES, IMPACT_COLORS, AGENCY_COLORS, DISMISSED_KEY } from "@/lib/regulatory-updates";
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function RegulatoryFeed({ onAddCheck }: {
+export function RegulatoryFeed({ onAddCheck, collapsed, onToggle }: {
   onAddCheck?: (label: string, keyword: string) => void;
+  collapsed?: boolean;
+  onToggle?: () => void;
 }) {
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
     if (typeof window === "undefined") return new Set();
@@ -28,13 +30,14 @@ export function RegulatoryFeed({ onAddCheck }: {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
+      <button onClick={onToggle} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
         <Scale size={14} className="text-slate-400" />
         <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Regulatory Updates</span>
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">{visible.length}</span>
-      </div>
+        <ChevronDown size={14} className={`text-slate-400 transition-transform ${!collapsed ? "rotate-180" : ""}`} />
+      </button>
 
-      {visible.slice(0, 3).map(update => (
+      {!collapsed && visible.slice(0, 3).map(update => (
         <div key={update.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="flex items-start gap-3 px-4 py-3">
             <div className="mt-0.5">
@@ -65,12 +68,20 @@ export function RegulatoryFeed({ onAddCheck }: {
                 <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Action Required</p>
                 <p className="text-xs text-slate-600">{update.actionRequired}</p>
               </div>
-              {update.checkSuggestion && onAddCheck && (
-                <button onClick={() => { onAddCheck(update.checkSuggestion!.label, update.checkSuggestion!.keyword); dismiss(update.id); }}
-                  className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 flex items-center gap-1">
-                  <Plus size={10} /> Add compliance check
-                </button>
+              {update.sourceUrl && (
+                <a href={update.sourceUrl} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors mb-2 font-medium">
+                  <ExternalLink size={10} /> View official guidance
+                </a>
               )}
+              <div className="flex items-center gap-2 mt-1">
+                {update.checkSuggestion && onAddCheck && (
+                  <button onClick={() => { onAddCheck(update.checkSuggestion!.label, update.checkSuggestion!.keyword); dismiss(update.id); }}
+                    className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 flex items-center gap-1">
+                    <Plus size={10} /> Add compliance check
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
