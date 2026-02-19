@@ -24,6 +24,8 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
   firmName?: string;
 }) {
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [showAumWeighted, setShowAumWeighted] = useState(false);
+  const displayScore = showAumWeighted ? data.aumWeightedHealthScore : data.healthScore;
 
   const downloadPDF = async () => {
     setPdfLoading(true);
@@ -55,12 +57,18 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
       {/* Practice Health Score */}
       <div className="bg-white border border-slate-200 rounded-2xl p-8">
         <div className="flex flex-col md:flex-row items-center gap-8">
-          <HealthRing score={data.healthScore} />
+          <HealthRing score={displayScore} />
           <div className="flex-1 w-full">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">Practice Health Score</h2>
-                <p className="text-sm text-slate-400 mt-0.5">Weighted composite of 4 operational metrics</p>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-semibold text-slate-900">Practice Health Score</h2>
+                  <button onClick={() => setShowAumWeighted(!showAumWeighted)} title="Prioritizes high-value client health"
+                    className={`text-[10px] px-2.5 py-1 rounded-lg font-medium transition-colors ${showAumWeighted ? "bg-blue-500 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                    {showAumWeighted ? "AUM-Weighted" : "Equal Weight"}
+                  </button>
+                </div>
+                <p className="text-sm text-slate-400 mt-0.5">{showAumWeighted ? "AUM-weighted composite — prioritizes high-value client health" : "Weighted composite of 4 operational metrics"}</p>
                 {data.healthScore >= OVERALL_BENCHMARK.avg && (
                   <div className="flex items-center gap-1.5 mt-1">
                     <TrendingUp size={12} className="text-green-500" />

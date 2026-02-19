@@ -10,6 +10,8 @@ import { custodian } from "@/lib/custodian";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+export type AccountType = "individual" | "trust" | "entity" | "retirement" | "joint" | "unknown";
+
 export interface CheckResult {
   id: string;
   category: "identity" | "suitability" | "documents" | "account" | "regulatory" | "firm";
@@ -19,7 +21,93 @@ export interface CheckResult {
   detail: string;
   evidence?: string[];
   whyItMatters: string;
+  remediation?: RemediationStep[];
 }
+
+export interface RemediationStep {
+  order: number;
+  action: string;
+  assignTo: "advisor" | "ops" | "client" | "custodian";
+  followUpDays: number;
+  formUrl?: string;
+}
+
+export const REMEDIATION_TEMPLATES: Record<string, RemediationStep[]> = {
+  "kyc-profile": [
+    { order: 1, action: "Schedule KYC meeting with client", assignTo: "advisor", followUpDays: 3 },
+    { order: 2, action: "Complete KYC questionnaire during meeting", assignTo: "advisor", followUpDays: 0 },
+    { order: 3, action: "Record KYC profile in Salesforce", assignTo: "ops", followUpDays: 1 },
+  ],
+  "trusted-contact": [
+    { order: 1, action: "Send trusted contact designation form to client", assignTo: "ops", followUpDays: 5 },
+    { order: 2, action: "Client completes and returns form", assignTo: "client", followUpDays: 7 },
+    { order: 3, action: "Record trusted contact in CRM", assignTo: "ops", followUpDays: 1 },
+  ],
+  "identity-verified": [
+    { order: 1, action: "Request government-issued ID from client", assignTo: "advisor", followUpDays: 3 },
+    { order: 2, action: "Client provides ID copy", assignTo: "client", followUpDays: 5 },
+    { order: 3, action: "Verify ID and record in compliance system", assignTo: "ops", followUpDays: 1 },
+  ],
+  "suitability-profile": [
+    { order: 1, action: "Send suitability questionnaire to client", assignTo: "ops", followUpDays: 3 },
+    { order: 2, action: "Client completes risk tolerance and objectives", assignTo: "client", followUpDays: 7 },
+    { order: 3, action: "Review and approve suitability profile", assignTo: "advisor", followUpDays: 2 },
+    { order: 4, action: "Record suitability profile in CRM", assignTo: "ops", followUpDays: 1 },
+  ],
+  "pte-compliance": [
+    { order: 1, action: "Prepare PTE 2020-02 analysis worksheet", assignTo: "advisor", followUpDays: 2 },
+    { order: 2, action: "Send PTE disclosure form via DocuSign", assignTo: "ops", followUpDays: 1 },
+    { order: 3, action: "Client reviews and signs PTE form", assignTo: "client", followUpDays: 7 },
+    { order: 4, action: "File signed PTE in compliance records", assignTo: "ops", followUpDays: 1 },
+  ],
+  "form-crs": [
+    { order: 1, action: "Generate current Form CRS", assignTo: "ops", followUpDays: 1 },
+    { order: 2, action: "Deliver Form CRS to client via email", assignTo: "ops", followUpDays: 1 },
+    { order: 3, action: "Record delivery acknowledgment in CRM", assignTo: "ops", followUpDays: 2 },
+  ],
+  "adv-delivery": [
+    { order: 1, action: "Prepare ADV Part 2A brochure", assignTo: "ops", followUpDays: 1 },
+    { order: 2, action: "Deliver ADV to client within 48 hours", assignTo: "ops", followUpDays: 2 },
+    { order: 3, action: "Record delivery in compliance log", assignTo: "ops", followUpDays: 1 },
+  ],
+  "privacy-notice": [
+    { order: 1, action: "Generate annual privacy notice", assignTo: "ops", followUpDays: 1 },
+    { order: 2, action: "Send privacy notice to client", assignTo: "ops", followUpDays: 1 },
+  ],
+  "beneficiary-designation": [
+    { order: 1, action: "Download custodian beneficiary change form", assignTo: "ops", followUpDays: 1 },
+    { order: 2, action: "Send beneficiary form via DocuSign", assignTo: "ops", followUpDays: 1 },
+    { order: 3, action: "Client completes and signs form", assignTo: "client", followUpDays: 7 },
+    { order: 4, action: "Submit signed form to custodian", assignTo: "ops", followUpDays: 2 },
+    { order: 5, action: "Confirm custodian processed the update", assignTo: "custodian", followUpDays: 5 },
+  ],
+  "signatures": [
+    { order: 1, action: "Prepare required documents for signature", assignTo: "ops", followUpDays: 1 },
+    { order: 2, action: "Send envelope via DocuSign", assignTo: "ops", followUpDays: 1 },
+    { order: 3, action: "Client signs all documents", assignTo: "client", followUpDays: 5 },
+    { order: 4, action: "Verify all signatures received", assignTo: "ops", followUpDays: 1 },
+  ],
+  "completeness-check": [
+    { order: 1, action: "Run completeness audit on household records", assignTo: "ops", followUpDays: 2 },
+    { order: 2, action: "Identify and request missing information", assignTo: "advisor", followUpDays: 3 },
+    { order: 3, action: "Record completeness check in Salesforce", assignTo: "ops", followUpDays: 1 },
+  ],
+  "trust-certification": [
+    { order: 1, action: "Request trust certification from trustee", assignTo: "advisor", followUpDays: 3 },
+    { order: 2, action: "Client provides trust certification", assignTo: "client", followUpDays: 7 },
+    { order: 3, action: "File trust certification in compliance records", assignTo: "ops", followUpDays: 1 },
+  ],
+  "entity-resolution": [
+    { order: 1, action: "Request corporate/LLC resolution from entity", assignTo: "advisor", followUpDays: 5 },
+    { order: 2, action: "Entity provides signed resolution", assignTo: "client", followUpDays: 10 },
+    { order: 3, action: "File entity resolution in compliance records", assignTo: "ops", followUpDays: 1 },
+  ],
+  "authorized-signers": [
+    { order: 1, action: "Request authorized signer list from entity", assignTo: "advisor", followUpDays: 3 },
+    { order: 2, action: "Verify signers against entity documents", assignTo: "ops", followUpDays: 2 },
+    { order: 3, action: "Record authorized signers in CRM", assignTo: "ops", followUpDays: 1 },
+  ],
+};
 
 export interface CustomCheck {
   id: string;
@@ -80,6 +168,14 @@ export const DEFAULT_KEYWORD_MAP: KeywordMap = {
   "signatures":               ["docusign", "docu"],
   "ach-authorization":        ["moneylink", "ach"],
   "completeness-check":       ["completeness"],
+  // Account-type-specific
+  "trust-certification":      ["trust certification", "trust cert"],
+  "trustee-verification":     ["trustee", "trust verification"],
+  "trust-agreement":          ["trust agreement", "trust document"],
+  "authorized-signers":       ["authorized signer", "auth signer"],
+  "erisa-compliance":         ["erisa", "plan document"],
+  "entity-resolution":        ["entity resolution", "corporate resolution", "llc agreement"],
+  "rmd-tracking":             ["rmd", "required minimum"],
 };
 
 /** Human-readable labels for keyword map entries (used in config UI). */
@@ -97,6 +193,13 @@ export const KEYWORD_CHECK_LABELS: Record<string, string> = {
   "signatures":               "Signatures Obtained",
   "ach-authorization":        "ACH Authorization",
   "completeness-check":       "Completeness Check",
+  "trust-certification":      "Trust Certification",
+  "trustee-verification":     "Trustee Verification",
+  "trust-agreement":          "Trust Agreement on File",
+  "authorized-signers":       "Authorized Signers Documented",
+  "erisa-compliance":         "ERISA Compliance",
+  "entity-resolution":        "Entity Resolution on File",
+  "rmd-tracking":             "RMD Tracking",
 };
 
 // ─── Persistence Keys ───────────────────────────────────────────────────────
@@ -153,6 +256,7 @@ export function runComplianceChecks(
   contacts: SFContact[],
   tasks: SFTask[],
   keywordOverrides?: KeywordMap,
+  accountType?: AccountType,
 ): CheckResult[] {
   const checks: CheckResult[] = [];
   const map = getEffectiveKeywordMap(keywordOverrides);
@@ -372,6 +476,77 @@ export function runComplianceChecks(
     });
   }
 
+  // ── ACCOUNT-TYPE-SPECIFIC CHECKS ──
+  const acctType = accountType || "unknown";
+
+  if (acctType === "trust") {
+    checks.push({
+      id: "trust-certification", category: "account", label: "Trust Certification",
+      regulation: "Custodial Requirement / Trust Compliance",
+      status: hasCheck("trust-certification") ? "pass" : "fail",
+      detail: hasCheck("trust-certification") ? "Trust certification on file" : "No trust certification found — required for trust accounts",
+      whyItMatters: "Trust accounts require a valid trust certification to verify the trust's existence and the trustee's authority. Without it, custodians cannot accept instructions.",
+    });
+    checks.push({
+      id: "trustee-verification", category: "account", label: "Trustee Verification",
+      regulation: "UCC / State Trust Law",
+      status: hasCheck("trustee-verification") ? "pass" : "warn",
+      detail: hasCheck("trustee-verification") ? "Trustee authority verified" : "No trustee verification record — verify trustee authority before transactions",
+      whyItMatters: "Firms must verify that the person directing trust assets has legal authority as trustee. Acting on unauthorized instructions creates fiduciary liability.",
+    });
+    checks.push({
+      id: "trust-agreement", category: "account", label: "Trust Agreement on File",
+      regulation: "Firm Best Practice",
+      status: hasCheck("trust-agreement") ? "pass" : "warn",
+      detail: hasCheck("trust-agreement") ? "Trust agreement document on file" : "No trust agreement on file — needed for investment authority reference",
+      whyItMatters: "The trust agreement defines investment powers, distribution rules, and successor trustees. Without it on file, the firm cannot verify compliance with trust terms.",
+    });
+  }
+
+  if (acctType === "entity") {
+    checks.push({
+      id: "authorized-signers", category: "account", label: "Authorized Signers Documented",
+      regulation: "Custodial Requirement",
+      status: hasCheck("authorized-signers") ? "pass" : "fail",
+      detail: hasCheck("authorized-signers") ? "Authorized signers on file" : "No authorized signers documented — required for entity accounts",
+      whyItMatters: "Entity accounts require documented authorized signers to prevent unauthorized transactions. This is a top NIGO rejection reason for entity applications.",
+    });
+    checks.push({
+      id: "erisa-compliance", category: "regulatory", label: "ERISA Compliance",
+      regulation: "ERISA / DOL",
+      status: hasCheck("erisa-compliance") ? "pass" : "warn",
+      detail: hasCheck("erisa-compliance") ? "ERISA compliance documentation on file" : "No ERISA documentation — verify if entity is subject to ERISA requirements",
+      whyItMatters: "If the entity is an employee benefit plan, ERISA imposes fiduciary duties and prohibited transaction rules. Non-compliance can result in DOL enforcement action.",
+    });
+    checks.push({
+      id: "entity-resolution", category: "account", label: "Entity Resolution on File",
+      regulation: "State Corporate Law",
+      status: hasCheck("entity-resolution") ? "pass" : "fail",
+      detail: hasCheck("entity-resolution") ? "Entity resolution on file" : "No corporate/LLC resolution on file — required to authorize account opening",
+      whyItMatters: "An entity resolution (corporate or LLC) authorizes specific individuals to act on behalf of the entity. Without it, the firm has no proof of authority.",
+    });
+  }
+
+  if (acctType === "retirement") {
+    // Always run PTE check for retirement accounts
+    if (!hasRollover) {
+      checks.push({
+        id: "pte-compliance", category: "suitability", label: "PTE 2020-02 Documentation",
+        regulation: "DOL Prohibited Transaction Exemption",
+        status: hasCheck("pte-compliance") ? "pass" : "warn",
+        detail: hasCheck("pte-compliance") ? "PTE documentation on file" : "Retirement account — verify PTE documentation if rollover recommended",
+        whyItMatters: "DOL PTE 2020-02 requires documented proof that a rollover recommendation is in the client's best interest. Missing PTE documentation is a top enforcement priority.",
+      });
+    }
+    checks.push({
+      id: "rmd-tracking", category: "regulatory", label: "RMD Tracking",
+      regulation: "IRC Section 401(a)(9)",
+      status: hasCheck("rmd-tracking") ? "pass" : "warn",
+      detail: hasCheck("rmd-tracking") ? "RMD tracking in place" : "No RMD tracking record — verify if account holder is subject to RMDs",
+      whyItMatters: "Required Minimum Distributions must be taken by the deadline or the client faces a 25% excise tax on the shortfall. Tracking RMDs is essential for retirement accounts.",
+    });
+  }
+
   // ── FIRM CUSTOM CHECKS ──
   const customChecks = loadCustomChecks();
   for (const cc of customChecks) {
@@ -387,6 +562,13 @@ export function runComplianceChecks(
         : `No record matching "${cc.keyword}" — required by firm policy`,
       whyItMatters: cc.whyItMatters,
     });
+  }
+
+  // Attach remediation templates to failed/warned checks
+  for (const check of checks) {
+    if ((check.status === "fail" || check.status === "warn") && REMEDIATION_TEMPLATES[check.id]) {
+      check.remediation = REMEDIATION_TEMPLATES[check.id];
+    }
   }
 
   return checks;

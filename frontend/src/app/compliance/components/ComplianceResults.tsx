@@ -1,8 +1,11 @@
 "use client";
+import { useState } from "react";
 import { Check, X, AlertTriangle, ExternalLink, Shield, ChevronDown, ChevronUp, Download, MessageSquare, Calendar, Clock } from "lucide-react";
 import { ContinueBtn } from "@/components/shared/FormControls";
 import { WhyBubble } from "@/components/shared/WhyBubble";
-import type { CheckResult, SFTask } from "@/lib/compliance-engine";
+import type { CheckResult, SFTask, RemediationStep } from "@/lib/compliance-engine";
+import { callSF } from "@/lib/salesforce";
+import { Clipboard, ListChecks, User, Building, UserCircle, Wrench } from "lucide-react";
 import type { Screen, WorkflowContext } from "@/lib/types";
 import { Fingerprint, BarChart3, FileText, Briefcase, Scale, Settings } from "lucide-react";
 
@@ -14,6 +17,61 @@ const CATEGORY_LABELS: Record<string, { label: string; icon: React.ReactNode; ti
   regulatory: { label: "Regulatory Readiness", icon: <Scale size={18} className="text-slate-500" /> },
   firm: { label: "Firm Policies", icon: <Settings size={18} className="text-purple-500" />, title: "Custom compliance checks defined by your firm" },
 };
+
+// ─── Remediation Section ────────────────────────────────────────────────────
+
+const ASSIGN_COLORS: Record<string, string> = {
+  advisor: "bg-blue-100 text-blue-700",
+  ops: "bg-purple-100 text-purple-700",
+  client: "bg-amber-100 text-amber-700",
+  custodian: "bg-slate-100 text-slate-600",
+};
+
+function RemediationSection({ steps, checkId, checkLabel }: { steps: RemediationStep[]; checkId: string; checkLabel: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copying, setCopying] = useState(false);
+
+  const copyPlan = () => {
+    const text = steps.map(s => `${s.order}. ${s.action} [${s.assignTo}] — follow up in ${s.followUpDays}d`).join("\n");
+    navigator.clipboard.writeText(`Remediation: ${checkLabel}\n${text}`);
+    setCopying(true);
+    setTimeout(() => setCopying(false), 2000);
+  };
+
+  return (
+    <div className="mt-2">
+      <button onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-[10px] text-blue-600 hover:text-blue-800 font-medium">
+        <Wrench size={10} />
+        {expanded ? "Hide remediation" : "Remediation steps"}
+        {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+      </button>
+      {expanded && (
+        <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg p-3 animate-fade-in">
+          <div className="space-y-2">
+            {steps.map((s, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{s.order}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-slate-700">{s.action}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${ASSIGN_COLORS[s.assignTo] || "bg-slate-100 text-slate-600"}`}>{s.assignTo}</span>
+                    {s.followUpDays > 0 && <span className="text-[9px] text-slate-400">follow up in {s.followUpDays}d</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 pt-2 border-t border-slate-200 flex gap-2">
+            <button onClick={copyPlan} className="text-[10px] px-2.5 py-1 rounded-lg border border-slate-200 text-slate-500 hover:bg-white transition-colors flex items-center gap-1">
+              <Clipboard size={10} /> {copying ? "Copied!" : "Copy plan"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Results Step ───────────────────────────────────────────────────────────
 
@@ -98,6 +156,9 @@ export function ResultsStep({ checks, familyName, expandedCategories, onToggleCa
                               <p key={ei} className="text-[10px] text-green-600 font-mono">✓ {e}</p>
                             ))}
                           </div>
+                        )}
+                        {check.remediation && check.remediation.length > 0 && (
+                          <RemediationSection steps={check.remediation} checkId={check.id} checkLabel={check.label} />
                         )}
                       </div>
                     </div>

@@ -3,8 +3,10 @@ import { useState, useCallback } from "react";
 import { Loader2, Pin, PinOff, FileDown, X, ChevronDown, ChevronRight as ChevronR } from "lucide-react";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import type { Screen, WorkflowContext } from "@/lib/types";
-import { usePracticeData } from "./usePracticeData";
-import type { PracticeData } from "./usePracticeData";
+import { usePracticeData, addRiskDisposition } from "./usePracticeData";
+import { DEMO_RECONCILIATION } from "@/lib/demo-data";
+import { AlertTriangle as ReconcileAlert, Check as ReconcileCheck, HelpCircle } from "lucide-react";
+import type { PracticeData, RiskDisposition } from "./usePracticeData";
 import { HealthScoreSection } from "./components/HealthScoreSection";
 import { RevenueSection } from "./components/RevenueSection";
 import { AdvisorScoreboard } from "./components/AdvisorScoreboard";
@@ -160,6 +162,75 @@ function BoardReportModal({ data, firmName, onClose }: { data: PracticeData; fir
   );
 }
 
+// ─── Reconciliation Section ──────────────────────────────────────────────────
+
+function ReconciliationSection() {
+  const [expanded, setExpanded] = useState(false);
+  const r = DEMO_RECONCILIATION;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+      <button onClick={() => setExpanded(!expanded)} className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 transition-colors">
+        <HelpCircle size={16} className="text-blue-500" />
+        <div className="text-left">
+          <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Custodian-CRM Reconciliation</h3>
+          <p className="text-xs text-slate-400">Account matching between custodian and Salesforce</p>
+        </div>
+        <div className="flex-1" />
+        <div className="flex items-center gap-2">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-600 font-medium">{r.matched.length} matched</span>
+          {r.orphanCustodial.length > 0 && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 font-medium">{r.orphanCustodial.length} orphan</span>}
+          {r.orphanCrm.length > 0 && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">{r.orphanCrm.length} CRM only</span>}
+        </div>
+        <ChevronDown size={16} className={`text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
+      </button>
+      {expanded && (
+        <div className="border-t border-slate-100 px-5 py-3 animate-fade-in">
+          <p className="text-xs text-slate-500 font-medium mb-2">Matched Accounts</p>
+          <div className="space-y-1 mb-4">
+            {r.matched.map((m, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
+                <ReconcileCheck size={12} className="text-green-500 flex-shrink-0" />
+                <span className="flex-1">{m.custodialName}</span>
+                <span className="text-slate-400">→ {m.crmHousehold}</span>
+                <span className="text-slate-300">${(m.balance / 1e6).toFixed(1)}M</span>
+              </div>
+            ))}
+          </div>
+          {r.orphanCustodial.length > 0 && (
+            <>
+              <p className="text-xs text-amber-600 font-medium mb-2">Orphaned Custodial (no CRM match)</p>
+              <div className="space-y-1 mb-4">
+                {r.orphanCustodial.map((o, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs text-amber-700">
+                    <ReconcileAlert size={12} className="text-amber-500 flex-shrink-0" />
+                    <span className="flex-1">{o.custodialName}</span>
+                    <span className="text-amber-400">${(o.balance / 1e6).toFixed(1)}M</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {r.orphanCrm.length > 0 && (
+            <>
+              <p className="text-xs text-red-600 font-medium mb-2">CRM Only (no custodial match)</p>
+              <div className="space-y-1">
+                {r.orphanCrm.map((o, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs text-red-700">
+                    <ReconcileAlert size={12} className="text-red-500 flex-shrink-0" />
+                    <span>{o.crmHousehold}</span>
+                    <span className="text-red-300 text-[10px]">{o.notes}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Dashboard Screen ───────────────────────────────────────────────────────
 
 export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorName }: {
@@ -193,6 +264,24 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
   const goToCompliance = (householdId: string, name: string) => {
     if (onNavigate) onNavigate("compliance", { householdId, familyName: name.replace(" Household", "") });
   };
+
+  const handleRiskDisposition = useCallback((riskId: string, action: "resolved" | "snoozed" | "dismissed", reason: string, snoozeDays?: number) => {
+    const risk = data?.allRisks.find(r => r.id === riskId);
+    if (!risk) return;
+    const disposition: RiskDisposition = {
+      riskId,
+      action,
+      reason,
+      actor: firmName || "User",
+      timestamp: new Date().toISOString(),
+      snoozeUntil: snoozeDays ? new Date(Date.now() + snoozeDays * 86400000).toISOString() : undefined,
+      householdId: risk.householdId,
+      label: risk.label,
+    };
+    addRiskDisposition(disposition);
+    // Force re-render by navigating to self (reload data)
+    window.location.reload();
+  }, [data, firmName]);
 
   const isVisible = (id: SectionId) => !hiddenSections.has(id);
 
@@ -274,7 +363,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
                 <SectionWrapper id="health"><HealthScoreSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} firmName={firmName} /></SectionWrapper>
                 {isDemoMode && (
                   <div className="bg-white border border-slate-200 rounded-2xl p-6">
-                    <HouseholdHealthCards onNavigate={onNavigate} />
+                    <HouseholdHealthCards onNavigate={onNavigate} dataQualityByHousehold={data.dataQualityByHousehold} />
                   </div>
                 )}
                 <SectionWrapper id="revenue"><RevenueSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} /></SectionWrapper>
@@ -285,10 +374,16 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
                 {(role === "operations" || role === "principal") && <SectionWrapper id="risk"><HouseholdRiskScore data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} /></SectionWrapper>}
                 <SectionWrapper id="pipeline"><PipelineSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} goToFamily={goToFamily} /></SectionWrapper>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <SectionWrapper id="radar"><RiskRadar data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} /></SectionWrapper>
+                  <SectionWrapper id="radar"><RiskRadar data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} onDisposition={handleRiskDisposition} /></SectionWrapper>
                   <SectionWrapper id="weekly"><WeeklyComparison data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} /></SectionWrapper>
                 </div>
                 {(role === "principal") && <SuccessionPlanning data={data} />}
+
+                {/* Reconciliation (ops/principal only) */}
+                {isDemoMode && (role === "operations" || role === "principal") && (
+                  <ReconciliationSection />
+                )}
+
                 <PracticePlaybook data={data} firmName={firmName} />
               </div>
             )}

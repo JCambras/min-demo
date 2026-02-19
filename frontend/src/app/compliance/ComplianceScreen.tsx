@@ -14,6 +14,7 @@ import type {
   SFHousehold,
   SFContact,
   SFTask,
+  AccountType,
 } from "@/lib/compliance-engine";
 import type { ComplianceStep, SFEvidence, Screen, WorkflowContext } from "@/lib/types";
 import { EvidencePanel } from "./components/EvidencePanel";
@@ -128,6 +129,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
 
   const [batchMode, setBatchMode] = useState(false);
   const [searchError, setSearchError] = useState(false);
+  const [accountType, setAccountType] = useState<AccountType>("unknown");
 
   const addEv = useCallback((label: string, url?: string) => {
     d({ type: "ADD_EVIDENCE", ev: { label, url, timestamp: timestamp() } });
@@ -194,7 +196,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
         label: "Checking regulatory compliance",
         fn: async () => {
           if (!householdRef.current) throw new Error("No household data");
-          const checks = runComplianceChecks(householdRef.current, contactsRef.current, tasksRef.current);
+          const checks = runComplianceChecks(householdRef.current, contactsRef.current, tasksRef.current, undefined, accountType);
           d({ type: "SET_CHECKS", value: checks });
           const passed = checks.filter(c => c.status === "pass").length;
           const warned = checks.filter(c => c.status === "warn").length;
@@ -257,6 +259,7 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
             detail: c.evidence && c.evidence.length > 0
               ? `${c.detail}\nEvidence: ${c.evidence.join("; ")}`
               : c.detail,
+            remediation: c.remediation,
           })),
           reviewDate,
           nextReviewDate,
@@ -302,6 +305,17 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
                   <Input className="h-14 text-lg rounded-xl pl-11" placeholder="Search households..." value={state.searchQuery} onChange={e => d({ type: "SET_SEARCH_QUERY", value: e.target.value })} autoFocus />
                   {state.isSearching && <Loader2 size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />}
                 </div>
+                {/* Account Type Selector */}
+                <div className="mt-4 flex items-center gap-2">
+                  <span className="text-xs text-slate-400">Account type:</span>
+                  {(["unknown", "individual", "trust", "entity", "retirement", "joint"] as AccountType[]).map(t => (
+                    <button key={t} onClick={() => setAccountType(t)}
+                      className={`text-[10px] px-2.5 py-1 rounded-lg font-medium transition-colors ${accountType === t ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-500 hover:text-slate-700"}`}>
+                      {t === "unknown" ? "All" : t.charAt(0).toUpperCase() + t.slice(1)}
+                    </button>
+                  ))}
+                </div>
+
                 {state.searchQuery.length >= 2 && (
                   <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
                     {state.searchResults.length === 0 ? (

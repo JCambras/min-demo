@@ -61,6 +61,49 @@ export interface RiskItem {
   url: string;
 }
 
+// ─── Risk Disposition (Snooze / Dismiss / Resolve) ──────────────────────────
+
+export type RiskAction = "resolved" | "snoozed" | "dismissed";
+
+export interface RiskDisposition {
+  riskId: string;
+  action: RiskAction;
+  reason: string;
+  actor: string;
+  timestamp: string;
+  snoozeUntil?: string;
+  householdId: string;
+  label: string;
+}
+
+const RISK_DISPOSITIONS_KEY = "min-risk-dispositions";
+
+export function loadRiskDispositions(): RiskDisposition[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem(RISK_DISPOSITIONS_KEY) || "[]"); } catch { return []; }
+}
+
+export function saveRiskDispositions(dispositions: RiskDisposition[]) {
+  localStorage.setItem(RISK_DISPOSITIONS_KEY, JSON.stringify(dispositions));
+}
+
+export function addRiskDisposition(disposition: RiskDisposition) {
+  const existing = loadRiskDispositions().filter(d => d.riskId !== disposition.riskId);
+  saveRiskDispositions([...existing, disposition]);
+}
+
+/** Filter out dispositioned risks. Snoozed items hidden until expiry. */
+export function filterDispositionedRisks(risks: RiskItem[], dispositions: RiskDisposition[]): { visible: RiskItem[]; dispositionedCount: number } {
+  const now = new Date().toISOString();
+  const activeDispositions = new Map<string, RiskDisposition>();
+  for (const d of dispositions) {
+    if (d.action === "snoozed" && d.snoozeUntil && d.snoozeUntil < now) continue; // expired snooze
+    activeDispositions.set(d.riskId, d);
+  }
+  const visible = risks.filter(r => !activeDispositions.has(r.id));
+  return { visible, dispositionedCount: risks.length - visible.length };
+}
+
 export interface PipelineStage {
   label: string;
   count: number;
@@ -127,6 +170,16 @@ export interface PracticeData {
     blendedAum: number;
     accountCount: number;
   };
+  // Per-household health scores + AUM-weighted
+  householdHealthScores: Record<string, number>;
+  aumWeightedHealthScore: number;
+  // Data quality
+  dataQualityByHousehold: Record<string, { score: number; flags: string[] }>;
+  dataQualityScore: number;
+  // Risk dispositions
+  riskDispositions: RiskDisposition[];
+  dispositionedCount: number;
+  allRisks: RiskItem[];  // unfiltered for "show suppressed"
   // Ops staff workload
   opsStaff: OpsStaffScore[];
   // Internal: household name → advisor name mapping (used for FSC AUM overlay)
@@ -410,8 +463,73 @@ export function buildPracticeData(tasks: SFTask[], households: SFHousehold[], in
     return { name, openTasks: d.open, overdueTasks: d.overdue, completedThisWeek: d.completedWeek, avgTaskAgeDays: avgAge, onboardings: d.onboardings, compliance: d.compliance, docusign: d.docusign, score };
   }).sort((a, b) => b.score - a.score);
 
+  // Per-household health scores
+  const householdHealthScores: Record<string, number> = {};
+  for (const h of households) {
+    const hhTasksForHealth = tasks.filter(t => t.householdName === h.name);
+    const hhOpen = hhTasksForHealth.filter(t => t.status !== "Completed");
+    const hhCompleted = hhTasksForHealth.filter(t => t.status === "Completed");
+    const hhOverdue = hhOpen.filter(t => t.dueDate && new Date(t.dueDate).getTime() < now);
+    const hasReview = reviewedSet.has(h.name);
+    const hasMeeting = metLast90.has(h.name);
+    const hhUnsigned = hhOpen.filter(t => t.subject?.includes("SEND DOCU") || t.subject?.includes("DocuSign"));
+    const staleUnsigned = hhUnsigned.filter(t => daysSince(t.createdAt) > 7).length;
+
+    const compScore = hasReview ? 100 : 0;
+    const docuScore = hhUnsigned.length === 0 ? 100 : Math.max(0, 100 - staleUnsigned / Math.max(hhUnsigned.length, 1) * 100);
+    const taskScore = hhCompleted.length + hhOpen.length > 0 ? Math.max(0, (1 - hhOverdue.length / Math.max(hhOpen.length + hhCompleted.length, 1)) * 100) : 100;
+    const meetScore = hasMeeting ? 100 : 0;
+
+    householdHealthScores[h.id] = Math.round(compScore * 0.3 + docuScore * 0.25 + taskScore * 0.25 + meetScore * 0.2);
+  }
+
+  // AUM-weighted health score (uses assumptions for non-FSC data)
+  let aumWeightedHealthScore = healthScore; // fallback
+  const totalAumForWeighting = households.length * assumptions.avgAumPerHousehold;
+  if (totalAumForWeighting > 0) {
+    let weightedSum = 0;
+    for (const h of households) {
+      const hhAum = assumptions.avgAumPerHousehold; // will be overridden by FSC in hook
+      const hhHealth = householdHealthScores[h.id] ?? healthScore;
+      weightedSum += hhHealth * hhAum;
+    }
+    aumWeightedHealthScore = Math.round(weightedSum / totalAumForWeighting);
+  }
+
+  // Data quality scoring per household
+  const dataQualityByHousehold: Record<string, { score: number; flags: string[] }> = {};
+  for (const h of households) {
+    let score = 100;
+    const flags: string[] = [];
+    const hhTasks2 = tasks.filter(t => t.householdName === h.name);
+    const lastAct = lastActivityMap.get(h.name);
+    const staleDays = lastAct ? Math.floor((now - lastAct) / msDay) : daysSince(h.createdAt);
+    const hhContacts = tasks.filter(t => t.householdName === h.name && t.subject?.includes("@")).length; // rough proxy
+
+    if (staleDays >= 90) { score -= 30; flags.push(`No activity in ${staleDays} days`); }
+    if (!reviewedSet.has(h.name)) { score -= 20; flags.push("No compliance review on file"); }
+    if (hhTasks2.length <= 1) { score -= 10; flags.push("Only 1 record — possible data gap"); }
+    // Check if household description suggests financial accounts but none are tracked
+    const desc = h.description || "";
+    if (!desc.includes("@") && !tasks.some(t => t.householdName === h.name && (t.subject?.includes("Account opening") || t.subject?.includes("ACCOUNT")))) {
+      score -= 10; flags.push("No financial account records");
+    }
+
+    dataQualityByHousehold[h.id] = { score: Math.max(0, score), flags };
+  }
+  const dqValues = Object.values(dataQualityByHousehold);
+  const dataQualityScore = dqValues.length > 0 ? Math.round(dqValues.reduce((s, v) => s + v.score, 0) / dqValues.length) : 100;
+
+  // Apply risk dispositions
+  const dispositions = loadRiskDispositions();
+  const allRisks = risks.slice(0, 30);
+  const { visible: visibleRisks, dispositionedCount } = filterDispositionedRisks(allRisks, dispositions);
+
   return {
-    healthScore, healthBreakdown, advisors, pipeline: stages, risks: risks.slice(0, 30),
+    healthScore, healthBreakdown, advisors, pipeline: stages, risks: visibleRisks,
+    householdHealthScores, aumWeightedHealthScore,
+    dataQualityByHousehold, dataQualityScore,
+    allRisks, riskDispositions: dispositions, dispositionedCount,
     totalHouseholds: households.length, totalTasks: tasks.length, completedTasks: completed.length, openTasks: open.length,
     complianceReviews: compReviews.length, meetingNotes: meetingNotes.length, unsigned: unsigned.length,
     revenue, assumptions,
@@ -504,6 +622,17 @@ export function usePracticeData() {
         practiceData.revenue.estimatedAum = blendedAum;
         practiceData.revenue.annualFeeIncome = blendedAum * (bps / 10000);
         practiceData.revenue.monthlyFeeIncome = practiceData.revenue.annualFeeIncome / 12;
+      }
+
+      // Recompute AUM-weighted health score with real FSC data
+      if (actualAum > 0) {
+        let weightedSum = 0;
+        for (const h of households) {
+          const hhAum = DEMO_FSC_DATA.aumByHousehold[h.id] || avgAum;
+          const hhHealth = practiceData.householdHealthScores[h.id] ?? practiceData.healthScore;
+          weightedSum += hhHealth * hhAum;
+        }
+        practiceData.aumWeightedHealthScore = Math.round(weightedSum / blendedAum);
       }
 
       setData(practiceData);

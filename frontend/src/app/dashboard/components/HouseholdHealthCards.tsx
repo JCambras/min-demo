@@ -1,11 +1,12 @@
 "use client";
 import { useState } from "react";
-import { ArrowUpDown } from "lucide-react";
+import { ArrowUpDown, StickyNote, AlertTriangle } from "lucide-react";
+import { loadNotes } from "@/lib/types";
 import { MiniHealthRing } from "./DashboardPrimitives";
 import { DEMO_HOUSEHOLDS, type DemoHouseholdHealth } from "@/lib/demo-data";
 import type { Screen, WorkflowContext } from "@/lib/types";
 
-type SortKey = "health" | "aum" | "name";
+type SortKey = "health" | "aum" | "name" | "aumHealth";
 
 const STATUS_PILLS: Record<string, { label: string; cls: string }> = {
   "on-track": { label: "On track", cls: "bg-green-100 text-green-700" },
@@ -23,19 +24,28 @@ function fmtAum(v: number) {
   return `$${(v / 1_000_000).toFixed(1)}M`;
 }
 
-export function HouseholdHealthCards({ onNavigate }: {
+export function HouseholdHealthCards({ onNavigate, dataQualityByHousehold }: {
   onNavigate?: (screen: Screen, ctx?: WorkflowContext) => void;
+  dataQualityByHousehold?: Record<string, { score: number; flags: string[] }>;
 }) {
   const [sort, setSort] = useState<SortKey>("health");
+  const allNotes = typeof window !== "undefined" ? loadNotes() : [];
+  const notesByHousehold = new Map<string, number>();
+  const holdByHousehold = new Set<string>();
+  for (const n of allNotes) {
+    notesByHousehold.set(n.householdId, (notesByHousehold.get(n.householdId) || 0) + 1);
+    if (n.category === "hold") holdByHousehold.add(n.householdId);
+  }
 
   const sorted = [...DEMO_HOUSEHOLDS].sort((a, b) => {
     if (sort === "health") return a.healthScore - b.healthScore;
     if (sort === "aum") return b.aum - a.aum;
+    if (sort === "aumHealth") return (b.aum * (100 - b.healthScore)) - (a.aum * (100 - a.healthScore));
     return a.name.localeCompare(b.name);
   });
 
-  const cycleSort = () => setSort(prev => prev === "health" ? "aum" : prev === "aum" ? "name" : "health");
-  const sortLabel = sort === "health" ? "Health" : sort === "aum" ? "AUM" : "Name";
+  const cycleSort = () => setSort(prev => prev === "health" ? "aum" : prev === "aum" ? "aumHealth" : prev === "aumHealth" ? "name" : "health");
+  const sortLabel = sort === "health" ? "Health" : sort === "aum" ? "AUM" : sort === "aumHealth" ? "AUM Health" : "Name";
 
   const handleClick = (hh: DemoHouseholdHealth) => {
     if (onNavigate) {
@@ -76,10 +86,18 @@ export function HouseholdHealthCards({ onNavigate }: {
                   <p className="text-[10px] text-slate-400 truncate">{hh.advisor}</p>
                 </div>
               </div>
-              <div className="mt-2">
+              <div className="mt-2 flex items-center gap-1.5">
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${pill.cls}`}>
                   {pill.label}
                 </span>
+                {(notesByHousehold.get(hh.id) || 0) > 0 && (
+                  <StickyNote size={11} className={holdByHousehold.has(hh.id) ? "text-amber-500" : "text-slate-400"} />
+                )}
+                {dataQualityByHousehold && dataQualityByHousehold[hh.id]?.score < 60 && (
+                  <span title={dataQualityByHousehold[hh.id].flags.join("; ")}>
+                    <AlertTriangle size={11} className="text-amber-500" />
+                  </span>
+                )}
               </div>
             </button>
           );

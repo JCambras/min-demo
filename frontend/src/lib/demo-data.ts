@@ -180,7 +180,7 @@ function makeSFHouseholds(): SFHousehold[] {
     id: hh.id,
     name: hh.name,
     createdAt: hh.healthScore >= 80 ? daysAgo(120) : hh.healthScore >= 60 ? daysAgo(90) : hh.id === "hh-whitfield" ? daysAgo(18) : daysAgo(180),
-    description: `Assigned Advisor: ${hh.advisor}\nAccounts planned: ${hh.aum > 3_000_000 ? "Individual, Roth IRA, Trust" : "Individual, Roth IRA"}\nRevenue Config: avgAum=${hh.aum} bps=85`,
+    description: `Assigned Advisor: ${hh.advisor}\nAccounts planned: ${hh.aum > 3_000_000 ? "Individual, Roth IRA, Trust" : "Individual, Roth IRA"}${hh.id === "hh-chen" ? "\nAccount Type: Trust — Chen Family Irrevocable Trust" : hh.id === "hh-patel" ? "\nAccount Type: Entity — Patel Family Foundation (Endowment)" : ""}\nRevenue Config: avgAum=${hh.aum} bps=85`,
     advisorName: hh.advisor,
   }));
 }
@@ -313,4 +313,38 @@ export const DEMO_FSC_DATA = {
 /** Lookup a demo household's health data by ID. */
 export function getDemoHouseholdHealth(householdId: string): DemoHouseholdHealth | undefined {
   return DEMO_HOUSEHOLDS.find(h => h.id === householdId);
+}
+
+/** Demo reconciliation data for custodian-CRM matching. */
+export const DEMO_RECONCILIATION = {
+  matched: [
+    { custodialName: "Rivera, Carlos & Maria", crmHousehold: "Rivera Household", crmId: "hh-rivera", balance: 3_200_000 },
+    { custodialName: "Patel, Raj & Priya", crmHousehold: "Patel Household", crmId: "hh-patel", balance: 5_100_000 },
+    { custodialName: "Chen, Wei & Richards, Sarah", crmHousehold: "Chen/Richards Household", crmId: "hh-chen", balance: 6_300_000 },
+    { custodialName: "O'Brien, Patrick", crmHousehold: "O'Brien Household", crmId: "hh-obrien", balance: 2_400_000 },
+    { custodialName: "Jackson, Darnell", crmHousehold: "Jackson Household", crmId: "hh-jackson", balance: 2_800_000 },
+    { custodialName: "Thompson, Robert", crmHousehold: "Thompson Household", crmId: "hh-thompson", balance: 4_700_000 },
+  ],
+  orphanCustodial: [
+    { custodialName: "Garrison, William", balance: 1_400_000, notes: "Account at Schwab — no CRM match" },
+    { custodialName: "Martinez, Isabella", balance: 890_000, notes: "Account at Schwab — no CRM match" },
+  ],
+  orphanCrm: [
+    { crmHousehold: "Whitfield Household", crmId: "hh-whitfield", notes: "New client — account opening in progress" },
+  ],
+};
+
+/** Pre-seed demo household notes (called once on demo mode init). */
+export function seedDemoNotes() {
+  const KEY = "min-household-notes";
+  if (typeof window === "undefined") return;
+  try {
+    const existing = JSON.parse(localStorage.getItem(KEY) || "[]");
+    if (existing.length > 0) return; // already seeded
+  } catch { /* */ }
+  const demoNotes = [
+    { id: "demo-note-1", householdId: "hh-thompson", text: "Awaiting updated beneficiary forms from attorney — do not escalate until received.", author: "Sandra Ellis", createdAt: new Date(Date.now() - 5 * 86400000).toISOString(), pinned: false, category: "context" },
+    { id: "demo-note-2", householdId: "hh-jackson", text: "Client hospitalized — all pending items on hold per Brett.", author: "Emily Chen", createdAt: new Date(Date.now() - 3 * 86400000).toISOString(), pinned: true, category: "hold" },
+  ];
+  localStorage.setItem(KEY, JSON.stringify(demoNotes));
 }

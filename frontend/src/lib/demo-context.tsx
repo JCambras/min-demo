@@ -1,5 +1,6 @@
 "use client";
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { seedDemoNotes } from "./demo-data";
 
 // ─── Demo Mode Context ───────────────────────────────────────────────────
 // Provides demo mode state to the entire app.
@@ -51,6 +52,11 @@ export function DemoProvider({ children, sfConnected }: { children: ReactNode; s
       try { sessionStorage.setItem(STORAGE_KEY, "true"); } catch {}
     }
   }, [sfConnected]);
+
+  // Seed demo data when demo mode activates
+  useEffect(() => {
+    if (isDemoMode) seedDemoNotes();
+  }, [isDemoMode]);
 
   const toggleDemo = useCallback(() => {
     setIsDemoMode(prev => {

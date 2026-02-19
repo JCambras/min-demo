@@ -56,6 +56,40 @@ export function saveFirms(firms: ManagedFirm[]) {
   localStorage.setItem(FIRMS_KEY, JSON.stringify(firms));
 }
 
+// ─── Household Notes ──────────────────────────────────────────────────────
+
+export interface HouseholdNote {
+  id: string;
+  householdId: string;
+  text: string;
+  author: string;
+  createdAt: string;
+  pinned: boolean;
+  category: "general" | "hold" | "urgent" | "context";
+}
+
+const HOUSEHOLD_NOTES_KEY = "min-household-notes";
+
+export function loadNotes(householdId?: string): HouseholdNote[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const all: HouseholdNote[] = JSON.parse(localStorage.getItem(HOUSEHOLD_NOTES_KEY) || "[]");
+    return householdId ? all.filter(n => n.householdId === householdId) : all;
+  } catch { return []; }
+}
+
+export function saveNote(note: HouseholdNote) {
+  const all = loadNotes();
+  const idx = all.findIndex(n => n.id === note.id);
+  if (idx >= 0) all[idx] = note; else all.push(note);
+  localStorage.setItem(HOUSEHOLD_NOTES_KEY, JSON.stringify(all));
+}
+
+export function deleteNote(id: string) {
+  const all = loadNotes().filter(n => n.id !== id);
+  localStorage.setItem(HOUSEHOLD_NOTES_KEY, JSON.stringify(all));
+}
+
 export type FlowStep =
   | "context" | "client-type" | "search-existing"
   | "enter-client-p1" | "enter-client-p2"

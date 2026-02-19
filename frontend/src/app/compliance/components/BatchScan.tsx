@@ -1,9 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Loader2, Shield, AlertTriangle, Check, X, Download } from "lucide-react";
 import { callSF } from "@/lib/salesforce";
 import { runComplianceChecks } from "@/lib/compliance-engine";
-import type { CheckResult, SFHousehold, SFContact, SFTask } from "@/lib/compliance-engine";
+import type { CheckResult, SFHousehold, SFContact, SFTask, AccountType } from "@/lib/compliance-engine";
 import type { Screen, WorkflowContext } from "@/lib/types";
 
 interface BatchResult {
@@ -13,6 +13,19 @@ interface BatchResult {
   pass: number;
   warn: number;
   fail: number;
+}
+
+const BATCH_SCAN_KEY = "min-last-batch-scan";
+const CHUNK_SIZE = 3;
+
+function detectAccountType(desc: string): AccountType {
+  const d = desc.toLowerCase();
+  if (/trust|trustee/.test(d)) return "trust";
+  if (/entity|llc|corp|endowment|foundation/.test(d)) return "entity";
+  if (/ira|roth|401k|retirement|rmd/.test(d)) return "retirement";
+  if (/joint|jtwros|jtic/.test(d)) return "joint";
+  if (/individual/.test(d)) return "individual";
+  return "unknown";
 }
 
 export function BatchScan({ onBack, onNavigate, firmName }: {
@@ -30,12 +43,51 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
   const [individualPdfLoading, setIndividualPdfLoading] = useState(false);
   const [individualPdfProgress, setIndividualPdfProgress] = useState({ current: 0, total: 0 });
   const [individualPdfFailed, setIndividualPdfFailed] = useState(0);
+  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<string | null>(null);
+  const cancelRef = useRef(false);
+  const [cancelled, setCancelled] = useState(false);
+
+  // Check for cached results
+  const [showCachedOption, setShowCachedOption] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const cached = localStorage.getItem(BATCH_SCAN_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const age = Date.now() - (parsed.timestamp || 0);
+        return age < 24 * 60 * 60 * 1000; // less than 24 hours old
+      }
+    } catch { /* */ }
+    return false;
+  });
+
+  const loadCachedResults = () => {
+    try {
+      const cached = JSON.parse(localStorage.getItem(BATCH_SCAN_KEY) || "{}");
+      if (cached.results) {
+        setResults(cached.results);
+        setSkippedCount(cached.skippedCount || 0);
+        setLoading(false);
+      }
+    } catch { /* */ }
+  };
 
   // Start batch scan on mount
   const [started, setStarted] = useState(false);
-  if (!started) {
+  if (!started && !showCachedOption) {
     setStarted(true);
+    runBatchScan();
+  }
+
+  function runBatchScan() {
+    setStarted(true);
+    setShowCachedOption(false);
+    cancelRef.current = false;
+    setCancelled(false);
+    setLoading(true);
+
     (async () => {
+      const startTime = Date.now();
       try {
         const res = await callSF("queryTasks", { limit: 200 });
         if (!res.success) { setScanError("Failed to load households from Salesforce"); setLoading(false); return; }
@@ -43,40 +95,87 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
         setProgress({ current: 0, total: households.length });
         const batch: BatchResult[] = [];
         let skipped = 0;
-        for (let i = 0; i < households.length; i++) {
-          setProgress({ current: i + 1, total: households.length });
-          try {
-            const detail = await callSF("getHouseholdDetail", { householdId: households[i].id });
-            if (detail.success) {
-              const checks = runComplianceChecks(
-                { id: households[i].id, name: households[i].name, description: households[i].description || "", createdAt: households[i].createdAt },
-                (detail.contacts || []) as SFContact[],
-                (detail.tasks || []) as SFTask[],
-              );
-              batch.push({
-                household: households[i].name.replace(" Household", ""),
-                householdId: households[i].id,
-                checks,
-                pass: checks.filter(c => c.status === "pass").length,
-                warn: checks.filter(c => c.status === "warn").length,
-                fail: checks.filter(c => c.status === "fail").length,
-              });
-            } else {
-              skipped++;
-            }
-          } catch {
-            skipped++;
+
+        // Process in chunks of CHUNK_SIZE in parallel
+        for (let chunkStart = 0; chunkStart < households.length; chunkStart += CHUNK_SIZE) {
+          if (cancelRef.current) { setCancelled(true); break; }
+
+          const chunk = households.slice(chunkStart, chunkStart + CHUNK_SIZE);
+          const chunkResults = await Promise.allSettled(
+            chunk.map(async (hh) => {
+              const detail = await callSF("getHouseholdDetail", { householdId: hh.id });
+              if (detail.success) {
+                const detectedType = detectAccountType(hh.description || "");
+                const checks = runComplianceChecks(
+                  { id: hh.id, name: hh.name, description: hh.description || "", createdAt: hh.createdAt },
+                  (detail.contacts || []) as SFContact[],
+                  (detail.tasks || []) as SFTask[],
+                  undefined,
+                  detectedType,
+                );
+                return {
+                  household: hh.name.replace(" Household", ""),
+                  householdId: hh.id,
+                  checks,
+                  pass: checks.filter(c => c.status === "pass").length,
+                  warn: checks.filter(c => c.status === "warn").length,
+                  fail: checks.filter(c => c.status === "fail").length,
+                } as BatchResult;
+              }
+              return null;
+            })
+          );
+
+          for (const r of chunkResults) {
+            if (r.status === "fulfilled" && r.value) batch.push(r.value);
+            else skipped++;
+          }
+
+          const done = chunkStart + chunk.length;
+          setProgress({ current: done, total: households.length });
+
+          // Estimate time remaining
+          const elapsed = Date.now() - startTime;
+          const perItem = elapsed / done;
+          const remaining = (households.length - done) * perItem;
+          if (remaining > 1000) {
+            const mins = Math.ceil(remaining / 60000);
+            setEstimatedTimeRemaining(mins > 1 ? `~${mins} min remaining` : "< 1 min remaining");
+          } else {
+            setEstimatedTimeRemaining("Almost done...");
+          }
+
+          // Yield to main thread between chunks
+          if (chunkStart + CHUNK_SIZE < households.length) {
+            await new Promise<void>(resolve => {
+              if (typeof requestIdleCallback !== "undefined") {
+                requestIdleCallback(() => resolve());
+              } else {
+                setTimeout(resolve, 10);
+              }
+            });
           }
         }
+
         setSkippedCount(skipped);
         batch.sort((a, b) => b.fail - a.fail || b.warn - a.warn);
         setResults(batch);
+
+        // Persist results to localStorage
+        try {
+          localStorage.setItem(BATCH_SCAN_KEY, JSON.stringify({ results: batch, skippedCount: skipped, timestamp: Date.now() }));
+        } catch { /* quota exceeded — that's fine */ }
       } catch (err) {
         setScanError(err instanceof Error ? err.message : "Batch scan failed");
       }
       setLoading(false);
+      setEstimatedTimeRemaining(null);
     })();
   }
+
+  const handleCancel = () => {
+    cancelRef.current = true;
+  };
 
   const downloadBatchPDF = async () => {
     setPdfLoading(true);
@@ -163,6 +262,29 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
     setIndividualPdfLoading(false);
   };
 
+  // Show cached results option
+  if (showCachedOption && !started) {
+    return (
+      <div className="animate-fade-in text-center pt-8">
+        <Shield size={40} className="text-green-500 mx-auto mb-4" />
+        <h2 className="text-2xl font-light text-slate-900 mb-2">Previous Scan Available</h2>
+        <p className="text-sm text-slate-400 mb-6">A recent batch scan is cached. You can view those results or run a new scan.</p>
+        <div className="flex gap-3 justify-center">
+          <button onClick={loadCachedResults}
+            className="px-5 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors text-sm">
+            View Last Results
+          </button>
+          <button onClick={runBatchScan}
+            className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm">
+            Run New Scan
+          </button>
+          <button onClick={onBack}
+            className="px-5 py-3 rounded-xl border border-slate-200 text-slate-500 font-medium hover:bg-slate-50 transition-colors text-sm">Back</button>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="animate-fade-in text-center pt-8">
@@ -173,7 +295,14 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
           <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
             <div className="h-full bg-green-400 rounded-full transition-all duration-300" style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }} />
           </div>
+          {estimatedTimeRemaining && (
+            <p className="text-xs text-slate-400 mt-2">{estimatedTimeRemaining}</p>
+          )}
         </div>
+        <button onClick={handleCancel}
+          className="mt-4 px-4 py-2 rounded-xl border border-red-200 text-red-500 text-sm font-medium hover:bg-red-50 transition-colors">
+          Cancel Scan
+        </button>
       </div>
     );
   }
@@ -199,7 +328,7 @@ export function BatchScan({ onBack, onNavigate, firmName }: {
   return (
     <div className="animate-fade-in">
       <h2 className="text-3xl font-light text-slate-900 mb-2">Firm-Wide Compliance</h2>
-      <p className="text-slate-400 mb-6">{results.length} households scanned · {new Date().toLocaleDateString()}</p>
+      <p className="text-slate-400 mb-6">{results.length} households scanned · {new Date().toLocaleDateString()}{cancelled ? " (partial — scan cancelled)" : ""}</p>
 
       {skippedCount > 0 && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 mb-4 animate-fade-in">

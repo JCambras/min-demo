@@ -9,7 +9,9 @@ import { useDemoMode } from "@/lib/demo-context";
 import { getDemoHouseholdDetail, getDemoHouseholdHealth } from "@/lib/demo-data";
 import { MiniHealthRing } from "@/app/dashboard/components/DashboardPrimitives";
 import { WhyDecomposition } from "@/components/shared/WhyDecomposition";
-import type { Screen, WorkflowContext } from "@/lib/types";
+import type { Screen, WorkflowContext, HouseholdNote } from "@/lib/types";
+import { loadNotes, saveNote, deleteNote } from "@/lib/types";
+import { StickyNote, Plus, Trash2 } from "lucide-react";
 
 interface Contact {
   id: string; firstName: string; lastName: string;
@@ -83,6 +85,15 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
   const [showToastMsg, setShowToastMsg] = useState<string | null>(null);
 
   const demoHealth = isDemoMode ? getDemoHouseholdHealth(context.householdId) : undefined;
+
+  // ─── Household Notes ──
+  const [notes, setNotes] = useState<HouseholdNote[]>([]);
+  const [showNoteForm, setShowNoteForm] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [noteCategory, setNoteCategory] = useState<HouseholdNote["category"]>("general");
+  const reloadNotes = () => setNotes(loadNotes(context.householdId));
+  useEffect(() => { reloadNotes(); }, [context.householdId]);
+  const holdNotes = notes.filter(n => n.category === "hold");
 
   useEffect(() => {
     loadFamilyData();
@@ -177,6 +188,22 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
   const daysSinceOnboard = data?.household.createdAt
     ? Math.floor((Date.now() - new Date(data.household.createdAt).getTime()) / 86400000)
     : null;
+
+  // Data quality assessment
+  const dataQuality = useMemo(() => {
+    if (!data) return { score: 100, flags: [] as string[] };
+    let score = 100;
+    const flags: string[] = [];
+    const staleDays = lastActivity ? Math.floor((Date.now() - lastActivity.getTime()) / 86400000) : (daysSinceOnboard || 0);
+    if (staleDays >= 90) { score -= 30; flags.push(`No activity in ${staleDays} days`); }
+    if (!hasComplianceReview) { score -= 20; flags.push("No compliance review on file"); }
+    if (allTasks.length <= 1) { score -= 10; flags.push("Only 1 record — possible data gap"); }
+    const hasAcctOpening = allTasks.some(t => t.subject?.includes("Account opening") || t.subject?.includes("ACCOUNT"));
+    if (!hasAcctOpening) { score -= 10; flags.push("No financial account records"); }
+    const hasEmail = data.contacts.some(c => c.email);
+    if (!hasEmail) { score -= 15; flags.push("No email on any contact"); }
+    return { score: Math.max(0, score), flags };
+  }, [data, lastActivity, daysSinceOnboard, hasComplianceReview, allTasks]);
 
   if (loading) return (
     <div className="flex h-screen bg-surface items-center justify-center">
@@ -290,6 +317,86 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
               )}
             </div>
           )}
+
+          {/* Household Notes */}
+          <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
+              <StickyNote size={12} className="text-amber-500" />
+              <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Notes</p>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{notes.length}</span>
+              <div className="flex-1" />
+              <button onClick={() => setShowNoteForm(!showNoteForm)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition-colors">
+                <Plus size={12} /> Add note
+              </button>
+            </div>
+            {showNoteForm && (
+              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+                <textarea
+                  value={noteText} onChange={e => setNoteText(e.target.value)}
+                  placeholder="Add a note about this household..."
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2 h-20 resize-none focus:outline-none focus:ring-1 focus:ring-slate-300 mb-2"
+                />
+                <div className="flex items-center gap-2">
+                  <select value={noteCategory} onChange={e => setNoteCategory(e.target.value as HouseholdNote["category"])}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white">
+                    <option value="general">General</option>
+                    <option value="hold">Hold</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="context">Context</option>
+                  </select>
+                  <div className="flex-1" />
+                  <button onClick={() => { setShowNoteForm(false); setNoteText(""); }} className="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5">Cancel</button>
+                  <button onClick={() => {
+                    if (!noteText.trim()) return;
+                    saveNote({ id: `note-${Date.now()}`, householdId: context.householdId, text: noteText.trim(), author: "User", createdAt: new Date().toISOString(), pinned: false, category: noteCategory });
+                    setNoteText(""); setNoteCategory("general"); setShowNoteForm(false); reloadNotes();
+                  }} className="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800">Save</button>
+                </div>
+              </div>
+            )}
+            {notes.length === 0 && !showNoteForm && (
+              <p className="px-4 py-4 text-xs text-slate-400 text-center">No notes yet</p>
+            )}
+            {notes.map(n => (
+              <div key={n.id} className={`px-4 py-3 border-b border-slate-50 last:border-0 ${n.category === "hold" ? "bg-amber-50 border-l-4 border-l-amber-400" : n.pinned ? "bg-amber-50 border-l-4 border-l-amber-400" : ""}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-slate-700">{n.text}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${n.category === "hold" ? "bg-amber-100 text-amber-600" : n.category === "urgent" ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-500"}`}>{n.category}</span>
+                      <span className="text-[10px] text-slate-400">{n.author} · {new Date(n.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => { deleteNote(n.id); reloadNotes(); }} className="text-slate-300 hover:text-red-400 transition-colors flex-shrink-0 mt-0.5">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Data Quality Warning */}
+          {dataQuality.score < 60 && dataQuality.flags.length > 0 && (
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+              <AlertTriangle size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">Data Quality Warning</p>
+                <p className="text-xs text-amber-600 mt-1">{dataQuality.flags.join(". ")}. Health scores may be unreliable.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Hold Notes Banner */}
+          {holdNotes.length > 0 && holdNotes.map(n => (
+            <div key={n.id} className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+              <Clock size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">On Hold</p>
+                <p className="text-xs text-amber-600 mt-1">{n.text}</p>
+                <p className="text-[10px] text-amber-400 mt-1">{n.author} · {new Date(n.createdAt).toLocaleDateString()}</p>
+              </div>
+            </div>
+          ))}
 
           {/* PTE Warning */}
           {parsed?.pte && (
