@@ -153,12 +153,20 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
         const cached = await fetch("/api/salesforce/discover").then(r => r.json()).catch(() => null);
         if (cancelled) return;
 
-        // If we have a cached mapping, fast-forward through discovery
+        // If we have a cached mapping, fast-forward through discovery (staggered 1s each)
         if (cached?.success && cached?.mapping) {
           advance(0, "done");
+          await sleep(1000);
+          if (cancelled) return;
           advance(1, "done");
+          await sleep(1000);
+          if (cancelled) return;
           advance(2, "done", "Using cached discovery");
+          await sleep(1000);
+          if (cancelled) return;
           advance(3, "done");
+          await sleep(1000);
+          if (cancelled) return;
           advance(4, "done", "Ready");
           await sleep(600);
           if (!cancelled) setDone(true);
@@ -170,7 +178,7 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
       advance(0, "done");
       advance(1, "active");
 
-      await sleep(400);
+      await sleep(1000);
       if (cancelled) return;
       advance(1, "done");
       advance(2, "active");
@@ -191,7 +199,7 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
         advance(2, "done", hr ? `${hr.householdCount ?? 0} households, ${hr.contactCount ?? 0} contacts` : undefined);
         advance(3, "active");
 
-        await sleep(500);
+        await sleep(1000);
         if (cancelled) return;
 
         const riskNote = hr?.automationRiskLevel === "high" ? "Some automation risks detected"
@@ -210,7 +218,7 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
           setHealthSummary(parts.join(" · "));
         }
 
-        await sleep(600);
+        await sleep(1000);
         if (cancelled) return;
         advance(4, "done", "Ready");
 

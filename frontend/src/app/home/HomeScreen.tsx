@@ -299,11 +299,16 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   }, [activeTriageItems.length, resolvedTriageIds.size, snoozedTriageIds.size]);
 
   // ── Triage action handlers ──
-  const handleTriageResolve = (id: string) => {
-    setResolvedTriageIds(prev => { const s = new Set(prev); s.add(id); return s; });
+  const handleTriageResolve = (item: { id: string; category: string; householdId?: string; householdName?: string }) => {
     setExpandedTriageId(null);
     if (!hasInteracted) setHasInteracted(true);
-    showToast("Item resolved");
+    // Navigate to the relevant workflow screen based on category
+    const screen: Screen = item.category === "compliance" ? "compliance" : "family";
+    const ctx: WorkflowContext = {
+      householdId: item.householdId || "",
+      familyName: (item.householdName || "").replace(" Household", ""),
+    };
+    goTo(screen, ctx);
   };
   const handleTriageDismiss = (id: string) => {
     setResolvedTriageIds(prev => { const s = new Set(prev); s.add(id); return s; });
@@ -598,9 +603,9 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                       )}
                       {/* Action buttons — Resolve, Snooze, Dismiss */}
                       <div className="flex items-center gap-2 mt-2.5">
-                        <button onClick={() => handleTriageResolve(item.id)}
+                        <button onClick={() => handleTriageResolve(item)}
                           className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors">
-                          Resolve
+                          {item.action}
                         </button>
                         <button onClick={() => setExpandedTriageId(isExpanded ? null : item.id)}
                           className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors ${isExpanded ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
@@ -733,18 +738,6 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         })()}
       </div>)}
 
-      {/* Action Grid */}
-      <div className={`grid grid-cols-2 ${actions.length > 4 ? "sm:grid-cols-3" : ""} gap-3 mb-8`}>
-        {actions.map(a => (<button key={a.id} onClick={() => handleAction(a.id)}
-          className="group flex flex-col items-start gap-3 p-5 rounded-2xl bg-white border border-slate-200/80 hover:border-slate-400 hover:shadow-md transition-all text-left">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-slate-100 text-slate-500 group-hover:bg-slate-900 group-hover:text-white transition-all"><a.Icon size={22} strokeWidth={1.5} /></div>
-          <div>
-            <p className="text-base font-semibold text-slate-700 group-hover:text-slate-900">{a.label}</p>
-            <p className="text-sm text-slate-400 mt-0.5">{a.desc}</p>
-          </div>
-        </button>))}
-      </div>
-
       {/* Search for Family */}
       <div className="mb-6 relative">
         <div className="relative">
@@ -763,16 +756,16 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         </div>)}
       </div>
 
-      {/* Regulatory Feed + Team Training */}
-      <div className="mb-8 space-y-6">
-        <RegulatoryFeed collapsed={!regOpen} onToggle={() => setRegOpen(!regOpen)} onAddCheck={(label, keyword) => {
-          const existing = loadCustomChecks();
-          const alreadyExists = existing.some(c => c.keyword === keyword);
-          if (!alreadyExists) {
-            saveCustomChecks([...existing, { id: Date.now().toString(36), label, keyword, regulation: "Regulatory Update", whyItMatters: `Added from regulatory feed: ${label}`, failStatus: "warn" }]);
-          }
-        }} />
-        {role === "principal" && <TeamTraining onNavigate={goTo} advisorName={advisorName} />}
+      {/* Action Grid */}
+      <div className={`grid grid-cols-2 ${actions.length > 4 ? "sm:grid-cols-3" : ""} gap-3 mb-8`}>
+        {actions.map(a => (<button key={a.id} onClick={() => handleAction(a.id)}
+          className="group flex flex-col items-start gap-3 p-5 rounded-2xl bg-white border border-slate-200/80 hover:border-slate-400 hover:shadow-md transition-all text-left">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-slate-100 text-slate-500 group-hover:bg-slate-900 group-hover:text-white transition-all"><a.Icon size={22} strokeWidth={1.5} /></div>
+          <div>
+            <p className="text-base font-semibold text-slate-700 group-hover:text-slate-900">{a.label}</p>
+            <p className="text-sm text-slate-400 mt-0.5">{a.desc}</p>
+          </div>
+        </button>))}
       </div>
 
       {/* Recent Activity — collapsed by default */}
@@ -789,6 +782,18 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           ))}
         </div>
       )}
+
+      {/* Regulatory Feed + Team Training */}
+      <div className="mb-8 space-y-6">
+        <RegulatoryFeed collapsed={!regOpen} onToggle={() => setRegOpen(!regOpen)} onAddCheck={(label, keyword) => {
+          const existing = loadCustomChecks();
+          const alreadyExists = existing.some(c => c.keyword === keyword);
+          if (!alreadyExists) {
+            saveCustomChecks([...existing, { id: Date.now().toString(36), label, keyword, regulation: "Regulatory Update", whyItMatters: `Added from regulatory feed: ${label}`, failStatus: "warn" }]);
+          }
+        }} />
+        {role === "principal" && <TeamTraining onNavigate={goTo} advisorName={advisorName} />}
+      </div>
 
       {/* Footer */}
       <div className="flex items-center justify-center gap-3 text-xs text-slate-500 font-medium">
