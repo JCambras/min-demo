@@ -209,8 +209,15 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const [regOpen, setRegOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   // ── Triage interaction state (Tweaks 2,3,5,8,9,10,11) ──
-  const [resolvedTriageIds, setResolvedTriageIds] = useState<Set<string>>(new Set());
-  const [snoozedTriageIds, setSnoozedTriageIds] = useState<Set<string>>(new Set());
+  // Persist resolved/snoozed IDs to sessionStorage so page refresh doesn't restore them
+  const [resolvedTriageIds, setResolvedTriageIds] = useState<Set<string>>(() => {
+    try { const raw = sessionStorage.getItem("min_triage_resolved"); return raw ? new Set(JSON.parse(raw)) : new Set(); } catch { return new Set(); }
+  });
+  const [snoozedTriageIds, setSnoozedTriageIds] = useState<Set<string>>(() => {
+    try { const raw = sessionStorage.getItem("min_triage_snoozed"); return raw ? new Set(JSON.parse(raw)) : new Set(); } catch { return new Set(); }
+  });
+  useEffect(() => { try { sessionStorage.setItem("min_triage_resolved", JSON.stringify([...resolvedTriageIds])); } catch {} }, [resolvedTriageIds]);
+  useEffect(() => { try { sessionStorage.setItem("min_triage_snoozed", JSON.stringify([...snoozedTriageIds])); } catch {} }, [snoozedTriageIds]);
   const [expandedTriageId, setExpandedTriageId] = useState<string | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showEmptyState, setShowEmptyState] = useState(false);
@@ -358,14 +365,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   };
 
   const handleAction = (id: string) => {
-    if (id === "open") dispatch({ type: "SET_SCREEN", screen: "flow" });
-    else if (id === "onboard") dispatch({ type: "SET_SCREEN", screen: "onboard" });
-    else if (id === "dashboard") dispatch({ type: "SET_SCREEN", screen: "dashboard" });
-    else if (id === "taskManager") dispatch({ type: "SET_SCREEN", screen: "taskManager" });
-    else if (id === "workflows") dispatch({ type: "SET_SCREEN", screen: "workflows" });
-    else if (id === "money") dispatch({ type: "SET_SCREEN", screen: "money" });
-    else if (id === "documents") dispatch({ type: "SET_SCREEN", screen: "documents" });
-    else goTo(id as Screen);
+    goTo(id as Screen);
   };
 
   // ── Task completion from stat panels ──

@@ -729,7 +729,7 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
 
   switch (screen) {
     case "flow": return wrap(<FlowScreen onExit={goHome} initialClient={handoff || undefined} onNavigate={goTo} />, "Account opening");
-    case "onboard": return wrap(<OnboardScreen onExit={goHome} onOpenAccounts={(p1, p2, hasP2) => { dispatch({ type: "SET_HANDOFF", handoff: { p1, p2, hasP2 } }); dispatch({ type: "SET_SCREEN", screen: "flow" }); }} onNavigate={goTo} defaultAdvisor={advisorName} />, "Onboarding");
+    case "onboard": return wrap(<OnboardScreen onExit={goHome} onOpenAccounts={(p1, p2, hasP2) => { dispatch({ type: "SET_HANDOFF", handoff: { p1, p2, hasP2 } }); goTo("flow"); }} onNavigate={goTo} defaultAdvisor={advisorName} />, "Onboarding");
     case "compliance": return wrap(<ComplianceScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} firmName={FIRM_NAME} />, "Compliance");
     case "briefing": return wrap(<BriefingScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Briefing");
     case "meeting": return wrap(<MeetingScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Meeting");
@@ -739,10 +739,28 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
     case "workflows": return wrap(<WorkflowScreen onExit={goHome} onNavigate={goTo} />, "Workflows");
     case "money": return wrap(<MoneyScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Money Movement");
     case "documents": return wrap(<DocumentScreen onExit={goBack} initialContext={wfCtx} onNavigate={goTo} />, "Documents");
-    case "portal": return wfCtx ? wrap(<PortalScreen onExit={goBack} context={wfCtx} />, "Client Portal") : null;
+    case "portal": return wfCtx ? wrap(<PortalScreen onExit={goBack} context={wfCtx} />, "Client Portal") : (
+      <div className="flex h-screen bg-surface items-center justify-center">
+        <div className="max-w-sm text-center">
+          <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4"><AlertTriangle size={24} className="text-slate-400" /></div>
+          <h2 className="text-lg font-medium text-slate-900 mb-2">No household selected</h2>
+          <p className="text-sm text-slate-400 mb-6">Select a household first to view the client portal.</p>
+          <button onClick={goHome} className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors">Back to Home</button>
+        </div>
+      </div>
+    );
     case "activity": return wrap(<ActivityFeedScreen onExit={goHome} onNavigate={goTo} />, "Activity Feed");
     case "audit": return wrap(<AuditScreen onExit={goHome} onNavigate={goTo} />, "Audit Trail");
-    case "family": return wfCtx ? wrap(<FamilyScreen onExit={goBack} context={wfCtx} onNavigate={goTo} />, "Family overview") : null;
+    case "family": return wfCtx ? wrap(<FamilyScreen onExit={goBack} context={wfCtx} onNavigate={goTo} />, "Family overview") : (
+      <div className="flex h-screen bg-surface items-center justify-center">
+        <div className="max-w-sm text-center">
+          <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4"><AlertTriangle size={24} className="text-slate-400" /></div>
+          <h2 className="text-lg font-medium text-slate-900 mb-2">No household selected</h2>
+          <p className="text-sm text-slate-400 mb-6">Search for a family or select one from the dashboard.</p>
+          <button onClick={goHome} className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors">Back to Home</button>
+        </div>
+      </div>
+    );
     case "taskManager": return wrap(<TaskManager stats={state.stats} onBack={goHome} goTo={goTo} showToast={showToast} />, "Task manager");
     case "settings": return <ErrorBoundary fallbackLabel="Settings error."><SettingsScreen onExit={goHome} /></ErrorBoundary>;
     case "home": break; // falls through to HomeScreen render below

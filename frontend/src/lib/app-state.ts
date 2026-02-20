@@ -149,7 +149,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const newStack = state.screen !== "home"
         ? [...state.navStack, { screen: state.screen, ctx: ctxForStack }]
         : state.navStack;
-      return { ...state, screen: action.screen, wfCtx: action.ctx || null, navStack: newStack };
+      return { ...state, screen: action.screen, wfCtx: action.ctx ?? state.wfCtx, navStack: newStack };
     }
     case "GO_BACK": {
       if (state.navStack.length > 0) {
