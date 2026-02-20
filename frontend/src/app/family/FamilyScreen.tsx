@@ -18,6 +18,37 @@ interface Contact {
   email: string; phone: string;
 }
 
+// ─── Tweak 1: Tap-to-reveal provenance component ──
+function ProvenanceValue({ source, children }: {
+  source?: string;
+  children: React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (!source) return <>{children}</>;
+  return (
+    <span className="inline-block">
+      <button
+        onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+        className="text-left"
+        style={{ borderBottom: expanded ? "none" : "1px dotted #E5E7EB" }}
+      >
+        {children}
+      </button>
+      <span
+        style={{
+          display: "block",
+          opacity: expanded ? 1 : 0,
+          height: expanded ? "auto" : 0,
+          overflow: "hidden",
+          transition: "opacity 150ms ease",
+        }}
+      >
+        <span className="text-[10px] text-slate-400">{source}</span>
+      </span>
+    </span>
+  );
+}
+
 interface Task {
   id: string; subject: string; status: string;
   priority: string; createdAt: string; dueDate: string;
@@ -232,7 +263,10 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                   <p className="text-lg font-light text-slate-900">Health Score: {demoHealth.healthScore}</p>
                   <p className="text-xs text-slate-400">
                     {demoHealth.status === "on-track" ? "On track" : demoHealth.status === "needs-attention" ? "Needs attention" : "At risk"}
-                    {" · "}${(demoHealth.aum / 1_000_000).toFixed(1)}M AUM
+                    {" · "}
+                    <ProvenanceValue source="Schwab Advisor Services · synced today">
+                      ${(demoHealth.aum / 1_000_000).toFixed(1)}M AUM
+                    </ProvenanceValue>
                   </p>
                 </div>
               </div>
@@ -422,9 +456,18 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                     <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><Users size={16} /></div>
                     <div>
                       <p className="text-sm font-medium text-slate-700">{c.firstName} {c.lastName}</p>
+                      {/* Tweak 1: Tap-to-reveal provenance on contact info */}
                       <div className="flex items-center gap-3 text-xs text-slate-400">
-                        {c.email && <span className="inline-flex items-center gap-1"><Mail size={10} />{c.email}</span>}
-                        {c.phone && <span className="inline-flex items-center gap-1"><Phone size={10} />{c.phone}</span>}
+                        {c.email && (
+                          <ProvenanceValue source="CRM (Salesforce) · last updated">
+                            <span className="inline-flex items-center gap-1"><Mail size={10} />{c.email}</span>
+                          </ProvenanceValue>
+                        )}
+                        {c.phone && (
+                          <ProvenanceValue source="CRM (Salesforce) · on file">
+                            <span className="inline-flex items-center gap-1"><Phone size={10} />{c.phone}</span>
+                          </ProvenanceValue>
+                        )}
                       </div>
                     </div>
                   </div>

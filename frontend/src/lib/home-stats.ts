@@ -27,7 +27,19 @@ export interface Insight {
   action?: string;
 }
 
+export interface TriageSnoozeOption {
+  label: string;
+  date?: string; // ISO date string or descriptive date
+}
+
+export interface TriageSource {
+  system: string;   // e.g., "Schwab portal", "CRM (Redtail)"
+  timestamp: string; // e.g., "7:04 AM today", "Nov 12, 2025"
+  fresh?: boolean;   // controls opacity — stale sources appear more muted
+}
+
 export interface TriageItem {
+  id: string;
   urgency: "now" | "today" | "this-week";
   label: string;
   reason: string;
@@ -36,6 +48,8 @@ export interface TriageItem {
   householdName?: string;
   action: string;
   category: "overdue" | "unsigned" | "compliance" | "followup" | "stale";
+  snoozeOptions?: TriageSnoozeOption[];
+  sources?: TriageSource[];
 }
 
 export interface HomeStats {
@@ -268,16 +282,76 @@ export function buildHomeStats(
   // ── Triage: "do this before noon" prioritized queue ──
   const triage: TriageItem[] = [];
   const hhShort = (n?: string) => (n || "").replace(" Household", "");
+  let triageIdx = 0;
+
+  // Helper: compute contextual snooze options based on item
+  const defaultSnooze: TriageSnoozeOption[] = [
+    { label: "Tomorrow" },
+    { label: "Next Monday" },
+    { label: "In 2 weeks" },
+  ];
+
+  const computeSnooze = (t: SFTask, category: string): TriageSnoozeOption[] => {
+    // Patel NIGO item (unsigned DocuSign)
+    if (t.householdId === "hh-patel" && category === "unsigned") {
+      return [
+        { label: "Tomorrow" },
+        { label: "Before account submission (Feb 21)", date: "2026-02-21" },
+        { label: "End of week" },
+      ];
+    }
+    // Chen RMD item (has deadline)
+    if (t.householdId === "hh-chen" && t.subject.includes("RMD")) {
+      return [
+        { label: "2 weeks before deadline (Mar 1)", date: "2026-03-01" },
+        { label: "3 days before deadline (Mar 10)", date: "2026-03-10" },
+        { label: "Tomorrow" },
+      ];
+    }
+    // Items with a due date — offer relative options
+    if (t.dueDate) {
+      const dueDate = new Date(t.dueDate);
+      const twoWeeksBefore = new Date(dueDate.getTime() - 14 * msDay);
+      const threeDaysBefore = new Date(dueDate.getTime() - 3 * msDay);
+      if (twoWeeksBefore.getTime() > now) {
+        return [
+          { label: `2 weeks before (${twoWeeksBefore.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, date: twoWeeksBefore.toISOString() },
+          { label: `3 days before (${threeDaysBefore.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, date: threeDaysBefore.toISOString() },
+          { label: "Tomorrow" },
+        ];
+      }
+    }
+    return defaultSnooze;
+  };
+
+  // Helper: generate source lines from task data
+  const makeSources = (t: SFTask): TriageSource[] => {
+    const sources: TriageSource[] = [];
+    const createdDays = daysSince(t.createdAt);
+    const createdStr = createdDays <= 1 ? "today" : createdDays <= 2 ? "yesterday" : formatDate(t.createdAt);
+    if (t.subject.includes("DOCU")) {
+      sources.push({ system: "DocuSign", timestamp: createdStr, fresh: createdDays <= 3 });
+    } else {
+      sources.push({ system: "Salesforce", timestamp: createdStr, fresh: createdDays <= 7 });
+    }
+    if (t.householdName) {
+      sources.push({ system: "CRM (Salesforce)", timestamp: `${hhShort(t.householdName)}`, fresh: true });
+    }
+    return sources;
+  };
 
   // High-priority overdue → urgency "now"
   for (const t of highPriOverdue.slice(0, 3)) {
     const days = daysSince(t.dueDate);
     triage.push({
+      id: `triage-${triageIdx++}`,
       urgency: "now", category: "overdue",
       label: humanizeSubject(t.subject, t.householdName),
       reason: `High priority · ${days}d overdue`,
       url: `${instanceUrl}/${t.id}`, householdId: t.householdId, householdName: t.householdName,
       action: "Complete task",
+      sources: makeSources(t),
+      snoozeOptions: computeSnooze(t, "overdue"),
     });
   }
 
@@ -285,11 +359,14 @@ export function buildHomeStats(
   for (const t of unsigned.filter(u => daysSince(u.createdAt) >= 5).slice(0, 2)) {
     const days = daysSince(t.createdAt);
     triage.push({
+      id: `triage-${triageIdx++}`,
       urgency: "now", category: "unsigned",
       label: `${hhShort(t.householdName)}: DocuSign awaiting signature`,
       reason: `Unsigned ${days} days`,
       url: `${instanceUrl}/${t.id}`, householdId: t.householdId, householdName: t.householdName,
       action: "Follow up",
+      sources: makeSources(t),
+      snoozeOptions: computeSnooze(t, "unsigned"),
     });
   }
 
@@ -298,11 +375,14 @@ export function buildHomeStats(
   for (const t of normalOverdue) {
     const days = daysSince(t.dueDate);
     triage.push({
+      id: `triage-${triageIdx++}`,
       urgency: "today", category: "overdue",
       label: humanizeSubject(t.subject, t.householdName),
       reason: `${days}d overdue · ${hhShort(t.householdName)}`,
       url: `${instanceUrl}/${t.id}`, householdId: t.householdId, householdName: t.householdName,
       action: "Complete task",
+      sources: makeSources(t),
+      snoozeOptions: computeSnooze(t, "overdue"),
     });
   }
 
@@ -315,11 +395,14 @@ export function buildHomeStats(
   for (const t of dueSoon) {
     const isToday = new Date(t.dueDate).toDateString() === new Date().toDateString();
     triage.push({
+      id: `triage-${triageIdx++}`,
       urgency: "today", category: "followup",
       label: humanizeSubject(t.subject, t.householdName),
       reason: isToday ? `Due today · ${hhShort(t.householdName)}` : `Due tomorrow · ${hhShort(t.householdName)}`,
       url: `${instanceUrl}/${t.id}`, householdId: t.householdId, householdName: t.householdName,
       action: "Complete task",
+      sources: makeSources(t),
+      snoozeOptions: computeSnooze(t, "followup"),
     });
   }
 
@@ -329,12 +412,21 @@ export function buildHomeStats(
     for (const h of oldest) {
       const days = Math.floor((now - new Date(h.createdAt).getTime()) / msDay);
       if (days >= 7) {
+        // Thompson inactivity → specific snooze options
+        const snooze = h.id === "hh-thompson"
+          ? [{ label: "Tomorrow" }, { label: "Next Monday" }, { label: "In 2 weeks" }]
+          : defaultSnooze;
         triage.push({
+          id: `triage-${triageIdx++}`,
           urgency: "this-week", category: "compliance",
           label: `${hhShort(h.name)}: no compliance review`,
           reason: `Client for ${days}d · never reviewed`,
           url: `${instanceUrl}/${h.id}`, householdId: h.id, householdName: h.name,
           action: "Run review",
+          sources: [
+            { system: "CRM (Salesforce)", timestamp: `client for ${days}d`, fresh: false },
+          ],
+          snoozeOptions: snooze,
         });
       }
     }
