@@ -92,6 +92,7 @@ export function AuditScreen({ onExit, onNavigate }: {
 }) {
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<AuditRecord[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [resultFilter, setResultFilter] = useState<ResultFilter>("all");
   const [actionFilter, setActionFilter] = useState("all");
@@ -109,7 +110,9 @@ export function AuditScreen({ onExit, onNavigate }: {
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
           setRecords(auditRecords);
         }
-      } catch {}
+      } catch {
+        setLoadError("Could not load audit records. Check your connection and try again.");
+      }
       setLoading(false);
     })();
   }, []);
@@ -139,6 +142,20 @@ export function AuditScreen({ onExit, onNavigate }: {
     </div>
   );
 
+  if (loadError) return (
+    <div className="flex h-screen bg-surface items-center justify-center">
+      <div className="max-w-sm text-center">
+        <AlertTriangle size={24} className="mx-auto text-amber-400 mb-3" />
+        <p className="text-sm text-slate-700 font-medium mb-1">Audit trail unavailable</p>
+        <p className="text-xs text-slate-500 mb-4">{loadError}</p>
+        <div className="flex items-center justify-center gap-3">
+          <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors">Retry</button>
+          <button onClick={onExit} className="px-4 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm font-medium hover:bg-slate-50 transition-colors">Back</button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-screen bg-surface">
       <div className="w-full flex flex-col">
@@ -150,6 +167,7 @@ export function AuditScreen({ onExit, onNavigate }: {
             <div className="flex items-center justify-between mb-6">
               <p className="text-slate-400 text-sm">SEC Rule 17a-4 compliant audit log of all Min actions.</p>
               <button onClick={() => exportAuditPDF(filtered, filtered.length > 0 ? `${new Date(filtered[filtered.length - 1].timestamp).toLocaleDateString()} – ${new Date(filtered[0].timestamp).toLocaleDateString()}` : "N/A")}
+                aria-label="Export audit trail"
                 className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors">
                 <Download size={12} /> Export
               </button>
@@ -196,7 +214,7 @@ export function AuditScreen({ onExit, onNavigate }: {
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input className="w-full h-10 rounded-xl border border-slate-200 bg-white pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                 placeholder="Search audit records..." value={filter} onChange={e => setFilter(e.target.value)} />
-              {filter && <button onClick={() => setFilter("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={14} /></button>}
+              {filter && <button onClick={() => setFilter("")} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={14} /></button>}
             </div>
 
             {/* Records */}
@@ -208,48 +226,51 @@ export function AuditScreen({ onExit, onNavigate }: {
               </div>
             ) : (
               <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                {/* Header */}
-                <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-slate-50 border-b border-slate-100 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  <div className="col-span-1">Status</div>
-                  <div className="col-span-3">Action</div>
-                  <div className="col-span-2">Household</div>
-                  <div className="col-span-2">Actor</div>
-                  <div className="col-span-2">Time</div>
-                  <div className="col-span-2">Detail</div>
-                </div>
-                <div className="divide-y divide-slate-50">
-                  {filtered.slice(0, showCount).map((r, i) => (
-                    <div key={`${r.id}-${i}`} className="grid grid-cols-12 gap-2 px-4 py-3 hover:bg-slate-50/50 transition-colors items-center group">
-                      <div className="col-span-1">
-                        {r.result === "success"
-                          ? <CheckCircle size={14} className="text-green-500" />
-                          : <AlertTriangle size={14} className="text-red-500" />
-                        }
-                      </div>
-                      <div className="col-span-3">
-                        <p className="text-sm text-slate-700 font-medium truncate">{r.action}</p>
-                      </div>
-                      <div className="col-span-2">
-                        {r.householdId && onNavigate ? (
-                          <button onClick={() => onNavigate("family", { householdId: r.householdId!, familyName: r.household })}
-                            className="text-xs text-blue-600 hover:underline truncate block">{r.household || "—"}</button>
-                        ) : (
-                          <span className="text-xs text-slate-400 truncate block">{r.household || "—"}</span>
-                        )}
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-xs text-slate-500 truncate block">{r.actor || "—"}</span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-xs text-slate-400">{new Date(r.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                        <span className="text-xs text-slate-500 ml-1">{new Date(r.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-xs text-slate-400 truncate block">{r.detail || "—"}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <table className="w-full" role="table">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                      <th className="px-4 py-2 text-left w-[8%]">Status</th>
+                      <th className="px-2 py-2 text-left w-[25%]">Action</th>
+                      <th className="px-2 py-2 text-left w-[17%]">Household</th>
+                      <th className="px-2 py-2 text-left w-[17%]">Actor</th>
+                      <th className="px-2 py-2 text-left w-[17%]">Time</th>
+                      <th className="px-2 py-2 text-left w-[16%]">Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {filtered.slice(0, showCount).map((r, i) => (
+                      <tr key={`${r.id}-${i}`} className="hover:bg-slate-50/50 transition-colors group">
+                        <td className="px-4 py-3">
+                          {r.result === "success"
+                            ? <CheckCircle size={14} className="text-green-500" aria-label="Success" />
+                            : <AlertTriangle size={14} className="text-red-500" aria-label="Error" />
+                          }
+                        </td>
+                        <td className="px-2 py-3">
+                          <p className="text-sm text-slate-700 font-medium truncate">{r.action}</p>
+                        </td>
+                        <td className="px-2 py-3">
+                          {r.householdId && onNavigate ? (
+                            <button onClick={() => onNavigate("family", { householdId: r.householdId!, familyName: r.household })}
+                              className="text-xs text-blue-600 hover:underline truncate block">{r.household || "—"}</button>
+                          ) : (
+                            <span className="text-xs text-slate-400 truncate block">{r.household || "—"}</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-3">
+                          <span className="text-xs text-slate-500 truncate block">{r.actor || "—"}</span>
+                        </td>
+                        <td className="px-2 py-3">
+                          <span className="text-xs text-slate-400">{new Date(r.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                          <span className="text-xs text-slate-500 ml-1">{new Date(r.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+                        </td>
+                        <td className="px-2 py-3">
+                          <span className="text-xs text-slate-400 truncate block">{r.detail || "—"}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
 
                 {filtered.length > showCount && (
                   <button onClick={() => setShowCount(s => s + 50)}

@@ -227,7 +227,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
           id: h.id, name: h.name, description: h.description || "", createdDate: new Date(h.createdAt).toLocaleDateString(),
           contactNames: h.contacts?.map(c => c.firstName).filter(Boolean).join(" & ") || "",
         })) });
-      } catch { /* swallow */ }
+      } catch (err) { console.error("[BriefingScreen] search failed:", err); }
       d({ type: "SET_SEARCHING", v: false });
     }, 400);
     return () => clearTimeout(t);
@@ -389,7 +389,7 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
                     {s.intel.hasComplianceReview ? (
                       <div className="flex items-start gap-3">
                         <div className="w-6 h-6 rounded-full bg-green-50 flex items-center justify-center flex-shrink-0 mt-0.5"><Shield size={12} className="text-green-500" /></div>
-                        <div><p className="text-sm text-slate-700">Compliance review on file</p><p className="text-xs text-slate-400">Last: {s.intel.complianceReviews[s.intel.complianceReviews.length-1]?.result} on {s.intel.complianceReviews[s.intel.complianceReviews.length-1]?.date}</p></div>
+                        <div><p className="text-sm text-slate-700">Compliance review on file</p><p className="text-xs text-slate-400">Last: {s.intel.complianceReviews.length > 0 ? `${s.intel.complianceReviews[s.intel.complianceReviews.length-1].result} on ${s.intel.complianceReviews[s.intel.complianceReviews.length-1].date}` : "N/A"}</p></div>
                       </div>
                     ) : (
                       <div className="flex items-start gap-3">

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { FileText, BookOpen, MessageSquare, Briefcase, Shield, Clock, CheckCircle, Send, ExternalLink, Loader2, Users, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp, Building2, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
@@ -126,6 +126,9 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
   useEffect(() => { reloadNotes(); }, [context.householdId]);
   const holdNotes = notes.filter(n => n.category === "hold");
 
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+
   useEffect(() => {
     loadFamilyData();
   }, [context.householdId]);
@@ -144,6 +147,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
     // Demo mode: use seeded data
     if (isDemoMode) {
       const demo = getDemoHouseholdDetail(context.householdId);
+      if (!mountedRef.current) return;
       if (demo) {
         setData({
           household: demo.household as FamilyData["household"],
@@ -160,6 +164,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
 
     try {
       const res = await callSF("getHouseholdDetail", { householdId: context.householdId });
+      if (!mountedRef.current) return;
       if (res.success) {
         setData({
           household: (res.household as FamilyData["household"]) || { id: context.householdId, name: context.familyName + " Household", createdAt: "" },
@@ -171,9 +176,9 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
         setError("Could not load family data.");
       }
     } catch {
-      setError("Could not load family data.");
+      if (mountedRef.current) setError("Could not load family data.");
     }
-    setLoading(false);
+    if (mountedRef.current) setLoading(false);
   };
 
   const handleCompleteTask = async (taskId: string) => {

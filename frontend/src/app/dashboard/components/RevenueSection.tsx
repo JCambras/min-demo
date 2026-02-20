@@ -52,7 +52,7 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
             {sourceBadge(mode)}
             <span className="text-emerald-400 ml-0.5">▾</span>
           </p>
-          <p className="text-2xl font-light tabular-nums text-emerald-700 mt-1">${(data.revenue.estimatedAum / 1_000_000).toFixed(0)}M</p>
+          <p className="text-2xl font-light tabular-nums text-emerald-700 mt-1">${(data.revenue.estimatedAum / 1_000_000).toFixed(1)}M</p>
         </button>
         <button onClick={() => toggleDetail("rev-fee")} className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
           <p className="text-[10px] text-emerald-600 font-medium uppercase tracking-wider">Annual Fee Income<span className="text-emerald-400 ml-0.5">▾</span></p>
@@ -82,7 +82,7 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
         </p>
       </DetailDrawer>
       <DetailDrawer id="rev-fee" activeId={detailPanel}>
-        <p className="text-xs text-slate-600">Annual fee income = ${(data.revenue.estimatedAum / 1_000_000).toFixed(0)}M AUM × <strong>{data.assumptions.feeScheduleBps} basis points</strong> blended advisory fee = <strong>${(data.revenue.monthlyFeeIncome / 1_000).toFixed(0)}K/month</strong>. Adjust fee schedule to match your tiered pricing.</p>
+        <p className="text-xs text-slate-600">Annual fee income = ${(data.revenue.estimatedAum / 1_000_000).toFixed(1)}M AUM × <strong>{data.assumptions.feeScheduleBps} basis points</strong> blended advisory fee = <strong>${(data.revenue.monthlyFeeIncome / 1_000).toFixed(0)}K/month</strong>. Adjust fee schedule to match your tiered pricing.</p>
       </DetailDrawer>
       <DetailDrawer id="rev-pipe" activeId={detailPanel}>
         <p className="text-xs text-slate-600">Pipeline AUM = <strong>{data.pipeline.reduce((s, st) => s + st.count, 0) - (data.pipeline[data.pipeline.length - 1]?.count || 0)} active pipeline households</strong> × ${(data.assumptions.pipelineAvgAum / 1_000_000).toFixed(1)}M average new client AUM. See Pipeline section below for stage breakdown.</p>

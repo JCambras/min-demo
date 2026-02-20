@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { Loader2, Activity, CheckCircle, Shield, Send, MessageSquare, UserPlus, FileText, Clock, DollarSign, Search, X, ExternalLink, ChevronDown } from "lucide-react";
+import { Loader2, Activity, CheckCircle, Shield, Send, MessageSquare, UserPlus, FileText, Clock, DollarSign, Search, X, ExternalLink, ChevronDown, AlertTriangle } from "lucide-react";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import { callSF } from "@/lib/salesforce";
 import type { Screen, WorkflowContext } from "@/lib/types";
@@ -70,6 +70,7 @@ export function ActivityFeedScreen({ onExit, onNavigate }: {
 }) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<ActivityItem[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [showCount, setShowCount] = useState(50);
@@ -97,7 +98,9 @@ export function ActivityFeedScreen({ onExit, onNavigate }: {
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
           setItems(activityItems);
         }
-      } catch {}
+      } catch {
+        setLoadError("Could not load activity feed. Check your connection and try again.");
+      }
       setLoading(false);
     })();
   }, []);
@@ -146,6 +149,20 @@ export function ActivityFeedScreen({ onExit, onNavigate }: {
     </div>
   );
 
+  if (loadError) return (
+    <div className="flex h-screen bg-surface items-center justify-center">
+      <div className="max-w-sm text-center">
+        <AlertTriangle size={24} className="mx-auto text-amber-400 mb-3" />
+        <p className="text-sm text-slate-700 font-medium mb-1">Activity feed unavailable</p>
+        <p className="text-xs text-slate-500 mb-4">{loadError}</p>
+        <div className="flex items-center justify-center gap-3">
+          <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors">Retry</button>
+          <button onClick={onExit} className="px-4 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm font-medium hover:bg-slate-50 transition-colors">Back</button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-screen bg-surface">
       <div className="w-full flex flex-col">
@@ -173,7 +190,7 @@ export function ActivityFeedScreen({ onExit, onNavigate }: {
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input className="w-full h-10 rounded-xl border border-slate-200 bg-white pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                 placeholder="Search activity..." value={filter} onChange={e => setFilter(e.target.value)} />
-              {filter && <button onClick={() => setFilter("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={14} /></button>}
+              {filter && <button onClick={() => setFilter("")} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={14} /></button>}
             </div>
 
             {/* Timeline */}
@@ -192,13 +209,13 @@ export function ActivityFeedScreen({ onExit, onNavigate }: {
                       <div className="flex-1 h-px bg-slate-100" />
                       <span className="text-xs text-slate-500">{dateItems.length}</span>
                     </div>
-                    <div className="space-y-1">
+                    <ul className="space-y-1" role="list">
                       {dateItems.map((item, i) => {
                         const config = CATEGORY_CONFIG[item.category];
                         const Icon = config.icon;
                         return (
-                          <div key={`${item.id}-${i}`} className="flex items-center gap-3 px-4 py-3 bg-white border border-slate-200 rounded-xl hover:shadow-sm transition-all group">
-                            <div className={`flex-shrink-0 ${config.color}`}><Icon size={16} /></div>
+                          <li key={`${item.id}-${i}`} className="flex items-center gap-3 px-4 py-3 bg-white border border-slate-200 rounded-xl hover:shadow-sm transition-all group">
+                            <div className={`flex-shrink-0 ${config.color}`} aria-hidden="true"><Icon size={16} /></div>
                             <div className="min-w-0 flex-1">
                               <p className="text-sm text-slate-700">{item.action}</p>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -211,20 +228,21 @@ export function ActivityFeedScreen({ onExit, onNavigate }: {
                               {item.result === "error" && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">Error</span>}
                               {item.householdId && onNavigate && (
                                 <button onClick={() => onNavigate("family", { householdId: item.householdId!, familyName: item.household })}
+                                  aria-label={`View ${item.household} family`}
                                   className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 text-slate-500 hover:border-slate-400 transition-colors whitespace-nowrap sm:opacity-0 sm:group-hover:opacity-100">
                                   View Family
                                 </button>
                               )}
                               {item.url && (
-                                <a href={item.url} target="_blank" rel="noopener noreferrer" className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                <a href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${item.action} in Salesforce`} className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                   <ExternalLink size={14} className="text-slate-400 hover:text-blue-500 transition-colors" />
                                 </a>
                               )}
                             </div>
-                          </div>
+                          </li>
                         );
                       })}
-                    </div>
+                    </ul>
                   </div>
                 ))}
 
