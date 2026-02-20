@@ -262,7 +262,11 @@ export function useAppState() {
   }, [state.rawTasks, state.rawHouseholds, state.rawInstanceUrl]);
 
   // ── Navigation helpers ──
+  const lastNavTime = useRef(0);
   const goTo = useCallback((screen: Screen, ctx?: WorkflowContext) => {
+    const now = Date.now();
+    if (now - lastNavTime.current < 200) return; // debounce rapid navigation
+    lastNavTime.current = now;
     dispatch({ type: "NAVIGATE", screen, ctx });
     trackEvent("screen_view", { screen });
     // Persist session for resume — skip home since that's the default
