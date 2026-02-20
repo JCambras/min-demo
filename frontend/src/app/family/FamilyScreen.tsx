@@ -108,7 +108,8 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
   const [data, setData] = useState<FamilyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [showAllActivity, setShowAllActivity] = useState(false);
+  const [showAllMeetings, setShowAllMeetings] = useState(false);
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [completing, setCompleting] = useState<string | null>(null);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [showAcctNumbers, setShowAcctNumbers] = useState(false);
@@ -127,7 +128,8 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
   const holdNotes = notes.filter(n => n.category === "hold");
 
   const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => { return () => { mountedRef.current = false; if (refreshTimer.current) clearTimeout(refreshTimer.current); }; }, []);
 
   useEffect(() => {
     loadFamilyData();
@@ -187,7 +189,8 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
       await callSF("completeTask", { taskId });
       setCompleted(prev => { const s = new Set(prev); s.add(taskId); return s; });
       // Reload family data after a brief pause so the user sees the checkmark
-      setTimeout(() => loadFamilyData(), 600);
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => loadFamilyData(), 600);
     } catch {
       // silently fail — the user can still click "Open in Salesforce"
     }
@@ -400,7 +403,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
               <div key={n.id} className={`px-4 py-3 border-b border-slate-50 last:border-0 ${n.category === "hold" ? "bg-amber-50 border-l-4 border-l-amber-400" : n.pinned ? "bg-amber-50 border-l-4 border-l-amber-400" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm text-slate-700">{n.text}</p>
+                    <p className="text-sm text-slate-700 line-clamp-3">{n.text}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${n.category === "hold" ? "bg-amber-100 text-amber-600" : n.category === "urgent" ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-500"}`}>{n.category}</span>
                       <span className="text-[10px] text-slate-400">{n.author} · {new Date(n.createdAt).toLocaleDateString()}</span>
@@ -449,13 +452,15 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
           )}
 
           {/* Contacts */}
-          {data && data.contacts.length > 0 && (
+          {data && (
             <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
                 <Users size={12} className="text-slate-400" /><p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Contacts</p>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{data.contacts.length}</span>
               </div>
-              {data.contacts.map((c, i) => (
+              {data.contacts.length === 0 ? (
+                <p className="px-4 py-6 text-xs text-slate-400 text-center">No contacts on file.</p>
+              ) : data.contacts.map((c, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-3 border-b border-slate-50 last:border-0">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><Users size={16} /></div>
@@ -525,7 +530,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
               <div className="relative px-4 py-3">
                 <div className="absolute left-[25px] top-6 bottom-6 w-px bg-slate-200" />
                 <div className="space-y-4">
-                  {meetingNotes.slice(0, showAllActivity ? meetingNotes.length : 5).map((m, i) => {
+                  {meetingNotes.slice(0, showAllMeetings ? meetingNotes.length : 5).map((m, i) => {
                     const date = new Date(m.createdAt);
                     const typeMatch = m.subject.match(/MEETING NOTE:\s*(.+?)(?:\s*—|$)/);
                     const meetingType = typeMatch ? typeMatch[1] : "Meeting";
@@ -550,8 +555,8 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                 </div>
               </div>
               {meetingNotes.length > 5 && (
-                <button onClick={() => setShowAllActivity(!showAllActivity)} className="w-full px-4 py-2 text-center text-[11px] text-slate-400 hover:text-slate-600 border-t border-slate-100">
-                  {showAllActivity ? "Show recent" : `Show all ${meetingNotes.length}`}
+                <button onClick={() => setShowAllMeetings(!showAllMeetings)} className="w-full px-4 py-2 text-center text-[11px] text-slate-400 hover:text-slate-600 border-t border-slate-100">
+                  {showAllMeetings ? "Show recent" : `Show all ${meetingNotes.length}`}
                 </button>
               )}
             </div>
@@ -720,12 +725,12 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
                 <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-600 font-medium">{completedTasks.length}</span>
                 <div className="flex-1" />
                 {completedTasks.length > 5 && (
-                  <button onClick={() => setShowAllActivity(!showAllActivity)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1">
-                    {showAllActivity ? <><ChevronUp size={12} />Show less</> : <><ChevronDown size={12} />Show all</>}
+                  <button onClick={() => setShowAllCompleted(!showAllCompleted)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1">
+                    {showAllCompleted ? <><ChevronUp size={12} />Show less</> : <><ChevronDown size={12} />Show all</>}
                   </button>
                 )}
               </div>
-              {(showAllActivity ? completedTasks : completedTasks.slice(0, 5)).map((t, i) => (
+              {(showAllCompleted ? completedTasks : completedTasks.slice(0, 5)).map((t, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <CheckCircle size={13} className="text-green-500" />

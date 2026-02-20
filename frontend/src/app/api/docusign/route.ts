@@ -396,7 +396,7 @@ export async function POST(request: Request) {
       try {
         const crmCtx = await getCRMContext();
         const sfAuth = crmCtx.auth as SFContext;
-        writeAuditLog(sfAuth, "sendDocusign", { envelopeCount: results.length, clientName: data.client?.firstName }, "success", `Sent ${results.length} envelope(s)`);
+        writeAuditLog(sfAuth, "sendDocusign", { envelopeCount: results.length, clientName: data.client?.firstName, householdId: data.householdId }, "success", `Sent ${results.length} envelope(s)`);
       } catch { /* audit failure must not block response */ }
       return NextResponse.json({ success: true, envelopes: results, count: results.length });
     }

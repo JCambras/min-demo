@@ -729,7 +729,8 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
       tourType={state.tourType}
     />
   );
-  const wrap = (el: React.ReactNode, label: string, withTour = true) => <><ErrorBoundary fallbackLabel={`${label} error.`}>{el}</ErrorBoundary>{withTour && tourOverlay}<CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} onNavigate={(s, ctx) => { if (s === "home") goHome(); else goTo(s, ctx); }} /></>;
+  const skipLink = <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-4 focus:left-4 focus:px-4 focus:py-2 focus:bg-white focus:border focus:border-slate-900 focus:rounded-xl focus:text-sm focus:font-medium focus:text-slate-900">Skip to main content</a>;
+  const wrap = (el: React.ReactNode, label: string, withTour = true) => <>{skipLink}<div id="main-content"><ErrorBoundary fallbackLabel={`${label} error.`}>{el}</ErrorBoundary></div>{withTour && tourOverlay}<CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} onNavigate={(s, ctx) => { if (s === "home") goHome(); else goTo(s, ctx); }} /></>;
 
   switch (screen) {
     case "flow": return wrap(<FlowScreen onExit={goHome} initialClient={handoff || undefined} onNavigate={goTo} />, "Account opening");
@@ -777,10 +778,11 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
 
   return (
     <>
-      <HomeScreen state={state} dispatch={dispatch} goTo={goTo} goHome={goHome} loadStats={loadStats} showToast={showToast} firmName={FIRM_NAME} />
+      {skipLink}
+      <div id="main-content"><HomeScreen state={state} dispatch={dispatch} goTo={goTo} goHome={goHome} loadStats={loadStats} showToast={showToast} firmName={FIRM_NAME} /></div>
       {tourOverlay}
       <CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} onNavigate={(s, ctx) => { if (s === "home") goHome(); else goTo(s, ctx); }} />
-      {toast && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl bg-slate-900 text-white text-sm font-medium shadow-lg animate-fade-in z-50 flex items-center gap-2"><CheckCircle size={16} className="text-green-400" />{toast}</div>}
+      {toast && <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl bg-slate-900 text-white text-sm font-medium shadow-lg animate-fade-in z-50 flex items-center gap-2"><CheckCircle size={16} className="text-green-400" />{toast}</div>}
     </>
   );
 }

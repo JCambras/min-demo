@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Check, Clock, FileText, Shield, Users, ArrowLeft, Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { callSF } from "@/lib/salesforce";
 import type { WorkflowContext } from "@/lib/types";
@@ -38,7 +38,7 @@ export function PortalScreen({ onExit, context }: {
   const familyName = context.familyName || "Client";
   const portalUrl = typeof window !== "undefined" ? `${window.location.origin}/portal/${context.householdId}` : "";
 
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch household tasks to determine step completion
@@ -134,9 +134,9 @@ export function PortalScreen({ onExit, context }: {
       ]);
     }
     setLoading(false);
-  };
+  }, [context.householdId]);
 
-  useEffect(() => { loadStatus(); }, [context.householdId]);
+  useEffect(() => { loadStatus(); }, [loadStatus]);
 
   const completedCount = steps.filter(s => s.status === "complete").length;
   const totalSteps = steps.length;
@@ -245,9 +245,9 @@ export function PortalScreen({ onExit, context }: {
                     {/* Content */}
                     <div className={`pb-8 flex-1 ${step.status === "pending" ? "opacity-50" : ""}`}>
                       <div className="flex items-center gap-2">
-                        <h3 className={`text-sm font-semibold ${step.status === "complete" ? "text-green-700" : step.status === "active" ? "text-slate-900" : "text-slate-400"}`}>
+                        <h2 className={`text-sm font-semibold ${step.status === "complete" ? "text-green-700" : step.status === "active" ? "text-slate-900" : "text-slate-400"}`}>
                           {step.label}
-                        </h3>
+                        </h2>
                         {step.status === "active" && (
                           <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium animate-pulse">IN PROGRESS</span>
                         )}
@@ -270,7 +270,7 @@ export function PortalScreen({ onExit, context }: {
               <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden mb-8">
                 <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
                   <FileText size={14} className="text-blue-500" />
-                  <h3 className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Document Signatures</h3>
+                  <h2 className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Document Signatures</h2>
                 </div>
                 <div className="divide-y divide-slate-50">
                   {envelopes.map(env => (

@@ -243,7 +243,10 @@ export function BriefingScreen({ onExit, initialContext, onNavigate }: { onExit:
       const narrative = buildNarrative(intel);
       d({ type: "SET_INTEL", intel, narrative, url: res.householdUrl as string });
       d({ type: "SET_STEP", step: "briefing" });
-    } catch {
+    } catch (err) {
+      console.error("[BriefingScreen] loadBriefing failed:", err);
+      // Reset search query to show error hint in the search results area
+      d({ type: "SET_RESULTS", v: [] });
       d({ type: "SET_STEP", step: "search" });
     }
   }, []);

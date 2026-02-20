@@ -54,6 +54,27 @@ function saveLayout(hidden: Set<SectionId>) {
   localStorage.setItem(LAYOUT_KEY, JSON.stringify(Array.from(hidden)));
 }
 
+function SectionWrapper({ id, children, hiddenSections, togglePin }: { id: SectionId; children: React.ReactNode; hiddenSections: Set<SectionId>; togglePin: (id: SectionId) => void }) {
+  const hidden = hiddenSections.has(id);
+  return (
+    <div className="relative group">
+      {!hidden && children}
+      {hidden && (
+        <button onClick={() => togglePin(id)}
+          className="w-full flex items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-left hover:bg-slate-100 transition-colors">
+          <PinOff size={14} className="text-slate-300" />
+          <span className="text-sm text-slate-400">{SECTION_LABELS[id]}</span>
+          <span className="text-[10px] text-slate-300 ml-auto">Click to show</span>
+        </button>
+      )}
+      <button onClick={() => togglePin(id)} title={hidden ? "Show section" : "Hide section"}
+        className="absolute top-2 right-2 z-10 w-7 h-7 rounded-lg bg-white/80 border border-slate-200 flex items-center justify-center text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-all">
+        {hidden ? <Pin size={12} /> : <PinOff size={12} />}
+      </button>
+    </div>
+  );
+}
+
 // ─── Board Report Builder ───────────────────────────────────────────────────
 
 function BoardReportModal({ data, firmName, onClose }: { data: PracticeData; firmName?: string; onClose: () => void }) {
@@ -245,7 +266,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
   const { isDemoMode } = useDemoMode();
   const { loading, data: rawData, error } = usePracticeData();
   const [detailPanel, setDetailPanel] = useState<string | null>(null);
-  const toggleDetail = (id: string) => setDetailPanel(prev => prev === id ? null : id);
+  const toggleDetail = useCallback((id: string) => setDetailPanel(prev => prev === id ? null : id), []);
   const [hiddenSections, setHiddenSections] = useState<Set<SectionId>>(loadLayout);
   const [showReport, setShowReport] = useState(false);
 
@@ -270,13 +291,13 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
     return { ...rawData, risks: visible, riskDispositions: disps, dispositionedCount: dc };
   }, [rawData, dispositionVersion]);
 
-  const goToFamily = (householdId: string, name: string) => {
+  const goToFamily = useCallback((householdId: string, name: string) => {
     if (onNavigate) onNavigate("family" as Screen, { householdId, familyName: name.replace(" Household", "") });
-  };
+  }, [onNavigate]);
 
-  const goToCompliance = (householdId: string, name: string) => {
+  const goToCompliance = useCallback((householdId: string, name: string) => {
     if (onNavigate) onNavigate("compliance", { householdId, familyName: name.replace(" Household", "") });
-  };
+  }, [onNavigate]);
 
   const handleRiskDisposition = useCallback((riskId: string, action: "resolved" | "snoozed" | "dismissed", reason: string, snoozeDays?: number) => {
     const risk = rawData?.allRisks.find(r => r.id === riskId);
@@ -303,27 +324,6 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
   }, [rawData, firmName]);
 
   const isVisible = (id: SectionId) => !hiddenSections.has(id);
-
-  const SectionWrapper = ({ id, children }: { id: SectionId; children: React.ReactNode }) => {
-    const hidden = hiddenSections.has(id);
-    return (
-      <div className="relative group">
-        {!hidden && children}
-        {hidden && (
-          <button onClick={() => togglePin(id)}
-            className="w-full flex items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-left hover:bg-slate-100 transition-colors">
-            <PinOff size={14} className="text-slate-300" />
-            <span className="text-sm text-slate-400">{SECTION_LABELS[id]}</span>
-            <span className="text-[10px] text-slate-300 ml-auto">Click to show</span>
-          </button>
-        )}
-        <button onClick={() => togglePin(id)} title={hidden ? "Show section" : "Hide section"}
-          className="absolute top-2 right-2 z-10 w-7 h-7 rounded-lg bg-white/80 border border-slate-200 flex items-center justify-center text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-all">
-          {hidden ? <Pin size={12} /> : <PinOff size={12} />}
-        </button>
-      </div>
-    );
-  };
 
   return (
     <div className="flex h-screen bg-surface">
@@ -379,22 +379,22 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
 
             {data && (
               <div className="animate-fade-in space-y-8">
-                <SectionWrapper id="health"><HealthScoreSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} firmName={firmName} /></SectionWrapper>
+                <SectionWrapper hiddenSections={hiddenSections} togglePin={togglePin} id="health"><HealthScoreSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} firmName={firmName} /></SectionWrapper>
                 {isDemoMode && (
                   <div className="bg-white border border-slate-200 rounded-2xl p-6">
                     <HouseholdHealthCards onNavigate={onNavigate} dataQualityByHousehold={data.dataQualityByHousehold} />
                   </div>
                 )}
-                <SectionWrapper id="revenue"><RevenueSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} /></SectionWrapper>
-                <SectionWrapper id="advisors"><AdvisorScoreboard data={data} advisorName={advisorName} isAdvisor={isAdvisor} /></SectionWrapper>
-                {(role === "operations" || role === "principal") && <SectionWrapper id="staff"><StaffWorkload data={data} /></SectionWrapper>}
-                {(role === "operations" || role === "principal") && <SectionWrapper id="ops"><OpsWorkload data={data} firmName={firmName} /></SectionWrapper>}
-                {(role === "operations" || role === "principal") && <SectionWrapper id="quality"><div data-tour="data-quality"><DataQuality data={data} goToFamily={goToFamily} /></div></SectionWrapper>}
-                {(role === "operations" || role === "principal") && <SectionWrapper id="risk"><HouseholdRiskScore data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} /></SectionWrapper>}
-                <SectionWrapper id="pipeline"><PipelineSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} goToFamily={goToFamily} /></SectionWrapper>
+                <SectionWrapper hiddenSections={hiddenSections} togglePin={togglePin} id="revenue"><RevenueSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} /></SectionWrapper>
+                <SectionWrapper hiddenSections={hiddenSections} togglePin={togglePin} id="advisors"><AdvisorScoreboard data={data} advisorName={advisorName} isAdvisor={isAdvisor} /></SectionWrapper>
+                {(role === "operations" || role === "principal") && <SectionWrapper hiddenSections={hiddenSections} togglePin={togglePin} id="staff"><StaffWorkload data={data} /></SectionWrapper>}
+                {(role === "operations" || role === "principal") && <SectionWrapper hiddenSections={hiddenSections} togglePin={togglePin} id="ops"><OpsWorkload data={data} firmName={firmName} /></SectionWrapper>}
+                {(role === "operations" || role === "principal") && <SectionWrapper hiddenSections={hiddenSections} togglePin={togglePin} id="quality"><div data-tour="data-quality"><DataQuality data={data} goToFamily={goToFamily} /></div></SectionWrapper>}
+                {(role === "operations" || role === "principal") && <SectionWrapper hiddenSections={hiddenSections} togglePin={togglePin} id="risk"><HouseholdRiskScore data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} /></SectionWrapper>}
+                <SectionWrapper hiddenSections={hiddenSections} togglePin={togglePin} id="pipeline"><PipelineSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} goToFamily={goToFamily} /></SectionWrapper>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <SectionWrapper id="radar"><RiskRadar data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} onDisposition={handleRiskDisposition} /></SectionWrapper>
-                  <SectionWrapper id="weekly"><WeeklyComparison data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} /></SectionWrapper>
+                  <SectionWrapper hiddenSections={hiddenSections} togglePin={togglePin} id="radar"><RiskRadar data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} onDisposition={handleRiskDisposition} /></SectionWrapper>
+                  <SectionWrapper hiddenSections={hiddenSections} togglePin={togglePin} id="weekly"><WeeklyComparison data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} /></SectionWrapper>
                 </div>
                 {(role === "principal") && <SuccessionPlanning data={data} />}
 

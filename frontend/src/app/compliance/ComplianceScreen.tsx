@@ -283,7 +283,18 @@ export function ComplianceScreen({ onExit, initialContext, onNavigate, firmName 
     if (batchMode) { setBatchMode(false); return; }
     if (state.step === "cc-search") { d({ type: "RESET" }); onExit(); }
     else if (state.step === "cc-scanning") { d({ type: "RESET" }); if (initialContext) onExit(); else d({ type: "SET_STEP", step: "cc-search" }); }
-    else if (state.step === "cc-results") { if (initialContext) { d({ type: "RESET" }); onExit(); } else d({ type: "SET_STEP", step: "cc-search" }); }
+    else if (state.step === "cc-results") {
+      // Audit: log scan abandonment (results viewed but not recorded)
+      if (state.checks.length > 0) {
+        const failCount = state.checks.filter(r => r.status === "fail").length;
+        callSF("createTask", {
+          subject: `MIN:AUDIT — complianceScanAbandoned — ${failCount > 0 ? "withFailures" : "clean"}`,
+          description: `Compliance scan abandoned without recording.\nFailures: ${failCount}\nHousehold: ${state.selectedHousehold?.name || "unknown"}`,
+          householdId: state.selectedHousehold?.id || "",
+        }).catch(() => {});
+      }
+      if (initialContext) { d({ type: "RESET" }); onExit(); } else d({ type: "SET_STEP", step: "cc-search" });
+    }
     else if (state.step === "cc-complete") d({ type: "SET_STEP", step: "cc-results" });
     else { d({ type: "RESET" }); onExit(); }
   };

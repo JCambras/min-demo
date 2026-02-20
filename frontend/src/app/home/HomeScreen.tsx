@@ -73,7 +73,8 @@ function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClic
     : tier === "ok" ? "border-l-4 border-l-amber-400 bg-amber-50/40"
     : tier === "good" ? "border-l-4 border-l-green-400 bg-green-50/40" : "";
   return (
-    <button data-tour={`stat-${tourKey}`} onClick={onClick}
+    <button data-tour={`stat-${tourKey}`} onClick={onClick} aria-expanded={expanded}
+      aria-label={`${label}: ${value}${subtitle ? ` ${subtitle}` : ""}. Click to ${expanded ? "collapse" : "expand"} details.`}
       className={`border rounded-2xl p-4 text-left transition-all hover:shadow-md ${tierStyles} ${expanded ? "border-slate-900 shadow-md" : tierStyles ? "" : "bg-white border-slate-200"}`}>
       <div className="flex items-center gap-1.5 mb-2">
         <Icon size={16} className={color} />
@@ -331,7 +332,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   };
 
   // ── Triage action handlers ──
-  const handleTriageResolve = (item: { id: string; category: string; householdId?: string; householdName?: string }) => {
+  const handleTriageResolve = (item: { id: string; label: string; category: string; householdId?: string; householdName?: string }) => {
     if (triageProcessing) return;
     setTriageProcessing(item.id);
     setExpandedTriageId(null);
@@ -343,7 +344,13 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       householdId: item.householdId || "",
       familyName: (item.householdName || "").replace(" Household", ""),
     };
-    setTimeout(() => setTriageProcessing(null), 300);
+    // Audit: log resolve navigation
+    callSF("createTask", {
+      subject: `MIN:AUDIT — triageResolve — ${item.category}`,
+      description: `Triage item "${item.label}" resolved via navigation to ${screen}\nHousehold: ${item.householdName || "unknown"}`,
+      householdId: item.householdId || "",
+    }).catch(() => {});
+    setTriageProcessing(null);
     goTo(screen, ctx);
   };
   const handleTriageDismissStart = (id: string) => {
@@ -357,6 +364,13 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     setTriageProcessing(dismissTarget);
     setResolvedTriageIds(prev => { const s = new Set(prev); s.add(dismissTarget); return s; });
     if (!hasInteracted) setHasInteracted(true);
+    // Audit: log dismiss with reason
+    const item = stats?.triageItems?.find(t => t.id === dismissTarget);
+    callSF("createTask", {
+      subject: `MIN:AUDIT — triageDismiss — success`,
+      description: `Dismissed triage item "${item?.label || dismissTarget}"\nReason: ${dismissReason.trim()}\nHousehold: ${item?.householdName || "unknown"}`,
+      householdId: item?.householdId || "",
+    }).catch(() => {});
     startUndoWindow({ type: "dismiss", id: dismissTarget });
     showToast(`Dismissed: ${dismissReason.trim().slice(0, 60)}`);
     setDismissTarget(null);
@@ -370,6 +384,13 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     setExpandedTriageId(null);
     setDismissTarget(null);
     if (!hasInteracted) setHasInteracted(true);
+    // Audit: log snooze
+    const snzItem = stats?.triageItems?.find(t => t.id === id);
+    callSF("createTask", {
+      subject: `MIN:AUDIT — triageSnooze — success`,
+      description: `Snoozed triage item "${snzItem?.label || id}"\nSnooze option: ${label}\nHousehold: ${snzItem?.householdName || "unknown"}`,
+      householdId: snzItem?.householdId || "",
+    }).catch(() => {});
     startUndoWindow({ type: "snooze", id });
     showToast(`Snoozed: ${label}`);
     setTimeout(() => setTriageProcessing(null), 300);
@@ -479,6 +500,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           {/* Tweak 5: Hide mode/role switcher until first triage interaction */}
           <button onClick={() => { cycleRole(); setExpandedStat(null); }}
             className="text-xs text-slate-400 hover:text-slate-600 transition-all" title="Click or ⌘R to switch role"
+            tabIndex={hasInteracted ? 0 : -1} aria-hidden={!hasInteracted}
             style={{ opacity: hasInteracted ? 1 : 0, transition: "opacity 300ms ease", pointerEvents: hasInteracted ? "auto" : "none" }}>
             {ROLES.find(r => r.id === role)?.label || "Advisor"}{role === "principal" && principalAdvisor !== "all" ? ` · ${principalAdvisor}` : ""}
           </button>
@@ -602,7 +624,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {(isAdvisor || isOps || role === "principal") && (sfConnected || isDemoMode) && stats && totalTriageItems > 0 && (
         <div className="mb-6" data-tour="triage">
           {/* Tweak 11: Simplified header — just the count */}
-          <h2 className="text-lg font-medium text-slate-900 mb-3">
+          <h2 className="text-lg font-medium text-slate-900 mb-3" aria-live="polite" aria-atomic="true">
             {activeTriageItems.length} {activeTriageItems.length === 1 ? "item needs" : "items need"} you
           </h2>
 
@@ -625,13 +647,15 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                 return (
                   <div key={item.id}
                     className={`bg-white border border-slate-200 rounded-2xl overflow-hidden border-l-[3px] ${borderColor}`}
+                    aria-disabled={isDimmed || undefined}
                     style={{
-                      opacity: isDimmed ? 0.4 : 1,
+                      opacity: isDimmed ? 0.6 : 1,
                       boxShadow: isExpanded ? "0 4px 16px rgba(0,0,0,0.08)" : "none",
                       transition: "opacity 200ms ease, box-shadow 200ms ease",
                     }}>
                     {/* Card content — no badge, no "View household" link (Tweaks 2, 9) */}
                     <div className="px-4 py-3">
+                      <span className="sr-only">{item.urgency === "now" ? "Urgent: action needed now. " : item.urgency === "today" ? "Due today. " : ""}</span>
                       <p className="text-sm font-medium text-slate-700">{item.label}</p>
                       {/* Tweak 6: Sources on a single line with pipe separator */}
                       {item.sources && item.sources.length > 0 ? (
@@ -653,6 +677,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                           {item.action}
                         </button>
                         <button onClick={() => setExpandedTriageId(isExpanded ? null : item.id)} disabled={!!triageProcessing}
+                          aria-expanded={isExpanded} aria-controls={`snooze-panel-${item.id}`}
                           className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors ${isExpanded ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"} disabled:opacity-50`}>
                           Snooze
                         </button>
@@ -677,7 +702,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                     </div>
                     {/* Expanded snooze panel — no "Min's Recommendation" header (Tweak 4) */}
                     {isExpanded && (
-                      <div className="px-4 py-3 bg-[#F8FAFC] border-t border-slate-100 animate-fade-in">
+                      <div id={`snooze-panel-${item.id}`} className="px-4 py-3 bg-slate-50 border-t border-slate-100 animate-fade-in">
                         <p className="text-sm text-slate-600 mb-3">Snooze this item and get reminded later.</p>
                         {/* Tweak 10: Contextual snooze options */}
                         <div className="flex flex-wrap gap-2">
@@ -829,15 +854,17 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {/* Recent Activity — collapsed by default */}
       {(sfConnected || isDemoMode) && stats && stats.recentItems.length > 0 && (isOps || !expandedStat) && (
         <div className="mb-8 bg-white border border-slate-200 rounded-2xl overflow-hidden">
-          <button onClick={() => setRecentOpen(!recentOpen)} className="w-full px-4 py-2.5 border-b border-slate-100 flex items-center gap-3 hover:bg-slate-50 transition-colors">
+          <button onClick={() => setRecentOpen(!recentOpen)} aria-expanded={recentOpen} aria-controls="recent-activity-list" className="w-full px-4 py-2.5 border-b border-slate-100 flex items-center gap-3 hover:bg-slate-50 transition-colors">
             <Clock size={12} className="text-slate-400" />
             <p className="text-xs uppercase tracking-wider text-slate-400 font-medium">Recent Activity</p>
             <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 font-medium">{stats.recentItems.length}</span>
             <ChevronDown size={14} className={`ml-auto text-slate-400 transition-transform ${recentOpen ? "rotate-180" : ""}`} />
           </button>
+          <div id="recent-activity-list">
           {recentOpen && stats.recentItems.map((t, i) => (
             <RecentActivityRow key={i} item={t} icon={iconForType(t.type)} isDemoMode={isDemoMode} goTo={goTo} />
           ))}
+          </div>
         </div>
       )}
 
@@ -855,7 +882,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
 
       {/* Undo toast */}
       {lastAction && (
-        <div className="fixed bottom-16 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl bg-slate-800 text-white text-sm font-medium shadow-lg animate-fade-in z-50 flex items-center gap-3">
+        <div role="status" aria-live="polite" className="fixed bottom-16 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl bg-slate-800 text-white text-sm font-medium shadow-lg animate-fade-in z-50 flex items-center gap-3">
           <span>{lastAction.type === "dismiss" ? "Item dismissed" : "Item snoozed"}</span>
           <button onClick={handleUndo} className="text-blue-300 hover:text-blue-100 font-semibold transition-colors">Undo</button>
         </div>

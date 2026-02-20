@@ -197,6 +197,21 @@ abbr[title] {
   }
 }
 
+/* ─── Reduced motion ─────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-slide-down,
+  .animate-empty-state-in,
+  .animate-check-pop,
+  .animate-task-done,
+  .stagger-list > * {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
 /* Mobile slide-in pane */
 .mobile-pane {
   transform: translateX(100%);

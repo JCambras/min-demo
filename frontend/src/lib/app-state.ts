@@ -142,12 +142,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     // ── Navigation ──
     case "NAVIGATE": {
-      // Push current screen to navStack with the best available context:
-      // use the outgoing action's ctx so child screens can restore the parent
-      // (e.g. Briefing→Meeting passes householdId; when popping back, Briefing needs it)
-      const ctxForStack = action.ctx || state.wfCtx;
+      // Push current screen to navStack with the OUTGOING screen's context
+      // so GO_BACK restores it correctly (not the incoming action's ctx)
       const newStack = state.screen !== "home"
-        ? [...state.navStack, { screen: state.screen, ctx: ctxForStack }]
+        ? [...state.navStack, { screen: state.screen, ctx: state.wfCtx }]
         : state.navStack;
       return { ...state, screen: action.screen, wfCtx: action.ctx ?? state.wfCtx, navStack: newStack };
     }

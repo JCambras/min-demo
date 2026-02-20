@@ -56,7 +56,7 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
         </button>
         <button onClick={() => toggleDetail("rev-fee")} className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
           <p className="text-[10px] text-emerald-600 font-medium uppercase tracking-wider">Annual Fee Income<span className="text-emerald-400 ml-0.5">▾</span></p>
-          <p className="text-2xl font-light tabular-nums text-emerald-700 mt-1">${(data.revenue.annualFeeIncome / 1_000_000).toFixed(2)}M</p>
+          <p className="text-2xl font-light tabular-nums text-emerald-700 mt-1">{data.revenue.annualFeeIncome >= 1_000_000 ? `$${(data.revenue.annualFeeIncome / 1_000_000).toFixed(1)}M` : `$${Math.round(data.revenue.annualFeeIncome / 1_000)}K`}</p>
         </button>
         <button onClick={() => toggleDetail("rev-pipe")} className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
           <p className="text-[10px] text-blue-600 font-medium uppercase tracking-wider">Pipeline <abbr title="Assets Under Management" className="no-underline cursor-help">AUM</abbr><span className="text-blue-400 ml-0.5">▾</span></p>
@@ -106,7 +106,7 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
                 const isCurrent = i === data.revenue.quarterlyTrend.length - 1;
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-[10px] text-slate-500 font-medium">${q.value}K</span>
+                    <span className="text-[10px] text-slate-500 font-medium">{q.value >= 1000 ? `$${(q.value / 1000).toFixed(1)}M` : `$${q.value}K`}</span>
                     <div className={`w-full rounded-t-md transition-all duration-500 ${isCurrent ? "bg-emerald-500" : "bg-slate-200"}`} style={{ height: `${Math.max(pct, 8)}%` }} />
                     <span className="text-[9px] text-slate-400">{q.label}</span>
                   </div>

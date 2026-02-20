@@ -24,6 +24,7 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
   firmName?: string;
 }) {
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState(false);
   const [showAumWeighted, setShowAumWeighted] = useState(false);
   const displayScore = showAumWeighted ? data.aumWeightedHealthScore : data.healthScore;
 
@@ -47,8 +48,14 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
         link.href = result.pdf;
         link.download = result.filename;
         link.click();
+      } else {
+        setPdfError(true);
+        setTimeout(() => setPdfError(false), 3000);
       }
-    } catch { /* */ }
+    } catch {
+      setPdfError(true);
+      setTimeout(() => setPdfError(false), 3000);
+    }
     setPdfLoading(false);
   };
 
@@ -78,9 +85,9 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
                   </div>
                 )}
               </div>
-              <button onClick={downloadPDF} disabled={pdfLoading} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors">
+              <button onClick={downloadPDF} disabled={pdfLoading} className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 transition-colors ${pdfError ? "bg-red-600 text-white" : "bg-slate-900 text-white hover:bg-slate-800"}`}>
                 {pdfLoading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                Weekly Report
+                {pdfError ? "Export failed — try again" : "Weekly Report"}
               </button>
             </div>
             <div className="space-y-3">
