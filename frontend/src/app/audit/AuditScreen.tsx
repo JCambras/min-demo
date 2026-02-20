@@ -242,7 +242,7 @@ export function AuditScreen({ onExit, onNavigate }: {
                       </div>
                       <div className="col-span-2">
                         <span className="text-xs text-slate-400">{new Date(r.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                        <span className="text-xs text-slate-300 ml-1">{new Date(r.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+                        <span className="text-xs text-slate-500 ml-1">{new Date(r.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
                       </div>
                       <div className="col-span-2">
                         <span className="text-xs text-slate-400 truncate block">{r.detail || "—"}</span>

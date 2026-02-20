@@ -80,11 +80,11 @@ function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClic
         <span className="text-sm font-semibold text-slate-600 truncate">{label}</span>
       </div>
       <p className={`text-2xl font-light ${vColor || "text-slate-900"}`}>{value}</p>
-      {subtitle && <p className="text-[10px] text-slate-400">{subtitle}</p>}
+      {subtitle && <p className="text-[10px] text-slate-500">{subtitle}</p>}
       {peekItems && peekItems.length > 0 && !expanded && (
         <div className="mt-2 pt-2 border-t border-slate-100 space-y-0.5">
           {peekItems.slice(0, 2).map((item, i) => (
-            <p key={i} className="text-[10px] text-slate-400 truncate">{item.label}</p>
+            <p key={i} className="text-[10px] text-slate-500 truncate">{item.label}</p>
           ))}
         </div>
       )}
@@ -219,6 +219,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   useEffect(() => { try { sessionStorage.setItem("min_triage_resolved", JSON.stringify([...resolvedTriageIds])); } catch {} }, [resolvedTriageIds]);
   useEffect(() => { try { sessionStorage.setItem("min_triage_snoozed", JSON.stringify([...snoozedTriageIds])); } catch {} }, [snoozedTriageIds]);
   const [expandedTriageId, setExpandedTriageId] = useState<string | null>(null);
+  const [triageProcessing, setTriageProcessing] = useState<string | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showEmptyState, setShowEmptyState] = useState(false);
 
@@ -307,6 +308,8 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
 
   // ── Triage action handlers ──
   const handleTriageResolve = (item: { id: string; category: string; householdId?: string; householdName?: string }) => {
+    if (triageProcessing) return;
+    setTriageProcessing(item.id);
     setExpandedTriageId(null);
     if (!hasInteracted) setHasInteracted(true);
     // Navigate to the relevant workflow screen based on category
@@ -318,16 +321,22 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     goTo(screen, ctx);
   };
   const handleTriageDismiss = (id: string) => {
+    if (triageProcessing) return;
+    setTriageProcessing(id);
     setResolvedTriageIds(prev => { const s = new Set(prev); s.add(id); return s; });
     setExpandedTriageId(null);
     if (!hasInteracted) setHasInteracted(true);
     showToast("Item dismissed");
+    setTimeout(() => setTriageProcessing(null), 300);
   };
   const handleTriageSnooze = (id: string, label: string) => {
+    if (triageProcessing) return;
+    setTriageProcessing(id);
     setSnoozedTriageIds(prev => { const s = new Set(prev); s.add(id); return s; });
     setExpandedTriageId(null);
     if (!hasInteracted) setHasInteracted(true);
     showToast(`Snoozed: ${label}`);
+    setTimeout(() => setTriageProcessing(null), 300);
   };
 
   // ── Derived values ──
@@ -590,29 +599,29 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                       <p className="text-sm font-medium text-slate-700">{item.label}</p>
                       {/* Tweak 6: Sources on a single line with pipe separator */}
                       {item.sources && item.sources.length > 0 ? (
-                        <p className="text-[11px] text-slate-400 mt-0.5">
+                        <p className="text-[11px] text-slate-500 mt-0.5">
                           {item.sources.map((s, si) => (
-                            <span key={si} style={{ opacity: s.fresh === false ? 0.5 : 1 }}>
+                            <span key={si} style={{ opacity: s.fresh === false ? 0.7 : 1 }}>
                               {si > 0 && <span className="mx-1">|</span>}
                               {s.system} · {s.timestamp}
                             </span>
                           ))}
                         </p>
                       ) : (
-                        <p className="text-[11px] text-slate-400 mt-0.5">{item.reason}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">{item.reason}</p>
                       )}
                       {/* Action buttons — Resolve, Snooze, Dismiss */}
                       <div className="flex items-center gap-2 mt-2.5">
-                        <button onClick={() => handleTriageResolve(item)}
-                          className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors">
+                        <button onClick={() => handleTriageResolve(item)} disabled={triageProcessing === item.id}
+                          className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors">
                           {item.action}
                         </button>
-                        <button onClick={() => setExpandedTriageId(isExpanded ? null : item.id)}
-                          className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors ${isExpanded ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                        <button onClick={() => setExpandedTriageId(isExpanded ? null : item.id)} disabled={!!triageProcessing}
+                          className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors ${isExpanded ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"} disabled:opacity-50`}>
                           Snooze
                         </button>
-                        <button onClick={() => handleTriageDismiss(item.id)}
-                          className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500 font-medium hover:bg-slate-200 transition-colors">
+                        <button onClick={() => handleTriageDismiss(item.id)} disabled={triageProcessing === item.id}
+                          className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors">
                           Dismiss
                         </button>
                       </div>

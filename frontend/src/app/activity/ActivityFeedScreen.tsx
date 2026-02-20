@@ -190,7 +190,7 @@ export function ActivityFeedScreen({ onExit, onNavigate }: {
                     <div className="flex items-center gap-3 mb-3">
                       <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{dateLabel}</span>
                       <div className="flex-1 h-px bg-slate-100" />
-                      <span className="text-xs text-slate-300">{dateItems.length}</span>
+                      <span className="text-xs text-slate-500">{dateItems.length}</span>
                     </div>
                     <div className="space-y-1">
                       {dateItems.map((item, i) => {
@@ -203,8 +203,8 @@ export function ActivityFeedScreen({ onExit, onNavigate }: {
                               <p className="text-sm text-slate-700">{item.action}</p>
                               <div className="flex items-center gap-2 mt-0.5">
                                 {item.household && <span className="text-xs text-slate-400">{item.household}</span>}
-                                <span className="text-xs text-slate-300">·</span>
-                                <span className="text-xs text-slate-300">{new Date(item.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+                                <span className="text-xs text-slate-500">·</span>
+                                <span className="text-xs text-slate-500">{new Date(item.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
                               </div>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
