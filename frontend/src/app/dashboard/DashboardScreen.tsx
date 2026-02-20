@@ -193,7 +193,7 @@ function ReconciliationSection() {
                 <ReconcileCheck size={12} className="text-green-500 flex-shrink-0" />
                 <span className="flex-1">{m.custodialName}</span>
                 <span className="text-slate-400">→ {m.crmHousehold}</span>
-                <span className="text-slate-300">${(m.balance / 1e6).toFixed(1)}M</span>
+                <span className="tabular-nums text-slate-300">${(m.balance / 1e6).toFixed(1)}M</span>
               </div>
             ))}
           </div>
@@ -205,7 +205,7 @@ function ReconciliationSection() {
                   <div key={i} className="flex items-center gap-2 text-xs text-amber-700">
                     <ReconcileAlert size={12} className="text-amber-500 flex-shrink-0" />
                     <span className="flex-1">{o.custodialName}</span>
-                    <span className="text-amber-400">${(o.balance / 1e6).toFixed(1)}M</span>
+                    <span className="tabular-nums text-amber-400">${(o.balance / 1e6).toFixed(1)}M</span>
                   </div>
                 ))}
               </div>

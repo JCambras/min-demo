@@ -82,7 +82,7 @@ export function HouseholdHealthCards({ onNavigate, dataQualityByHousehold }: {
                   <p className="text-sm font-medium text-slate-800 truncate group-hover:text-slate-900">
                     {hh.name.replace(" Household", "")}
                   </p>
-                  <p className="text-xs text-slate-400">{fmtAum(hh.aum)}</p>
+                  <p className="text-xs tabular-nums text-slate-400">{fmtAum(hh.aum)}</p>
                   <p className="text-[10px] text-slate-400 truncate">{hh.advisor}</p>
                 </div>
               </div>

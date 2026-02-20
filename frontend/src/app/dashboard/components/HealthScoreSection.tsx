@@ -139,7 +139,7 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
           <div key={s.id}>
             <button onClick={() => toggleDetail(s.id)} className="w-full bg-white border border-slate-200 rounded-xl p-4 text-center hover:border-slate-300 hover:shadow-sm transition-all">
               <s.Icon size={16} className={`${s.color} mx-auto mb-2`} />
-              <p className={`text-2xl font-light ${s.color}`}>{s.value}</p>
+              <p className={`text-2xl font-light tabular-nums ${s.color}`}>{s.value}</p>
               <p className="text-sm font-semibold text-slate-600 mt-1">{s.label}<span className="text-slate-300 ml-0.5">▾</span></p>
             </button>
             <DetailDrawer id={s.id} activeId={detailPanel}>

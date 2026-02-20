@@ -30,7 +30,7 @@ export function PipelineSection({ data, detailPanel, toggleDetail, goToFamily }:
             return (
               <button key={i} onClick={() => setExpandedPipeline(isExpanded ? null : i)} className="flex-1 group">
                 <div className="text-center mb-2">
-                  <p className={`text-2xl font-light ${stage.stuck > 0 ? "text-amber-600" : "text-slate-900"}`}>{stage.count}</p>
+                  <p className={`text-2xl font-light tabular-nums ${stage.stuck > 0 ? "text-amber-600" : "text-slate-900"}`}>{stage.count}</p>
                   {stage.stuck > 0 && <p className="text-[10px] text-red-500 font-medium">{stage.stuck} stuck</p>}
                 </div>
                 <div className={`mx-auto rounded-t-xl transition-all group-hover:opacity-90 ${

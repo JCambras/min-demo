@@ -159,17 +159,17 @@ export function AuditScreen({ onExit, onNavigate }: {
             <div className="grid grid-cols-3 gap-3 mb-6">
               <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
                 <FileText size={16} className="text-slate-400 mx-auto mb-2" />
-                <p className="text-2xl font-light text-slate-700">{records.length}</p>
+                <p className="text-2xl font-light tabular-nums text-slate-700">{records.length}</p>
                 <p className="text-[10px] text-slate-400 mt-1">Total Records</p>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
                 <CheckCircle size={16} className="text-green-500 mx-auto mb-2" />
-                <p className="text-2xl font-light text-green-600">{successCount}</p>
+                <p className="text-2xl font-light tabular-nums text-green-600">{successCount}</p>
                 <p className="text-[10px] text-slate-400 mt-1">Successful</p>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
                 <AlertTriangle size={16} className="text-red-500 mx-auto mb-2" />
-                <p className="text-2xl font-light text-red-600">{errorCount}</p>
+                <p className="text-2xl font-light tabular-nums text-red-600">{errorCount}</p>
                 <p className="text-[10px] text-slate-400 mt-1">Errors</p>
               </div>
             </div>

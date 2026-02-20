@@ -52,19 +52,19 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
             {sourceBadge(mode)}
             <span className="text-emerald-400 ml-0.5">▾</span>
           </p>
-          <p className="text-2xl font-light text-emerald-700 mt-1">${(data.revenue.estimatedAum / 1_000_000).toFixed(0)}M</p>
+          <p className="text-2xl font-light tabular-nums text-emerald-700 mt-1">${(data.revenue.estimatedAum / 1_000_000).toFixed(0)}M</p>
         </button>
         <button onClick={() => toggleDetail("rev-fee")} className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
           <p className="text-[10px] text-emerald-600 font-medium uppercase tracking-wider">Annual Fee Income<span className="text-emerald-400 ml-0.5">▾</span></p>
-          <p className="text-2xl font-light text-emerald-700 mt-1">${(data.revenue.annualFeeIncome / 1_000_000).toFixed(2)}M</p>
+          <p className="text-2xl font-light tabular-nums text-emerald-700 mt-1">${(data.revenue.annualFeeIncome / 1_000_000).toFixed(2)}M</p>
         </button>
         <button onClick={() => toggleDetail("rev-pipe")} className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
           <p className="text-[10px] text-blue-600 font-medium uppercase tracking-wider">Pipeline <abbr title="Assets Under Management" className="no-underline cursor-help">AUM</abbr><span className="text-blue-400 ml-0.5">▾</span></p>
-          <p className="text-2xl font-light text-blue-700 mt-1">${(data.revenue.pipelineForecast.totalPipelineAum / 1_000_000).toFixed(1)}M</p>
+          <p className="text-2xl font-light tabular-nums text-blue-700 mt-1">${(data.revenue.pipelineForecast.totalPipelineAum / 1_000_000).toFixed(1)}M</p>
         </button>
         <button onClick={() => toggleDetail("rev-proj")} className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 text-left hover:shadow-sm transition-all">
           <p className="text-[10px] text-blue-600 font-medium uppercase tracking-wider">Projected New Revenue<span className="text-blue-400 ml-0.5">▾</span></p>
-          <p className="text-2xl font-light text-blue-700 mt-1">${(data.revenue.pipelineForecast.projectedNewRevenue / 1_000).toFixed(0)}K</p>
+          <p className="text-2xl font-light tabular-nums text-blue-700 mt-1">${(data.revenue.pipelineForecast.projectedNewRevenue / 1_000).toFixed(0)}K</p>
           <p className="text-[9px] text-blue-400 mt-0.5">{Math.round(data.assumptions.pipelineConversionRate * 100)}% conversion</p>
         </button>
       </div>
@@ -140,7 +140,7 @@ export function RevenueSection({ data, detailPanel, toggleDetail }: {
                     <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div className="h-full bg-emerald-400 rounded-full transition-all duration-500" style={{ width: `${(a.annualFee / maxFee) * 100}%` }} />
                     </div>
-                    <span className="text-xs font-medium text-slate-700 w-16 text-right">${(a.annualFee / 1_000).toFixed(0)}K</span>
+                    <span className="text-xs font-medium tabular-nums text-slate-700 w-16 text-right">${(a.annualFee / 1_000).toFixed(0)}K</span>
                   </button>
                   <DetailDrawer id={`rev-adv-${i}`} activeId={detailPanel}>
                     <p className="text-xs text-slate-600">

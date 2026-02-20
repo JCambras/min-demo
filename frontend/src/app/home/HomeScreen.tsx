@@ -79,7 +79,7 @@ function StatCard({ label, value, Icon, color, vColor, expanded, tourKey, onClic
         <Icon size={16} className={color} />
         <span className="text-sm font-semibold text-slate-600 truncate">{label}</span>
       </div>
-      <p className={`text-2xl font-light ${vColor || "text-slate-900"}`}>{value}</p>
+      <p className={`text-2xl font-light tabular-nums ${vColor || "text-slate-900"}`}>{value}</p>
       {subtitle && <p className="text-[10px] text-slate-500">{subtitle}</p>}
       {peekItems && peekItems.length > 0 && !expanded && (
         <div className="mt-2 pt-2 border-t border-slate-100 space-y-0.5">

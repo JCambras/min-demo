@@ -260,7 +260,7 @@ export function FamilyScreen({ onExit, context, onNavigate }: {
               <div className="flex items-center gap-4 mb-3">
                 <MiniHealthRing score={demoHealth.healthScore} size={56} />
                 <div>
-                  <p className="text-lg font-light text-slate-900">Health Score: {demoHealth.healthScore}</p>
+                  <p className="text-lg font-light tabular-nums text-slate-900">Health Score: {demoHealth.healthScore}</p>
                   <p className="text-xs text-slate-400">
                     {demoHealth.status === "on-track" ? "On track" : demoHealth.status === "needs-attention" ? "Needs attention" : "At risk"}
                     {" · "}
