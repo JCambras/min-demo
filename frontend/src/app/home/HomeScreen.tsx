@@ -386,7 +386,22 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {/* Tour + Demo Buttons */}
       {!tourActive && (
         <div className="mb-6 flex items-center gap-3">
-          <TourButton onClick={() => dispatch({ type: "SET_TOUR", active: true })} hasData={!!stats && stats.readyForReviewItems.length > 0} />
+          <TourButton
+            onClick={() => dispatch({ type: "SET_TOUR", active: true })}
+            hasData={!!stats && stats.readyForReviewItems.length > 0}
+            onGuidedTour={() => {
+              // Activate demo mode if not already on
+              if (!isDemoMode) demoCtx.toggleDemo();
+              // Inject demo data
+              const demoData = getDemoSFData();
+              const demoStats = buildHomeStats(demoData.tasks, demoData.households, demoData.instanceUrl);
+              dispatch({ type: "STATS_LOADED", stats: demoStats, tasks: demoData.tasks, households: demoData.households, instanceUrl: demoData.instanceUrl });
+              // Set tour type and role
+              dispatch({ type: "SET_TOUR_TYPE", tourType: "guided" });
+              dispatch({ type: "SET_ROLE_INLINE", role: "advisor" });
+              dispatch({ type: "SET_TOUR", active: true });
+            }}
+          />
           {!isDemoMode && (
             <button
               onClick={() => {

@@ -699,11 +699,22 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
   const tourOverlay = (
     <DemoMode
       active={tourActive}
-      onEnd={() => { setAutoPlayTour(false); dispatch({ type: "SET_TOUR", active: false }); if (screen !== "home") goHome(); }}
+      onEnd={() => {
+        setAutoPlayTour(false);
+        dispatch({ type: "SET_TOUR", active: false });
+        // Guided tour: reset role to advisor and go home
+        if (state.tourType === "guided") {
+          dispatch({ type: "SET_ROLE_INLINE", role: "advisor" });
+          dispatch({ type: "SET_TOUR_TYPE", tourType: "quick" });
+        }
+        if (screen !== "home") goHome();
+      }}
       screen={screen}
       navigateTo={goTo}
       stats={state.stats}
       autoPlay={autoPlayTour}
+      dispatch={dispatch}
+      tourType={state.tourType}
     />
   );
   const wrap = (el: React.ReactNode, label: string, withTour = true) => <><ErrorBoundary fallbackLabel={`${label} error.`}>{el}</ErrorBoundary>{withTour && tourOverlay}<CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} onNavigate={(s, ctx) => { if (s === "home") goHome(); else goTo(s, ctx); }} /></>;

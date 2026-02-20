@@ -67,6 +67,7 @@ export interface AppState {
   // UI
   toast: string | null;
   tourActive: boolean;
+  tourType: "quick" | "demo" | "guided";
 }
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -96,6 +97,7 @@ export type AppAction =
   | { type: "SHOW_TOAST"; message: string }
   | { type: "CLEAR_TOAST" }
   | { type: "SET_TOUR"; active: boolean }
+  | { type: "SET_TOUR_TYPE"; tourType: "quick" | "demo" | "guided" }
   | { type: "SET_ROLE_INLINE"; role: UserRole }; // role switcher on home screen
 
 // ─── Initial State ──────────────────────────────────────────────────────────
@@ -119,6 +121,7 @@ const initialState: AppState = {
   activeFirmId: "all",
   toast: null,
   tourActive: false,
+  tourType: "quick",
 };
 
 // ─── Reducer ────────────────────────────────────────────────────────────────
@@ -183,6 +186,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, toast: null };
     case "SET_TOUR":
       return { ...state, tourActive: action.active };
+    case "SET_TOUR_TYPE":
+      return { ...state, tourType: action.tourType };
     case "SET_ROLE_INLINE":
       return { ...state, role: action.role };
 

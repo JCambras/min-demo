@@ -370,7 +370,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
                 <SectionWrapper id="advisors"><AdvisorScoreboard data={data} advisorName={advisorName} isAdvisor={isAdvisor} /></SectionWrapper>
                 {(role === "operations" || role === "principal") && <SectionWrapper id="staff"><StaffWorkload data={data} /></SectionWrapper>}
                 {(role === "operations" || role === "principal") && <SectionWrapper id="ops"><OpsWorkload data={data} firmName={firmName} /></SectionWrapper>}
-                {(role === "operations" || role === "principal") && <SectionWrapper id="quality"><DataQuality data={data} goToFamily={goToFamily} /></SectionWrapper>}
+                {(role === "operations" || role === "principal") && <SectionWrapper id="quality"><div data-tour="data-quality"><DataQuality data={data} goToFamily={goToFamily} /></div></SectionWrapper>}
                 {(role === "operations" || role === "principal") && <SectionWrapper id="risk"><HouseholdRiskScore data={data} goToFamily={goToFamily} goToCompliance={goToCompliance} /></SectionWrapper>}
                 <SectionWrapper id="pipeline"><PipelineSection data={data} detailPanel={detailPanel} toggleDetail={toggleDetail} goToFamily={goToFamily} /></SectionWrapper>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -381,7 +381,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
 
                 {/* Reconciliation (ops/principal only) */}
                 {isDemoMode && (role === "operations" || role === "principal") && (
-                  <ReconciliationSection />
+                  <div data-tour="reconciliation"><ReconciliationSection /></div>
                 )}
 
                 <PracticePlaybook data={data} firmName={firmName} />

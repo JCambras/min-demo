@@ -97,7 +97,7 @@ export function RiskRadar({ data, goToFamily, goToCompliance, onDisposition }: {
   const displaySource = showSuppressed ? data.allRisks : data.risks;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+    <div data-tour="risk-radar" className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
         <Activity size={16} className="text-red-500" />
         <div>

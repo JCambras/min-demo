@@ -63,7 +63,7 @@ export function HealthScoreSection({ data, detailPanel, toggleDetail, firmName }
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-xl font-semibold text-slate-900">Practice Health Score</h2>
-                  <button onClick={() => setShowAumWeighted(!showAumWeighted)} title="Prioritizes high-value client health"
+                  <button data-tour="aum-weight-toggle" onClick={() => setShowAumWeighted(!showAumWeighted)} title="Prioritizes high-value client health"
                     className={`text-[10px] px-2.5 py-1 rounded-lg font-medium transition-colors ${showAumWeighted ? "bg-blue-500 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
                     {showAumWeighted ? "AUM-Weighted" : "Equal Weight"}
                   </button>
