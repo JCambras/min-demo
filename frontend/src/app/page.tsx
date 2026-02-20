@@ -128,11 +128,36 @@ function OAuthErrorBanner({ error, onDismiss }: { error: OAuthError; onDismiss: 
 // ─── DiscoveryInterstitial ───────────────────────────────────────────────────
 // Shown after Salesforce connects. Runs schema discovery automatically and
 // shows the COO what Min is finding in their org — in real time.
+// If confidence is low (< 0.70), prompts user with 3 manual mapping questions.
 
 interface DiscoveryStep {
   label: string;
   status: "pending" | "active" | "done" | "error";
   detail?: string;
+}
+
+interface MappingChoice {
+  value: string;
+  label: string;
+  confidence: number;
+}
+
+interface MappingChoicesData {
+  householdOptions: MappingChoice[];
+  advisorFieldOptions: MappingChoice[];
+  aumFieldOptions: MappingChoice[];
+}
+
+interface DiscoveryHealthReport {
+  orgType?: string;
+  householdCount?: number;
+  contactCount?: number;
+  financialAccountCount?: number;
+  fscInstalled?: boolean;
+  automationRiskLevel?: string;
+  requiredFieldGaps?: { object: string; fields: { name: string; label: string; type: string }[]; severity: string }[];
+  flsWarnings?: { field: string; object: string; issue: string; impact: string }[];
+  warnings?: string[];
 }
 
 function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void; onSkip: () => void }) {
@@ -145,7 +170,16 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
   ]);
   const [error, setError] = useState<string | null>(null);
   const [healthSummary, setHealthSummary] = useState<string | null>(null);
+  const [healthReport, setHealthReport] = useState<DiscoveryHealthReport | null>(null);
   const [done, setDone] = useState(false);
+
+  // Manual mapping state
+  const [manualMappingNeeded, setManualMappingNeeded] = useState(false);
+  const [mappingChoices, setMappingChoices] = useState<MappingChoicesData | null>(null);
+  const [mmHousehold, setMmHousehold] = useState("");
+  const [mmAdvisor, setMmAdvisor] = useState("");
+  const [mmAum, setMmAum] = useState("");
+  const [mmSubmitting, setMmSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -202,6 +236,7 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
         if (cancelled) return;
 
         const hr = data.healthReport;
+        setHealthReport(hr || null);
         advance(2, "done", hr ? `${hr.householdCount ?? 0} households, ${hr.contactCount ?? 0} contacts` : undefined);
         advance(3, "active");
 
@@ -229,7 +264,20 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
         advance(4, "done", "Ready");
 
         await sleep(400);
-        if (!cancelled) setDone(true);
+        if (cancelled) return;
+
+        // ── Confidence gate ──
+        if (data.lowConfidence && data.mappingChoices) {
+          const choices = data.mappingChoices as MappingChoicesData;
+          setMappingChoices(choices);
+          // Pre-select the highest-confidence option for each question
+          if (choices.householdOptions.length > 0) setMmHousehold(choices.householdOptions[0].value);
+          if (choices.advisorFieldOptions.length > 0) setMmAdvisor(choices.advisorFieldOptions[0].value);
+          if (choices.aumFieldOptions.length > 0) setMmAum(choices.aumFieldOptions[0].value);
+          setManualMappingNeeded(true);
+        } else {
+          setDone(true);
+        }
 
       } catch (err) {
         if (cancelled) return;
@@ -248,28 +296,187 @@ function DiscoveryInterstitial({ onComplete, onSkip }: { onComplete: () => void;
     setSteps(prev => prev.map((s, i) => i === index ? { ...s, status, detail: detail ?? s.detail } : s));
   }
 
+  // Parse the household option value to get filter type + value
+  function parseHouseholdChoice(choice: string): { householdObject: string; householdFilter: "recordType" | "typePicklist" | "allAccounts" | "customObject"; householdFilterValue: string } {
+    const [type, ...rest] = choice.split(":");
+    const val = rest.join(":");
+    if (type === "recordType") return { householdObject: "Account", householdFilter: "recordType", householdFilterValue: val };
+    if (type === "typePicklist") return { householdObject: "Account", householdFilter: "typePicklist", householdFilterValue: val };
+    if (type === "customObject") return { householdObject: val, householdFilter: "customObject", householdFilterValue: "" };
+    return { householdObject: "Account", householdFilter: "allAccounts", householdFilterValue: "" };
+  }
+
+  async function submitManualMapping() {
+    setMmSubmitting(true);
+    try {
+      const { householdObject, householdFilter, householdFilterValue } = parseHouseholdChoice(mmHousehold);
+      const res = await fetch("/api/salesforce/discover/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          householdObject,
+          householdFilter,
+          householdFilterValue,
+          advisorField: mmAdvisor,
+          aumField: mmAum === "__none__" ? null : mmAum,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.healthReport) setHealthReport(data.healthReport);
+      }
+    } catch { /* proceed anyway */ }
+    setMmSubmitting(false);
+    setManualMappingNeeded(false);
+    setDone(true);
+  }
+
+  function skipManualMapping() {
+    setManualMappingNeeded(false);
+    setDone(true);
+  }
+
   // ── "You're all set" confirmation ──
-  if (done) return (
+  if (done) {
+    const flsWarnings = healthReport?.flsWarnings || [];
+    const blockingGaps = (healthReport?.requiredFieldGaps || []).filter(g => g.severity === "blocking");
+    return (
+      <div className="flex h-screen bg-surface">
+        <div className="flex-1 flex flex-col items-center justify-center px-8">
+          <div className="max-w-md w-full text-center animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
+              <CheckCircle size={32} className="text-green-600" />
+            </div>
+            <h1 className="text-3xl font-light tracking-tight text-slate-900 mb-2">You&rsquo;re all set</h1>
+            <p className="text-lg text-slate-400 font-light mb-8">Min is connected to your Salesforce org.</p>
+
+            {healthSummary && (
+              <div className="bg-white border border-slate-200 rounded-2xl px-6 py-4 mb-6">
+                <p className="text-sm text-slate-600">{healthSummary}</p>
+              </div>
+            )}
+
+            {/* FLS Warnings */}
+            {flsWarnings.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 mb-4 text-left">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle size={16} className="text-amber-600" />
+                  <p className="text-sm font-medium text-amber-800">Min can&rsquo;t read {flsWarnings.length} field{flsWarnings.length > 1 ? "s" : ""} in your org</p>
+                </div>
+                <p className="text-xs text-amber-700 mb-2">This may cause missing data on some screens.</p>
+                <ul className="space-y-1">
+                  {flsWarnings.map((w, i) => (
+                    <li key={i} className="text-xs text-amber-700"><span className="font-mono">{w.object}.{w.field}</span> — {w.impact}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Required Field Gaps */}
+            {blockingGaps.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 mb-4 text-left">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle size={16} className="text-red-600" />
+                  <p className="text-sm font-medium text-red-800">Required field gaps detected</p>
+                </div>
+                <p className="text-xs text-red-700 mb-2">Record creation may fail for these objects.</p>
+                <ul className="space-y-1">
+                  {blockingGaps.map((g, i) => (
+                    <li key={i} className="text-xs text-red-700"><strong>{g.object}</strong>: {g.fields.map(f => f.label).join(", ")}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* No issues */}
+            {flsWarnings.length === 0 && blockingGaps.length === 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-3 mb-4">
+                <p className="text-sm text-green-700 flex items-center justify-center gap-2"><CheckCircle size={14} /> No issues detected</p>
+              </div>
+            )}
+
+            <button onClick={onComplete} className="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors">
+              Open your dashboard
+            </button>
+
+            <p className="text-xs text-slate-300 mt-6">You can re-run discovery anytime from Settings.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Manual mapping step ──
+  if (manualMappingNeeded && mappingChoices) return (
     <div className="flex h-screen bg-surface">
       <div className="flex-1 flex flex-col items-center justify-center px-8">
-        <div className="max-w-md w-full text-center animate-fade-in">
-          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
-            <CheckCircle size={32} className="text-green-600" />
+        <div className="max-w-md w-full animate-fade-in">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-light tracking-tight text-slate-900 mb-2">Help Min understand your org</h1>
+            <p className="text-sm text-slate-400">We couldn&rsquo;t confidently detect your data model. Answer 3 quick questions so Min gets it right.</p>
           </div>
-          <h1 className="text-3xl font-light tracking-tight text-slate-900 mb-2">You&rsquo;re all set</h1>
-          <p className="text-lg text-slate-400 font-light mb-8">Min is connected to your Salesforce org.</p>
 
-          {healthSummary && (
-            <div className="bg-white border border-slate-200 rounded-2xl px-6 py-4 mb-6">
-              <p className="text-sm text-slate-600">{healthSummary}</p>
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
+            {/* Question 1: Households */}
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-2">How does your firm organize households?</label>
+              <select
+                value={mmHousehold}
+                onChange={e => setMmHousehold(e.target.value)}
+                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900"
+              >
+                {mappingChoices.householdOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}{opt.confidence >= 0.60 ? " — Min's best guess" : ""}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
 
-          <button onClick={onComplete} className="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors">
-            Open your dashboard
+            {/* Question 2: Advisor */}
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-2">Which field identifies the primary advisor?</label>
+              <select
+                value={mmAdvisor}
+                onChange={e => setMmAdvisor(e.target.value)}
+                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900"
+              >
+                {mappingChoices.advisorFieldOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}{opt.confidence >= 0.80 ? " — Min's best guess" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Question 3: AUM */}
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-2">Where is AUM stored?</label>
+              <select
+                value={mmAum}
+                onChange={e => setMmAum(e.target.value)}
+                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900"
+              >
+                {mappingChoices.aumFieldOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}{opt.confidence >= 0.70 ? " — Min's best guess" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={submitManualMapping}
+              disabled={mmSubmitting}
+              className="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            >
+              {mmSubmitting ? <><DynLoader size={16} className="animate-spin" /> Saving...</> : "Confirm"}
+            </button>
+          </div>
+
+          <button onClick={skipManualMapping} className="block mx-auto mt-4 text-sm text-slate-400 hover:text-slate-600 transition-colors">
+            Use Min&rsquo;s guess →
           </button>
-
-          <p className="text-xs text-slate-300 mt-6">You can re-run discovery anytime from Settings.</p>
         </div>
       </div>
     </div>

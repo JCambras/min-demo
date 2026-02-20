@@ -12,7 +12,8 @@
 
 import { NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/sf-connection";
-import { discoverOrg, classifyOrgHeuristic } from "@/lib/schema-discovery";
+import { discoverOrg, classifyOrgHeuristic, isLowConfidence } from "@/lib/schema-discovery";
+import { buildMappingChoices } from "@/lib/manual-mapping";
 import { setOrgMapping } from "@/lib/org-query";
 import { getDb, ensureSchema } from "@/lib/db";
 import type { OrgMetadataBundle } from "@/lib/schema-discovery";
@@ -47,6 +48,15 @@ export async function POST() {
         recordCounts: bundle.recordCounts,
         fscObjectsFound: bundle.fscObjectsFound.length,
         personAccountsEnabled: bundle.personAccountsEnabled,
+        // Richer bundle data for manual mapping choices
+        accountRecordTypeInfos: (bundle.accountDescribe?.recordTypeInfos || []).filter(rt => rt.active),
+        accountFields: (bundle.accountDescribe?.fields || [])
+          .filter(f => f.custom || ["OwnerId", "Name", "Type"].includes(f.name))
+          .filter(f => f.type === "currency" || f.type === "reference" || f.type === "picklist" || f.name === "OwnerId" || f.name === "Name" || f.name === "Type")
+          .slice(0, 30)
+          .map(f => ({ name: f.name, label: f.label, type: f.type, referenceTo: f.referenceTo, picklistValues: f.picklistValues })),
+        accountTypeValues: bundle.accountTypeValues,
+        candidateCustomObjects: bundle.candidateCustomObjects.map(o => ({ name: o.name, label: o.label })),
       }), now, now],
     });
 
@@ -75,6 +85,12 @@ export async function POST() {
       junctionObject: mapping.contact.junction?.object || null,
       usesAccountHierarchy: mapping.household.usesAccountHierarchy || false,
       overallConfidence: mapping.confidence,
+      confidenceBreakdown: {
+        household: mapping.household.confidence,
+        contact: mapping.contact.confidence,
+        financialAccount: mapping.financialAccount.confidence,
+        aum: mapping.aum.confidence,
+      },
       apiCallsMade: bundle.apiCallsMade,
       discoveryDurationMs: bundle.durationMs,
       errors: bundle.errors,
@@ -87,7 +103,11 @@ export async function POST() {
       args: [orgId, "discovery_completed", JSON.stringify({ orgType: healthReport.orgType, confidence: mapping.confidence })],
     }).catch(() => {}); // fire-and-forget
 
-    const body: Record<string, unknown> = { success: true, mapping, healthReport };
+    // Confidence gate: flag low-confidence results so the UI can prompt manual mapping
+    const lowConfidence = isLowConfidence(mapping);
+    const mappingChoices = lowConfidence ? buildMappingChoices(bundle) : null;
+
+    const body: Record<string, unknown> = { success: true, mapping, healthReport, lowConfidence, mappingChoices };
 
     // Only include raw metadata in non-production environments
     if (process.env.NODE_ENV !== "production") {

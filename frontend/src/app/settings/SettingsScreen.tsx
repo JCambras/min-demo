@@ -27,6 +27,8 @@ interface DiscoveryMapping {
   complianceReview: { type: string; object: string | null; confidence: number };
   pipeline: { type: string; object: string | null; stageField: string | null; confidence: number };
   automationRisks: { riskLevel: string; taskFlowCount: number; accountTriggerCount: number; blockingValidationRules: string[] };
+  requiredFieldGaps?: { object: string; fields: { name: string; label: string; type: string }[]; severity: string }[];
+  flsWarnings?: { field: string; object: string; issue: string; impact: string }[];
   warnings: string[];
 }
 
@@ -43,11 +45,25 @@ interface HealthReport {
   automationRiskLevel: string;
   taskFlowCount: number;
   validationRuleCount: number;
+  requiredFieldGaps?: { object: string; fields: { name: string; label: string; type: string }[]; severity: string }[];
+  flsWarnings?: { field: string; object: string; issue: string; impact: string }[];
   overallConfidence: number;
   apiCallsMade: number;
   discoveryDurationMs: number;
   errors: string[];
   warnings: string[];
+}
+
+interface MappingChoiceOption {
+  value: string;
+  label: string;
+  confidence: number;
+}
+
+interface MappingChoicesResponse {
+  householdOptions: MappingChoiceOption[];
+  advisorFieldOptions: MappingChoiceOption[];
+  aumFieldOptions: MappingChoiceOption[];
 }
 
 // ─── Confidence Badge ───────────────────────────────────────────────────────
@@ -115,6 +131,13 @@ function SchemaDiscoveryPanel() {
   const [healthReport, setHealthReport] = useState<HealthReport | null>(null);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(true);
+  // Manual override state
+  const [showManualOverride, setShowManualOverride] = useState(false);
+  const [mmChoices, setMmChoices] = useState<MappingChoicesResponse | null>(null);
+  const [mmHousehold, setMmHousehold] = useState("");
+  const [mmAdvisor, setMmAdvisor] = useState("");
+  const [mmAum, setMmAum] = useState("");
+  const [mmSubmitting, setMmSubmitting] = useState(false);
 
   const runDiscovery = async () => {
     setDiscovering(true);
@@ -135,6 +158,8 @@ function SchemaDiscoveryPanel() {
       if (data.success) {
         setMapping(data.mapping);
         setHealthReport(data.healthReport);
+        if (data.mappingChoices) setMmChoices(data.mappingChoices);
+        setShowManualOverride(false);
       } else {
         setError(data.error?.message || data.error || "Discovery failed");
       }
@@ -326,15 +351,150 @@ function SchemaDiscoveryPanel() {
         </div>
       )}
 
-      {/* Re-run */}
+      {/* FLS Warnings */}
+      {mapping && (mapping.flsWarnings || []).length > 0 && (
+        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-600" />
+            <p className="text-sm font-medium text-amber-800">Field-Level Security Warnings</p>
+          </div>
+          <p className="text-xs text-amber-700">Min can&rsquo;t read these fields. This may cause missing data.</p>
+          <ul className="space-y-1">
+            {(mapping.flsWarnings || []).map((w, i) => (
+              <li key={i} className="text-xs text-amber-700"><span className="font-mono">{w.object}.{w.field}</span> — {w.impact}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Required Field Gaps */}
+      {mapping && (mapping.requiredFieldGaps || []).filter(g => g.severity === "blocking").length > 0 && (
+        <div className="mt-4 bg-red-50 border border-red-200 rounded-2xl p-5 space-y-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-red-600" />
+            <p className="text-sm font-medium text-red-800">Required Field Gaps</p>
+          </div>
+          <p className="text-xs text-red-700">These objects have required fields Min doesn&rsquo;t populate. Record creation may fail.</p>
+          <ul className="space-y-1">
+            {(mapping.requiredFieldGaps || []).filter(g => g.severity === "blocking").map((g, i) => (
+              <li key={i} className="text-xs text-red-700"><strong>{g.object}</strong>: {g.fields.map(f => f.label).join(", ")}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Re-run + Manual Override */}
       {mapping && (
-        <button
-          onClick={runDiscovery}
-          disabled={discovering}
-          className="mt-4 w-full py-3 rounded-2xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
-        >
-          {discovering ? <><Loader2 size={16} className="animate-spin" /> Re-scanning...</> : <><Search size={16} /> Re-run Discovery</>}
-        </button>
+        <div className="mt-4 flex gap-3">
+          <button
+            onClick={runDiscovery}
+            disabled={discovering}
+            className="flex-1 py-3 rounded-2xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+          >
+            {discovering ? <><Loader2 size={16} className="animate-spin" /> Re-scanning...</> : <><Search size={16} /> Re-run Discovery</>}
+          </button>
+          <button
+            onClick={async () => {
+              if (!mmChoices) {
+                // Fetch choices from the discovery endpoint
+                try {
+                  const res = await fetch("/api/salesforce/discover", { method: "POST" });
+                  const data = await res.json();
+                  if (data.mappingChoices) setMmChoices(data.mappingChoices);
+                  if (data.mapping) setMapping(data.mapping);
+                  if (data.healthReport) setHealthReport(data.healthReport);
+                } catch {}
+              }
+              setShowManualOverride(true);
+            }}
+            className="flex-1 py-3 rounded-2xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+          >
+            <Database size={16} /> Manual Override
+          </button>
+        </div>
+      )}
+
+      {/* Manual Override Form */}
+      {showManualOverride && mmChoices && (
+        <div className="mt-4 bg-white border border-slate-200 rounded-2xl p-6 space-y-5 animate-fade-in">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-1">Manual Schema Override</h3>
+            <p className="text-xs text-slate-400">Correct how Min maps your Salesforce data model.</p>
+          </div>
+
+          <div>
+            <label className="text-xs text-slate-500 mb-1.5 block">How does your firm organize households?</label>
+            <select value={mmHousehold} onChange={e => setMmHousehold(e.target.value)}
+              className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900">
+              <option value="">Select...</option>
+              {mmChoices.householdOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}{opt.confidence >= 0.60 ? " \u2014 best guess" : ""}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs text-slate-500 mb-1.5 block">Which field identifies the primary advisor?</label>
+            <select value={mmAdvisor} onChange={e => setMmAdvisor(e.target.value)}
+              className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900">
+              <option value="">Select...</option>
+              {mmChoices.advisorFieldOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}{opt.confidence >= 0.80 ? " \u2014 best guess" : ""}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs text-slate-500 mb-1.5 block">Where is AUM stored?</label>
+            <select value={mmAum} onChange={e => setMmAum(e.target.value)}
+              className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900">
+              <option value="">Select...</option>
+              {mmChoices.aumFieldOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}{opt.confidence >= 0.70 ? " \u2014 best guess" : ""}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={async () => {
+                if (!mmHousehold || !mmAdvisor) return;
+                setMmSubmitting(true);
+                try {
+                  const [type, ...rest] = mmHousehold.split(":");
+                  const val = rest.join(":");
+                  const householdFilter = type === "recordType" ? "recordType" : type === "typePicklist" ? "typePicklist" : type === "customObject" ? "customObject" : "allAccounts";
+                  const res = await fetch("/api/salesforce/discover/manual", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      householdObject: type === "customObject" ? val : "Account",
+                      householdFilter,
+                      householdFilterValue: type === "allAccounts" ? "" : val,
+                      advisorField: mmAdvisor,
+                      aumField: mmAum === "__none__" ? null : (mmAum || null),
+                    }),
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    setMapping(data.mapping);
+                    if (data.healthReport) setHealthReport(data.healthReport);
+                    setShowManualOverride(false);
+                  }
+                } catch {}
+                setMmSubmitting(false);
+              }}
+              disabled={mmSubmitting || !mmHousehold || !mmAdvisor}
+              className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-30 transition-colors flex items-center justify-center gap-2"
+            >
+              {mmSubmitting ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : "Apply Override"}
+            </button>
+            <button onClick={() => setShowManualOverride(false)}
+              className="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-500 text-sm font-medium hover:bg-slate-50 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Seed Discovery Demo Data */}

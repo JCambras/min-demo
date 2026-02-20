@@ -152,6 +152,16 @@ const FSC_OBJECT_PREFIXES = [
   "FinServ__Securities__c",
 ];
 
+// ─── Confidence Threshold ─────────────────────────────────────────────────
+// When overall or household confidence is below these thresholds, the app
+// should prompt the user for manual mapping instead of silently proceeding.
+
+export const CONFIDENCE_THRESHOLD = 0.70;
+
+export function isLowConfidence(mapping: OrgMapping): boolean {
+  return mapping.confidence < CONFIDENCE_THRESHOLD || mapping.household.confidence < 0.60;
+}
+
 // Known managed package object prefixes for RIA-specific platforms.
 // Objects with these prefixes get first-class detection, not heuristic matching.
 const MANAGED_PACKAGE_PREFIXES = [
@@ -161,6 +171,20 @@ const MANAGED_PACKAGE_PREFIXES = [
     householdObject: "cloupra__Household__c",
     junctionObject: "cloupra__Client_Group_Member__c",
     aumFields: ["cloupra__AUM__c", "cloupra__Total_Assets__c"],
+  },
+  {
+    prefix: "XLR8__",
+    platform: "XLR8",
+    householdObject: "XLR8__Client_Group__c",
+    junctionObject: "XLR8__Client_Group_Member__c",
+    aumFields: ["XLR8__AUM__c", "XLR8__Total_Assets__c"],
+  },
+  {
+    prefix: "wealthbox__",
+    platform: "Wealthbox Sync",
+    householdObject: "wealthbox__Household__c",
+    junctionObject: null as unknown as string,
+    aumFields: ["wealthbox__AUM__c"],
   },
 ];
 
