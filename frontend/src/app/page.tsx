@@ -11,6 +11,7 @@ import { useIdleTimeout } from "@/lib/use-idle-timeout";
 import { DemoProvider, useDemoMode } from "@/lib/demo-context";
 import { getDemoSFData } from "@/lib/demo-data";
 import { buildHomeStats } from "@/lib/home-stats";
+import { loadTriageConfig } from "@/lib/triage-config";
 import { assertNever } from "@/lib/types";
 import type { UserRole } from "@/lib/types";
 
@@ -34,6 +35,7 @@ const ActivityFeedScreen = dynamic(() => import("./activity/ActivityFeedScreen")
 const AuditScreen = dynamic(() => import("./audit/AuditScreen").then(m => ({ default: m.AuditScreen })), { ssr: false, loading: DynLoading });
 const DemoMode = dynamic(() => import("./tour/DemoMode").then(m => ({ default: m.DemoMode })), { ssr: false });
 const SettingsScreen = dynamic(() => import("./settings/SettingsScreen").then(m => ({ default: m.SettingsScreen })), { ssr: false, loading: DynLoading });
+const BoothAttractMode = dynamic(() => import("./booth/BoothAttractMode").then(m => ({ default: m.BoothAttractMode })), { ssr: false, loading: DynLoading });
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -435,6 +437,7 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [autoPlayTour, setAutoPlayTour] = useState(false);
   const [demoPhase, setDemoPhase] = useState<'idle' | 'loading'>('idle');
+  const [boothMode, setBoothMode] = useState(false);
 
   // Global Cmd+K handler
   useEffect(() => {
@@ -459,6 +462,12 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
+
+    // Booth attract mode: skip all setup
+    if (params.get("booth") === "true") {
+      setBoothMode(true);
+      return;
+    }
 
     // Error case: sf_error present
     const rawError = params.get("sf_error");
@@ -517,7 +526,7 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
     if (!isDemoMode) demoCtx.toggleDemo();
     // 2. Load all demo data into reducer state
     const { tasks, households, instanceUrl } = getDemoSFData();
-    const demoStats = buildHomeStats(tasks, households, instanceUrl);
+    const demoStats = buildHomeStats(tasks, households, instanceUrl, undefined, loadTriageConfig());
     dispatch({ type: "SET_ROLE", role: "operations" });
     dispatch({ type: "SET_ADVISOR_NAME", name: DEMO_ADVISORS[0].name });
     dispatch({ type: "STATS_LOADED", stats: demoStats, tasks, households, instanceUrl });
@@ -546,11 +555,13 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
   // OAuth error banner — rendered as a fixed overlay on any setup screen
   const errorBanner = oauthError ? <OAuthErrorBanner error={oauthError} onDismiss={() => setOauthError(null)} /> : null;
 
+  if (boothMode) return <BoothAttractMode firmName={FIRM_NAME} />;
+
   if (demoPhase === 'loading') return <DemoInterstitial onReady={onDemoReady} />;
 
   if (setupStep === "role") return (
     <div className="flex h-screen bg-surface"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">
-      <div className="text-center mb-10"><h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1><p className="text-lg text-slate-400 font-light">Your practice, simplified.</p></div>
+      <div className="text-center mb-10"><h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1><p className="text-lg text-slate-400 font-light">Operations intelligence for multi-advisor Salesforce practices.</p></div>
 
       {/* ── View Demo: one click, zero setup ── */}
       <button
@@ -613,7 +624,7 @@ function HomeInner({ state, dispatch, goTo, goBack, goHome, loadStats, showToast
 
   if (setupStep === "crm") return (
     <div className="flex h-screen bg-surface"><div className="flex-1 flex flex-col items-center justify-center px-8"><div className="max-w-2xl w-full">
-      <div className="text-center mb-10"><h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1><p className="text-lg text-slate-400 font-light">Connect your CRM</p></div>
+      <div className="text-center mb-10"><h1 className="text-5xl font-light tracking-tight text-slate-900 mb-3">Min</h1><p className="text-lg text-slate-400 font-light">Connect your Salesforce org</p></div>
       <p className="text-sm text-slate-500 text-center mb-6">Which CRM does your firm use?</p>
       <div className="grid grid-cols-3 gap-4">
         {CRMS.map(c => (<button key={c.id} onClick={() => c.live && handleCrmSelect()} disabled={!c.live}

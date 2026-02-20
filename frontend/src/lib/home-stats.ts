@@ -5,6 +5,8 @@
 
 import { isMeetingNote, isComplianceReview, isDocuSignSend, classifyTask, DOCUSIGN_SEND, COMPLIANCE_REVIEW, MEETING_NOTE, FOLLOW_UP } from "./task-subjects";
 import { formatDate } from "./format";
+import type { TriageThresholdConfig } from "./triage-config";
+import { DEFAULT_TRIAGE_CONFIG } from "./triage-config";
 
 export interface StatDetailItem {
   label: string;
@@ -153,7 +155,9 @@ export function buildHomeStats(
   households: SFHousehold[],
   instanceUrl: string,
   filterAdvisor?: string,
+  config?: TriageThresholdConfig,
 ): HomeStats {
+  const cfg = config ?? DEFAULT_TRIAGE_CONFIG;
   const now = Date.now(), msDay = 86400000;
   const thisWeek = (d: string) => (now - new Date(d).getTime()) / msDay <= 7;
 
@@ -200,10 +204,10 @@ export function buildHomeStats(
   if (unsigned.length > 0) {
     const worst = unsigned.reduce((a, b) => daysSince(a.createdAt) > daysSince(b.createdAt) ? a : b);
     const days = daysSince(worst.createdAt);
-    if (days >= 5) {
+    if (days >= cfg.unsignedDocuSignDays) {
       const hh = (worst.householdName || "").replace(" Household", "");
       insights.push({
-        severity: days > 10 ? "critical" : "high",
+        severity: days > cfg.unsignedCriticalDays ? "critical" : "high",
         headline: `${hh || "DocuSign"}: unsigned for ${days} days`,
         detail: `${humanizeSubject(worst.subject, worst.householdName)} has been waiting for a signature since ${formatDate(worst.createdAt)}.`,
         householdId: worst.householdId,
@@ -216,9 +220,9 @@ export function buildHomeStats(
   // 2. Compliance coverage gap
   if (filteredHH.length > 0) {
     const coveragePct = Math.round((reviewed.size / filteredHH.length) * 100);
-    if (coveragePct < 80) {
+    if (coveragePct < cfg.complianceHighPct) {
       insights.push({
-        severity: coveragePct < 50 ? "critical" : "high",
+        severity: coveragePct < cfg.complianceCriticalPct ? "critical" : "high",
         headline: `Compliance: ${coveragePct}% of households reviewed`,
         detail: `${unreviewedHH.length} of ${filteredHH.length} households have never had a compliance review on file.`,
         action: "Run reviews",
@@ -244,11 +248,11 @@ export function buildHomeStats(
       const d = Math.floor((now - lastMs) / msDay);
       if (d > stalestDays) { stalestDays = d; stalestId = id; }
     }
-    if (stalestDays >= 30) {
+    if (stalestDays >= cfg.staleHouseholdDays) {
       const hh = filteredHH.find(h => h.id === stalestId);
       const name = (hh?.name || "").replace(" Household", "");
       insights.push({
-        severity: stalestDays > 60 ? "critical" : "medium",
+        severity: stalestDays > cfg.staleCriticalDays ? "critical" : "medium",
         headline: `${name || "Household"}: no activity in ${stalestDays} days`,
         detail: `This household hasn't had any task, meeting, or review logged since ${formatDate(new Date(now - stalestDays * msDay).toISOString())}.`,
         householdId: stalestId,
@@ -265,7 +269,7 @@ export function buildHomeStats(
     const days = daysSince(worst.dueDate);
     const hh = (worst.householdName || "").replace(" Household", "");
     insights.push({
-      severity: days > 7 ? "critical" : "high",
+      severity: days > cfg.highPriOverdueCriticalDays ? "critical" : "high",
       headline: `${hh ? `${hh}: ` : ""}High-priority task ${days} days overdue`,
       detail: humanizeSubject(worst.subject, worst.householdName),
       householdId: worst.householdId,
@@ -355,8 +359,8 @@ export function buildHomeStats(
     });
   }
 
-  // DocuSign unsigned > 5 days → urgency "now"
-  for (const t of unsigned.filter(u => daysSince(u.createdAt) >= 5).slice(0, 2)) {
+  // DocuSign unsigned > threshold days → urgency "now"
+  for (const t of unsigned.filter(u => daysSince(u.createdAt) >= cfg.unsignedDocuSignDays).slice(0, 2)) {
     const days = daysSince(t.createdAt);
     triage.push({
       id: `triage-${triageIdx++}`,
@@ -390,7 +394,7 @@ export function buildHomeStats(
   const dueSoon = open.filter(t => {
     if (!t.dueDate) return false;
     const daysUntil = (new Date(t.dueDate).getTime() - now) / msDay;
-    return daysUntil >= 0 && daysUntil <= 1;
+    return daysUntil >= 0 && daysUntil <= cfg.dueSoonDays;
   }).slice(0, 2);
   for (const t of dueSoon) {
     const isToday = new Date(t.dueDate).toDateString() === new Date().toDateString();
@@ -411,7 +415,7 @@ export function buildHomeStats(
     const oldest = [...unreviewedHH].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(0, 2);
     for (const h of oldest) {
       const days = Math.floor((now - new Date(h.createdAt).getTime()) / msDay);
-      if (days >= 7) {
+      if (days >= cfg.complianceUnreviewedDays) {
         // Thompson inactivity → specific snooze options
         const snooze = h.id === "hh-thompson"
           ? [{ label: "Tomorrow" }, { label: "Next Monday" }, { label: "In 2 weeks" }]
@@ -432,10 +436,10 @@ export function buildHomeStats(
     }
   }
 
-  // Sort by urgency tier, cap at 7
+  // Sort by urgency tier, cap at configured limit
   const urgOrder = { now: 0, today: 1, "this-week": 2 };
   triage.sort((a, b) => urgOrder[a.urgency] - urgOrder[b.urgency]);
-  const topTriage = triage.slice(0, 7);
+  const topTriage = triage.slice(0, cfg.triageCap);
 
   return {
     overdueTasks: overdue.length,

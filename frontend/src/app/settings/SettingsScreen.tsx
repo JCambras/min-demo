@@ -4,6 +4,8 @@ import { Cloud, CloudOff, ExternalLink, Loader2, Check, AlertTriangle, Search, C
 import { Input } from "@/components/ui/input";
 import { ContinueBtn } from "@/components/shared/FormControls";
 import { FlowHeader } from "@/components/shared/FlowHeader";
+import { loadTriageConfig, saveTriageConfig, DEFAULT_TRIAGE_CONFIG } from "@/lib/triage-config";
+import type { TriageThresholdConfig } from "@/lib/triage-config";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -619,6 +621,76 @@ function IntegrationMarketplace() {
   );
 }
 
+// ─── Triage Threshold Panel ──────────────────────────────────────────────────
+
+const THRESHOLD_FIELDS: { key: keyof TriageThresholdConfig; label: string; desc: string; unit: string }[] = [
+  { key: "unsignedDocuSignDays", label: "Unsigned DocuSign", desc: "Days before unsigned envelopes trigger urgency", unit: "days" },
+  { key: "dueSoonDays", label: "Due Soon Window", desc: "Days until due to appear as 'due soon'", unit: "days" },
+  { key: "complianceUnreviewedDays", label: "Compliance Unreviewed", desc: "Days without review before triage alert", unit: "days" },
+  { key: "staleHouseholdDays", label: "Stale Household", desc: "Days of inactivity before household flagged", unit: "days" },
+  { key: "triageCap", label: "Triage Queue Limit", desc: "Max items shown in triage queue", unit: "items" },
+  { key: "complianceCriticalPct", label: "Compliance Critical %", desc: "Coverage below this % is critical severity", unit: "%" },
+  { key: "complianceHighPct", label: "Compliance High %", desc: "Coverage below this % triggers insight", unit: "%" },
+  { key: "unsignedCriticalDays", label: "Unsigned Critical", desc: "Days unsigned before severity is critical", unit: "days" },
+  { key: "staleCriticalDays", label: "Stale Critical", desc: "Days stale before severity is critical", unit: "days" },
+  { key: "highPriOverdueCriticalDays", label: "High-Pri Overdue Critical", desc: "Days overdue on high-priority before critical", unit: "days" },
+];
+
+function TriageThresholdPanel() {
+  const [config, setConfig] = useState<TriageThresholdConfig>(() => loadTriageConfig());
+  const [saved, setSaved] = useState(false);
+
+  const save = () => {
+    saveTriageConfig(config);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const reset = () => {
+    setConfig({ ...DEFAULT_TRIAGE_CONFIG });
+    saveTriageConfig({ ...DEFAULT_TRIAGE_CONFIG });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="mt-10 animate-fade-in">
+      <h2 className="text-2xl font-light text-slate-900 mb-2">Triage &amp; Alerts</h2>
+      <p className="text-slate-400 mb-6">Customize urgency thresholds for triage queue and practice insights.</p>
+
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+        {THRESHOLD_FIELDS.map(f => (
+          <div key={f.key}>
+            <label className="text-xs text-slate-500 mb-1 block">{f.label}</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={0}
+                value={config[f.key]}
+                onChange={e => setConfig({ ...config, [f.key]: Math.max(0, Number(e.target.value)) })}
+                className="w-24 h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-slate-900"
+              />
+              <span className="text-xs text-slate-400">{f.unit}</span>
+              <span className="flex-1 text-xs text-slate-400 text-right">{f.desc}</span>
+            </div>
+          </div>
+        ))}
+
+        <div className="flex gap-3 pt-2 border-t border-slate-100">
+          <button onClick={save}
+            className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-2">
+            {saved ? <><Check size={14} /> Saved</> : "Save Thresholds"}
+          </button>
+          <button onClick={reset}
+            className="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-500 text-sm font-medium hover:bg-slate-50 transition-colors">
+            Reset to Defaults
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Settings Screen ────────────────────────────────────────────────────────
 
 export function SettingsScreen({ onExit }: { onExit: () => void }) {
@@ -863,6 +935,9 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
 
             {/* Portal Branding — always visible */}
             <PortalBrandingPanel />
+
+            {/* Triage & Alert Thresholds — always visible */}
+            <TriageThresholdPanel />
 
             {/* Roadmap — Coming Soon Features */}
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">

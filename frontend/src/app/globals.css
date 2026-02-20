@@ -212,6 +212,25 @@ abbr[title] {
   }
 }
 
+/* ─── Booth Attract Mode ─────────────────────────────────────────────────── */
+
+.booth h1 { font-size: 3rem; }
+.booth h2 { font-size: 2rem; }
+.booth p, .booth span { font-size: 1.125rem; }
+.booth .text-sm { font-size: 1rem; }
+.booth .text-xs { font-size: 0.875rem; }
+.booth .text-2xl { font-size: 2.5rem; }
+.booth .text-\[10px\] { font-size: 0.75rem; }
+
+@keyframes booth-crossfade {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.booth-crossfade {
+  animation: booth-crossfade 0.4s ease-in-out;
+}
+
 /* Mobile slide-in pane */
 .mobile-pane {
   transform: translateX(100%);

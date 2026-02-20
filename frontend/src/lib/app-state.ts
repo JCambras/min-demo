@@ -2,6 +2,7 @@
 import { useReducer, useEffect, useCallback, useRef } from "react";
 import { callSF } from "@/lib/salesforce";
 import { buildHomeStats } from "@/lib/home-stats";
+import { loadTriageConfig } from "@/lib/triage-config";
 import { log } from "@/lib/logger";
 import { trackEvent, sanitizeStatsForAnalytics } from "@/lib/analytics";
 import type { HomeStats, SFTask, SFHousehold } from "@/lib/home-stats";
@@ -233,14 +234,15 @@ export function useAppState() {
     dispatch({ type: "STATS_LOADING" });
     try {
       // If we already have raw data and just need to re-filter, skip the API call
+      const triageCfg = loadTriageConfig();
       if (state.rawTasks.length > 0 && state.rawHouseholds.length > 0 && filterAdv !== undefined) {
-        const stats = buildHomeStats(state.rawTasks, state.rawHouseholds, state.rawInstanceUrl, filterAdv === "all" ? undefined : filterAdv);
+        const stats = buildHomeStats(state.rawTasks, state.rawHouseholds, state.rawInstanceUrl, filterAdv === "all" ? undefined : filterAdv, triageCfg);
         dispatch({ type: "STATS_RECOMPUTED", stats });
         return;
       }
       const res = await callSF("queryTasks", { limit: 200 });
       if (res.success) {
-        const stats = buildHomeStats(res.tasks as SFTask[], res.households as SFHousehold[], res.instanceUrl as string, filterAdv === "all" ? undefined : filterAdv);
+        const stats = buildHomeStats(res.tasks as SFTask[], res.households as SFHousehold[], res.instanceUrl as string, filterAdv === "all" ? undefined : filterAdv, triageCfg);
         dispatch({ type: "STATS_LOADED", stats, tasks: res.tasks as SFTask[], households: res.households as SFHousehold[], instanceUrl: res.instanceUrl as string });
         // Persist snapshot (fire-and-forget) — only safe aggregate numbers
         fetch("/api/analytics/snapshot", {

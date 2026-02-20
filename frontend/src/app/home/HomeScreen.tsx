@@ -14,6 +14,7 @@ import { loadLastSession, clearLastSession } from "@/lib/app-state";
 import type { Screen, WorkflowContext, UserRole } from "@/lib/types";
 import type { HomeStats } from "@/lib/home-stats";
 import { buildHomeStats } from "@/lib/home-stats";
+import { loadTriageConfig } from "@/lib/triage-config";
 import { useDemoMode } from "@/lib/demo-context";
 import { getDemoSFData } from "@/lib/demo-data";
 
@@ -34,7 +35,7 @@ export const ROLES: { id: UserRole; label: string; desc: string }[] = [
 
 const ALL_ACTIONS: { id: string; label: string; desc: string; Icon: React.ElementType; roles: UserRole[] }[] = [
   { id: "onboard", label: "Onboard New Client", desc: "Client records & setup", Icon: UserPlus, roles: ["operations", "principal"] },
-  { id: "open", label: "Open Account", desc: "Paperwork & e-signatures", Icon: Briefcase, roles: ["operations", "principal"] },
+  { id: "flow", label: "Open Account", desc: "Paperwork & e-signatures", Icon: Briefcase, roles: ["operations", "principal"] },
   { id: "compliance", label: "Compliance Reviews", desc: "ADV, KYC, suitability", Icon: FileText, roles: ["advisor", "operations", "principal"] },
   { id: "briefing", label: "Client Briefing", desc: "Full client picture", Icon: BookOpen, roles: ["advisor", "principal"] },
   { id: "meeting", label: "Meeting Logs", desc: "Record notes & follow-ups", Icon: MessageSquare, roles: ["advisor", "principal"] },
@@ -178,7 +179,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   useEffect(() => {
     if (isDemoMode) {
       const { tasks, households, instanceUrl } = getDemoSFData();
-      const demoStats = buildHomeStats(tasks, households, instanceUrl);
+      const demoStats = buildHomeStats(tasks, households, instanceUrl, undefined, loadTriageConfig());
       dispatch({ type: "STATS_LOADED", stats: demoStats, tasks, households, instanceUrl });
     }
   }, [isDemoMode, demoCtx.resetKey, dispatch]);
@@ -209,6 +210,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const [familySearchError, setFamilySearchError] = useState<string | null>(null);
   const [regOpen, setRegOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [triageOpen, setTriageOpen] = useState(false);
   // ── Triage interaction state (Tweaks 2,3,5,8,9,10,11) ──
   // Persist resolved/snoozed IDs to sessionStorage so page refresh doesn't restore them
   const [resolvedTriageIds, setResolvedTriageIds] = useState<Set<string>>(() => {
@@ -520,7 +522,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
               if (!isDemoMode) demoCtx.toggleDemo();
               // Inject demo data
               const demoData = getDemoSFData();
-              const demoStats = buildHomeStats(demoData.tasks, demoData.households, demoData.instanceUrl);
+              const demoStats = buildHomeStats(demoData.tasks, demoData.households, demoData.instanceUrl, undefined, loadTriageConfig());
               dispatch({ type: "STATS_LOADED", stats: demoStats, tasks: demoData.tasks, households: demoData.households, instanceUrl: demoData.instanceUrl });
               // Set tour type and role
               dispatch({ type: "SET_TOUR_TYPE", tourType: "guided" });
@@ -534,7 +536,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                 demoCtx.toggleDemo();
                 // Immediately load demo data — don't rely on effect chain
                 const { tasks, households, instanceUrl } = getDemoSFData();
-                const demoStats = buildHomeStats(tasks, households, instanceUrl);
+                const demoStats = buildHomeStats(tasks, households, instanceUrl, undefined, loadTriageConfig());
                 dispatch({ type: "STATS_LOADED", stats: demoStats, tasks, households, instanceUrl });
                 showToast("Demo mode activated — 8 households loaded");
               }}
@@ -553,7 +555,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                   dispatch({ type: "STATS_LOADED", stats: null as unknown as HomeStats, tasks: [], households: [], instanceUrl: "" });
                   setTimeout(() => {
                     const { tasks, households, instanceUrl } = getDemoSFData();
-                    const demoStats = buildHomeStats(tasks, households, instanceUrl);
+                    const demoStats = buildHomeStats(tasks, households, instanceUrl, undefined, loadTriageConfig());
                     dispatch({ type: "STATS_LOADED", stats: demoStats, tasks, households, instanceUrl });
                     showToast("Demo reset");
                   }, 150);
@@ -623,13 +625,17 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       {/* Triage Queue — interactive cards (Tweaks 2,3,6,8,9,10,11) */}
       {(isAdvisor || isOps || role === "principal") && (sfConnected || isDemoMode) && stats && totalTriageItems > 0 && (
         <div className="mb-6" data-tour="triage">
-          {/* Tweak 11: Simplified header — just the count */}
-          <h2 className="text-lg font-medium text-slate-900 mb-3" aria-live="polite" aria-atomic="true">
-            {activeTriageItems.length} {activeTriageItems.length === 1 ? "item needs" : "items need"} you
-          </h2>
+          {/* Collapsible triage header */}
+          <button onClick={() => setTriageOpen(!triageOpen)} aria-expanded={triageOpen} aria-controls="triage-list"
+            className="w-full flex items-center justify-between mb-3 group">
+            <h2 className="text-lg font-medium text-slate-900" aria-live="polite" aria-atomic="true">
+              {activeTriageItems.length} {activeTriageItems.length === 1 ? "item needs" : "items need"} you
+            </h2>
+            <ChevronDown size={18} className={`text-slate-400 group-hover:text-slate-600 transition-transform ${triageOpen ? "rotate-180" : ""}`} />
+          </button>
 
-          {activeTriageItems.length > 0 ? (
-            <div className="space-y-3">
+          {triageOpen && activeTriageItems.length > 0 ? (
+            <div id="triage-list" className="space-y-3">
               {activeTriageItems.map((item) => {
                 const isExpanded = expandedTriageId === item.id;
                 const someExpanded = expandedTriageId !== null;
@@ -719,18 +725,18 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                 );
               })}
             </div>
-          ) : showEmptyState ? (
+          ) : triageOpen && showEmptyState ? (
             /* Tweak 3: Empty state with deliberate beat */
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center animate-empty-state-in">
+            <div id="triage-list" className="bg-white border border-slate-200 rounded-2xl p-8 text-center animate-empty-state-in">
               <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mx-auto mb-4">
                 <CheckCircle size={24} className="text-green-400" />
               </div>
               <p className="text-sm font-medium text-slate-600">All clear. {stats ? `${stats.readyForReviewItems.length + stats.openTaskItems.length} households` : ""} — no issues detected.</p>
             </div>
-          ) : (
+          ) : triageOpen ? (
             /* 400ms pause — empty space before the empty state appears */
-            <div className="h-24" />
-          )}
+            <div id="triage-list" className="h-24" />
+          ) : null}
         </div>
       )}
 
