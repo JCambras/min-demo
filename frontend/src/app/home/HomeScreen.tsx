@@ -205,6 +205,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const [familyQuery, setFamilyQuery] = useState("");
   const [familyResults, setFamilyResults] = useState<FamilyResult[]>([]);
   const [familySearching, setFamilySearching] = useState(false);
+  const [familySearchError, setFamilySearchError] = useState<string | null>(null);
   const [regOpen, setRegOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   // ── Triage interaction state (Tweaks 2,3,5,8,9,10,11) ──
@@ -238,7 +239,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       }
       // Escape: collapse panel, clear search, or go back
       if (e.key === "Escape") {
-        if (familyQuery) { setFamilyQuery(""); setFamilyResults([]); return; }
+        if (familyQuery) { setFamilyQuery(""); setFamilyResults([]); setFamilySearchError(null); return; }
         if (expandedStat) { setExpandedStat(null); return; }
       }
     };
@@ -248,16 +249,27 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
 
   // ── Family search debounce ──
   useEffect(() => {
-    if (familyQuery.length < 2) { setFamilyResults([]); return; }
+    if (familyQuery.length < 2) { setFamilyResults([]); setFamilySearchError(null); return; }
     setFamilySearching(true);
+    setFamilySearchError(null);
     const t = setTimeout(async () => {
       try {
         const res = await callSF("searchHouseholds", { query: familyQuery });
-        if (res.success) setFamilyResults((res.households as { id: string; name: string; createdAt: string; contacts?: { firstName: string }[] }[]).map(h => ({
-          id: h.id, name: h.name, createdDate: formatDate(h.createdAt),
-          contactNames: h.contacts?.map((c: { firstName: string }) => c.firstName).filter(Boolean).join(" & ") || "",
-        })));
+        if (res.success) {
+          setFamilyResults((res.households as { id: string; name: string; createdAt: string; contacts?: { firstName: string }[] }[]).map(h => ({
+            id: h.id, name: h.name, createdDate: formatDate(h.createdAt),
+            contactNames: h.contacts?.map((c: { firstName: string }) => c.firstName).filter(Boolean).join(" & ") || "",
+          })));
+          setFamilySearchError(null);
+        } else {
+          setFamilyResults([]);
+          const errMsg = typeof res.error === "string" ? res.error : (res.error as { message?: string })?.message || "Search failed";
+          setFamilySearchError(errMsg);
+          log.warn("HomeScreen", "Family search returned error", { query: familyQuery, error: errMsg, errorCode: res.errorCode });
+        }
       } catch (err) {
+        setFamilyResults([]);
+        setFamilySearchError("Network error — check your connection");
         log.warn("HomeScreen", "Family search failed", { query: familyQuery, error: err instanceof Error ? err.message : "Unknown" });
       }
       setFamilySearching(false);
@@ -336,7 +348,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     <CheckCircle size={13} className="text-slate-400" />;
 
   const openFamily = (f: FamilyResult) => {
-    setFamilyQuery(""); setFamilyResults([]);
+    setFamilyQuery(""); setFamilyResults([]); setFamilySearchError(null);
     goTo("family", { householdId: f.id, familyName: f.name.replace(" Household", "") });
   };
 
@@ -742,7 +754,8 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           {familySearching && <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />}
         </div>
         {familyQuery.length >= 2 && (<div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-20 animate-slide-down">
-          {familyResults.length === 0 ? <div className="px-4 py-6 text-center">{familySearching ? <p className="text-sm text-slate-400">Searching...</p> : <><Users size={20} className="mx-auto text-slate-200 mb-2" /><p className="text-sm text-slate-500">No families found</p><p className="text-xs text-slate-400 mt-1">Try a different name or check your Salesforce households.</p></>}</div>
+          {familySearchError ? <div className="px-4 py-6 text-center"><AlertTriangle size={20} className="mx-auto text-amber-400 mb-2" /><p className="text-sm text-slate-600">Search failed</p><p className="text-xs text-slate-400 mt-1">{familySearchError}</p></div>
+          : familyResults.length === 0 ? <div className="px-4 py-6 text-center">{familySearching ? <p className="text-sm text-slate-400">Searching...</p> : <><Users size={20} className="mx-auto text-slate-200 mb-2" /><p className="text-sm text-slate-500">No families found</p><p className="text-xs text-slate-400 mt-1">Try a different name or check your Salesforce households.</p></>}</div>
           : <div className="stagger-list">{familyResults.map((f, i) => (<button key={i} onClick={() => openFamily(f)} className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
             <div className="flex items-center justify-between"><p className="font-medium text-slate-800">{f.name}</p><ChevronRight size={16} className="text-slate-300" /></div>
             <p className="text-sm text-slate-500">{f.contactNames ? `${f.contactNames} · ` : ""}Created {f.createdDate}</p>
