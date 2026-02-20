@@ -246,7 +246,9 @@ export class SalesforceAdapter implements CRMPort {
         "Id, Name, Description, CreatedDate",
         q, fetchLimit, offset
       );
+      console.log("[searchHouseholds] SOQL:", soql);
       const records = await query(sfCtx(ctx), soql);
+      console.log("[searchHouseholds] Results:", records.length);
       const hasMore = records.length > limit;
       const slice = hasMore ? records.slice(0, limit) : records;
       return {

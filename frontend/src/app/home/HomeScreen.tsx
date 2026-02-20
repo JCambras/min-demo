@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, ChevronDown, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X, Target, DollarSign, Upload, Activity } from "lucide-react";
+import { Briefcase, UserPlus, FileText, BookOpen, MessageSquare, Search, ChevronRight, ChevronDown, Loader2, Users, Shield, Clock, ExternalLink, Settings, CheckCircle, Send, ArrowUpDown, ClipboardCheck, ListTodo, Zap, AlertTriangle, ArrowRight, RotateCcw, X, DollarSign, Upload, Activity } from "lucide-react";
 import { TourButton } from "../tour/DemoMode";
 import { NotificationCenter } from "@/components/shared/NotificationCenter";
 import { TeamTraining } from "@/components/shared/TeamTraining";
@@ -205,9 +205,15 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const [familyQuery, setFamilyQuery] = useState("");
   const [familyResults, setFamilyResults] = useState<FamilyResult[]>([]);
   const [familySearching, setFamilySearching] = useState(false);
-  const [triageOpen, setTriageOpen] = useState(false);
+  const [familySearchError, setFamilySearchError] = useState<string | null>(null);
   const [regOpen, setRegOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
+  // ── Triage interaction state (Tweaks 2,3,5,8,9,10,11) ──
+  const [resolvedTriageIds, setResolvedTriageIds] = useState<Set<string>>(new Set());
+  const [snoozedTriageIds, setSnoozedTriageIds] = useState<Set<string>>(new Set());
+  const [expandedTriageId, setExpandedTriageId] = useState<string | null>(null);
+  const [hasInteracted, setHasInteracted] = useState(false);
+  const [showEmptyState, setShowEmptyState] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -233,7 +239,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       }
       // Escape: collapse panel, clear search, or go back
       if (e.key === "Escape") {
-        if (familyQuery) { setFamilyQuery(""); setFamilyResults([]); return; }
+        if (familyQuery) { setFamilyQuery(""); setFamilyResults([]); setFamilySearchError(null); return; }
         if (expandedStat) { setExpandedStat(null); return; }
       }
     };
@@ -243,16 +249,27 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
 
   // ── Family search debounce ──
   useEffect(() => {
-    if (familyQuery.length < 2) { setFamilyResults([]); return; }
+    if (familyQuery.length < 2) { setFamilyResults([]); setFamilySearchError(null); return; }
     setFamilySearching(true);
+    setFamilySearchError(null);
     const t = setTimeout(async () => {
       try {
         const res = await callSF("searchHouseholds", { query: familyQuery });
-        if (res.success) setFamilyResults((res.households as { id: string; name: string; createdAt: string; contacts?: { firstName: string }[] }[]).map(h => ({
-          id: h.id, name: h.name, createdDate: formatDate(h.createdAt),
-          contactNames: h.contacts?.map((c: { firstName: string }) => c.firstName).filter(Boolean).join(" & ") || "",
-        })));
+        if (res.success) {
+          setFamilyResults((res.households as { id: string; name: string; createdAt: string; contacts?: { firstName: string }[] }[]).map(h => ({
+            id: h.id, name: h.name, createdDate: formatDate(h.createdAt),
+            contactNames: h.contacts?.map((c: { firstName: string }) => c.firstName).filter(Boolean).join(" & ") || "",
+          })));
+          setFamilySearchError(null);
+        } else {
+          setFamilyResults([]);
+          const errMsg = typeof res.error === "string" ? res.error : (res.error as { message?: string })?.message || "Search failed";
+          setFamilySearchError(errMsg);
+          log.warn("HomeScreen", "Family search returned error", { query: familyQuery, error: errMsg, errorCode: res.errorCode });
+        }
       } catch (err) {
+        setFamilyResults([]);
+        setFamilySearchError("Network error — check your connection");
         log.warn("HomeScreen", "Family search failed", { query: familyQuery, error: err instanceof Error ? err.message : "Unknown" });
       }
       setFamilySearching(false);
@@ -265,6 +282,41 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     const s = loadLastSession();
     if (s) setLastSession(s);
   }, []);
+
+  // ── Active triage items (exclude resolved/snoozed) ──
+  const activeTriageItems = (stats?.triageItems || []).filter(
+    item => !resolvedTriageIds.has(item.id) && !snoozedTriageIds.has(item.id)
+  );
+  const totalTriageItems = stats?.triageItems?.length || 0;
+
+  // ── Empty state with deliberate beat (Tweak 3) ──
+  useEffect(() => {
+    if (activeTriageItems.length === 0 && (resolvedTriageIds.size > 0 || snoozedTriageIds.size > 0)) {
+      const timer = setTimeout(() => setShowEmptyState(true), 400);
+      return () => clearTimeout(timer);
+    }
+    setShowEmptyState(false);
+  }, [activeTriageItems.length, resolvedTriageIds.size, snoozedTriageIds.size]);
+
+  // ── Triage action handlers ──
+  const handleTriageResolve = (id: string) => {
+    setResolvedTriageIds(prev => { const s = new Set(prev); s.add(id); return s; });
+    setExpandedTriageId(null);
+    if (!hasInteracted) setHasInteracted(true);
+    showToast("Item resolved");
+  };
+  const handleTriageDismiss = (id: string) => {
+    setResolvedTriageIds(prev => { const s = new Set(prev); s.add(id); return s; });
+    setExpandedTriageId(null);
+    if (!hasInteracted) setHasInteracted(true);
+    showToast("Item dismissed");
+  };
+  const handleTriageSnooze = (id: string, label: string) => {
+    setSnoozedTriageIds(prev => { const s = new Set(prev); s.add(id); return s; });
+    setExpandedTriageId(null);
+    if (!hasInteracted) setHasInteracted(true);
+    showToast(`Snoozed: ${label}`);
+  };
 
   // ── Derived values ──
   const actions = ALL_ACTIONS.filter(a => a.roles.includes(role!));
@@ -296,7 +348,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     <CheckCircle size={13} className="text-slate-400" />;
 
   const openFamily = (f: FamilyResult) => {
-    setFamilyQuery(""); setFamilyResults([]);
+    setFamilyQuery(""); setFamilyResults([]); setFamilySearchError(null);
     goTo("family", { householdId: f.id, familyName: f.name.replace(" Household", "") });
   };
 
@@ -374,8 +426,10 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Tweak 5: Hide mode/role switcher until first triage interaction */}
           <button onClick={() => { cycleRole(); setExpandedStat(null); }}
-            className="text-xs text-slate-400 hover:text-slate-600 transition-all" title="Click or ⌘R to switch role">
+            className="text-xs text-slate-400 hover:text-slate-600 transition-all" title="Click or ⌘R to switch role"
+            style={{ opacity: hasInteracted ? 1 : 0, transition: "opacity 300ms ease", pointerEvents: hasInteracted ? "auto" : "none" }}>
             {ROLES.find(r => r.id === role)?.label || "Advisor"}{role === "principal" && principalAdvisor !== "all" ? ` · ${principalAdvisor}` : ""}
           </button>
           <NotificationCenter stats={stats} onNavigate={goTo} />
@@ -494,44 +548,101 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         </div>
       )}
 
-      {/* Daily Triage — collapsed by default */}
-      {(isAdvisor || isOps || role === "principal") && (sfConnected || isDemoMode) && stats && stats.triageItems.length > 0 && (
-        <div className="mb-6 bg-white border border-slate-200 rounded-2xl overflow-hidden" data-tour="triage">
-          <button onClick={() => setTriageOpen(!triageOpen)} className="w-full px-4 py-2.5 border-b border-slate-100 flex items-center gap-2 hover:bg-slate-50 transition-colors">
-            <Target size={13} className="text-slate-500" />
-            <p className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Today&apos;s Priorities</p>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{stats.triageItems.length}</span>
-            <ChevronDown size={14} className={`ml-auto text-slate-400 transition-transform ${triageOpen ? "rotate-180" : ""}`} />
-          </button>
-          {triageOpen && stats.triageItems.map((item, i) => {
-            const urgColors = item.urgency === "now"
-              ? "border-l-red-400 bg-red-50/30"
-              : item.urgency === "today"
-              ? "border-l-amber-400 bg-amber-50/20"
-              : "border-l-slate-300";
-            const urgLabel = item.urgency === "now" ? "NOW" : item.urgency === "today" ? "TODAY" : "THIS WEEK";
-            const urgBadge = item.urgency === "now"
-              ? "bg-red-100 text-red-600"
-              : item.urgency === "today"
-              ? "bg-amber-100 text-amber-600"
-              : "bg-slate-100 text-slate-500";
-            return (
-              <div key={i} className={`flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 last:border-0 border-l-[3px] ${urgColors} hover:bg-slate-50 transition-colors`}>
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${urgBadge} flex-shrink-0 w-16 text-center`}>{urgLabel}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-slate-700 truncate">{item.label}</p>
-                  <p className="text-[11px] text-slate-400">{item.reason}</p>
-                </div>
-                <button onClick={() => {
-                  if (item.category === "compliance" && item.householdId) goTo("compliance", { householdId: item.householdId, familyName: (item.householdName || "").replace(" Household", "") });
-                  else if (item.householdId) goTo("family", { householdId: item.householdId, familyName: (item.householdName || "").replace(" Household", "") });
-                }}
-                  className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors whitespace-nowrap flex-shrink-0">
-                  {item.action}
-                </button>
+      {/* Triage Queue — interactive cards (Tweaks 2,3,6,8,9,10,11) */}
+      {(isAdvisor || isOps || role === "principal") && (sfConnected || isDemoMode) && stats && totalTriageItems > 0 && (
+        <div className="mb-6" data-tour="triage">
+          {/* Tweak 11: Simplified header — just the count */}
+          <h2 className="text-lg font-medium text-slate-900 mb-3">
+            {activeTriageItems.length} {activeTriageItems.length === 1 ? "item needs" : "items need"} you
+          </h2>
+
+          {activeTriageItems.length > 0 ? (
+            <div className="space-y-3">
+              {activeTriageItems.map((item) => {
+                const isExpanded = expandedTriageId === item.id;
+                const someExpanded = expandedTriageId !== null;
+                const isDimmed = someExpanded && !isExpanded;
+                // Tweak 2: No badge text — only colored left border
+                const borderColor = item.urgency === "now"
+                  ? "border-l-red-400"
+                  : item.urgency === "today"
+                  ? "border-l-amber-400"
+                  : "border-l-slate-300";
+                // Default snooze fallback
+                const snoozeOpts = item.snoozeOptions || [
+                  { label: "Tomorrow" }, { label: "Next Monday" }, { label: "In 2 weeks" },
+                ];
+                return (
+                  <div key={item.id}
+                    className={`bg-white border border-slate-200 rounded-2xl overflow-hidden border-l-[3px] ${borderColor}`}
+                    style={{
+                      opacity: isDimmed ? 0.4 : 1,
+                      boxShadow: isExpanded ? "0 4px 16px rgba(0,0,0,0.08)" : "none",
+                      transition: "opacity 200ms ease, box-shadow 200ms ease",
+                    }}>
+                    {/* Card content — no badge, no "View household" link (Tweaks 2, 9) */}
+                    <div className="px-4 py-3">
+                      <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                      {/* Tweak 6: Sources on a single line with pipe separator */}
+                      {item.sources && item.sources.length > 0 ? (
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {item.sources.map((s, si) => (
+                            <span key={si} style={{ opacity: s.fresh === false ? 0.5 : 1 }}>
+                              {si > 0 && <span className="mx-1">|</span>}
+                              {s.system} · {s.timestamp}
+                            </span>
+                          ))}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 mt-0.5">{item.reason}</p>
+                      )}
+                      {/* Action buttons — Resolve, Snooze, Dismiss */}
+                      <div className="flex items-center gap-2 mt-2.5">
+                        <button onClick={() => handleTriageResolve(item.id)}
+                          className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 transition-colors">
+                          Resolve
+                        </button>
+                        <button onClick={() => setExpandedTriageId(isExpanded ? null : item.id)}
+                          className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors ${isExpanded ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                          Snooze
+                        </button>
+                        <button onClick={() => handleTriageDismiss(item.id)}
+                          className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500 font-medium hover:bg-slate-200 transition-colors">
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                    {/* Expanded snooze panel — no "Min's Recommendation" header (Tweak 4) */}
+                    {isExpanded && (
+                      <div className="px-4 py-3 bg-[#F8FAFC] border-t border-slate-100 animate-fade-in">
+                        <p className="text-sm text-slate-600 mb-3">Snooze this item and get reminded later.</p>
+                        {/* Tweak 10: Contextual snooze options */}
+                        <div className="flex flex-wrap gap-2">
+                          {snoozeOpts.map((opt, oi) => (
+                            <button key={oi} onClick={() => handleTriageSnooze(item.id, opt.label)}
+                              className="text-[11px] px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 font-medium hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors">
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : showEmptyState ? (
+            /* Tweak 3: Empty state with deliberate beat */
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center animate-empty-state-in">
+              <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mx-auto mb-4">
+                <CheckCircle size={24} className="text-green-400" />
               </div>
-            );
-          })}
+              <p className="text-sm font-medium text-slate-600">All clear. {stats ? `${stats.readyForReviewItems.length + stats.openTaskItems.length} households` : ""} — no issues detected.</p>
+            </div>
+          ) : (
+            /* 400ms pause — empty space before the empty state appears */
+            <div className="h-24" />
+          )}
         </div>
       )}
 
@@ -643,7 +754,8 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           {familySearching && <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />}
         </div>
         {familyQuery.length >= 2 && (<div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-20 animate-slide-down">
-          {familyResults.length === 0 ? <div className="px-4 py-6 text-center">{familySearching ? <p className="text-sm text-slate-400">Searching...</p> : <><Users size={20} className="mx-auto text-slate-200 mb-2" /><p className="text-sm text-slate-500">No families found</p><p className="text-xs text-slate-400 mt-1">Try a different name or check your Salesforce households.</p></>}</div>
+          {familySearchError ? <div className="px-4 py-6 text-center"><AlertTriangle size={20} className="mx-auto text-amber-400 mb-2" /><p className="text-sm text-slate-600">Search failed</p><p className="text-xs text-slate-400 mt-1">{familySearchError}</p></div>
+          : familyResults.length === 0 ? <div className="px-4 py-6 text-center">{familySearching ? <p className="text-sm text-slate-400">Searching...</p> : <><Users size={20} className="mx-auto text-slate-200 mb-2" /><p className="text-sm text-slate-500">No families found</p><p className="text-xs text-slate-400 mt-1">Try a different name or check your Salesforce households.</p></>}</div>
           : <div className="stagger-list">{familyResults.map((f, i) => (<button key={i} onClick={() => openFamily(f)} className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
             <div className="flex items-center justify-between"><p className="font-medium text-slate-800">{f.name}</p><ChevronRight size={16} className="text-slate-300" /></div>
             <p className="text-sm text-slate-500">{f.contactNames ? `${f.contactNames} · ` : ""}Created {f.createdDate}</p>

@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Activity, CheckCircle, MoreVertical, Check, Clock, X, Eye, EyeOff } from "lucide-react";
 import type { PracticeData, RiskItem, RiskDisposition } from "../usePracticeData";
-import { SeverityBadge } from "./DashboardPrimitives";
+// SeverityBadge removed per Tweak 2 — color border is the only severity indicator
 
 type SnoozeOption = { label: string; days: number };
 const SNOOZE_OPTIONS: SnoozeOption[] = [
@@ -145,10 +145,10 @@ export function RiskRadar({ data, goToFamily, goToCompliance, onDisposition }: {
           {displayRisks.map((r, i) => {
             const isSuppressed = dispositionedIds.has(r.id);
             return (
-            <div key={i} className={`flex items-center gap-3 px-5 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${isSuppressed ? "opacity-40" : ""}`}>
+            <div key={i} className={`flex items-center gap-3 px-5 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors border-l-[3px] ${r.severity === "critical" ? "border-l-red-400" : r.severity === "high" ? "border-l-amber-400" : "border-l-slate-300"} ${isSuppressed ? "opacity-40" : ""}`}>
+              {/* Tweak 2: Severity badge text removed — color border is the only indicator */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <SeverityBadge severity={r.severity} />
                   <span className="text-[10px] text-slate-400">{r.category}</span>
                   {isSuppressed && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">suppressed</span>}
                 </div>

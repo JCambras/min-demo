@@ -834,8 +834,18 @@ export function DemoMode({ active, onEnd, screen, navigateTo, stats, autoPlay = 
 
     const handler = (e: MouseEvent) => {
       const target = document.querySelector(step.userActionTarget!);
-      if (target && (target === e.target || target.contains(e.target as Node))) {
+      if (!target) return;
+      // Check if click landed directly on the target element
+      const directHit = target === e.target || target.contains(e.target as Node);
+      // Also check coordinates — the overlay/glow ring intercepts clicks,
+      // so e.target may be the overlay, not the actual button
+      const targetRect = target.getBoundingClientRect();
+      const inBounds = e.clientX >= targetRect.left && e.clientX <= targetRect.right &&
+                       e.clientY >= targetRect.top && e.clientY <= targetRect.bottom;
+      if (directHit || inBounds) {
         setUserActionDone(true);
+        // Trigger the actual click on the underlying element
+        if (!directHit) (target as HTMLElement).click();
       }
     };
 

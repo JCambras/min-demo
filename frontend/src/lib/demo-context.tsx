@@ -34,16 +34,16 @@ export function useDemoMode() {
 const STORAGE_KEY = "min-demo-mode";
 
 export function DemoProvider({ children, sfConnected }: { children: ReactNode; sfConnected: boolean | null }) {
-  const [isDemoMode, setIsDemoMode] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      const stored = sessionStorage.getItem(STORAGE_KEY);
-      if (stored !== null) return stored === "true";
-    } catch {}
-    return false;
-  });
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [sentToCrm, setSentToCrm] = useState<Set<string>>(new Set());
   const [resetKey, setResetKey] = useState(0);
+  // Restore demo mode from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(STORAGE_KEY);
+      if (stored === "true") setIsDemoMode(true);
+    } catch {}
+  }, []);
 
   // Auto-activate demo mode when SF not connected
   useEffect(() => {
@@ -98,11 +98,13 @@ export function DemoProvider({ children, sfConnected }: { children: ReactNode; s
   return (
     <DemoContext.Provider value={{ isDemoMode, toggleDemo, resetDemo, markSentToCrm, undoCrmSend, sentToCrm, resetKey }}>
       {children}
-      {isDemoMode && (
-        <div className="fixed bottom-4 right-4 z-50 px-3 py-1.5 rounded-full bg-slate-800/80 text-white text-[10px] font-medium tracking-wider uppercase backdrop-blur-sm select-none pointer-events-none">
-          DEMO
-        </div>
-      )}
+      <div
+        className="fixed bottom-4 right-4 z-50 px-3 py-1.5 rounded-full bg-slate-800/80 text-white text-[10px] font-medium tracking-wider uppercase backdrop-blur-sm select-none pointer-events-none"
+        hidden={!isDemoMode}
+        suppressHydrationWarning
+      >
+        DEMO
+      </div>
     </DemoContext.Provider>
   );
 }
