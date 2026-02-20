@@ -164,7 +164,7 @@ export function PortalScreen({ onExit, context }: {
             <ArrowLeft size={16} /> Back
           </button>
           <div className="flex items-center gap-3">
-            <button onClick={() => loadStatus()} className="text-slate-400 hover:text-slate-600 transition-colors" title="Refresh status">
+            <button onClick={() => loadStatus()} className="text-slate-400 hover:text-slate-600 transition-colors" aria-label="Refresh status">
               <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
             </button>
             <button onClick={copyLink} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-all">

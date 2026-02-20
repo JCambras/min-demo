@@ -1,9 +1,10 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Loader2, Pin, PinOff, FileDown, X, ChevronDown, ChevronRight as ChevronR } from "lucide-react";
 import { FlowHeader } from "@/components/shared/FlowHeader";
 import type { Screen, WorkflowContext } from "@/lib/types";
-import { usePracticeData, addRiskDisposition } from "./usePracticeData";
+import { usePracticeData, addRiskDisposition, loadRiskDispositions, filterDispositionedRisks } from "./usePracticeData";
+import { callSF } from "@/lib/salesforce";
 import { DEMO_RECONCILIATION } from "@/lib/demo-data";
 import { AlertTriangle as ReconcileAlert, Check as ReconcileCheck, HelpCircle } from "lucide-react";
 import type { PracticeData, RiskDisposition } from "./usePracticeData";
@@ -242,7 +243,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
 }) {
   const isAdvisor = role === "advisor";
   const { isDemoMode } = useDemoMode();
-  const { loading, data, error } = usePracticeData();
+  const { loading, data: rawData, error } = usePracticeData();
   const [detailPanel, setDetailPanel] = useState<string | null>(null);
   const toggleDetail = (id: string) => setDetailPanel(prev => prev === id ? null : id);
   const [hiddenSections, setHiddenSections] = useState<Set<SectionId>>(loadLayout);
@@ -257,6 +258,18 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
     });
   }, []);
 
+  const [dispositionVersion, setDispositionVersion] = useState(0);
+
+  // Re-filter risks when dispositions change (without full page reload)
+  const data = useMemo(() => {
+    if (!rawData) return rawData;
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    dispositionVersion; // trigger dependency
+    const disps = loadRiskDispositions();
+    const { visible, dispositionedCount: dc } = filterDispositionedRisks(rawData.allRisks, disps);
+    return { ...rawData, risks: visible, riskDispositions: disps, dispositionedCount: dc };
+  }, [rawData, dispositionVersion]);
+
   const goToFamily = (householdId: string, name: string) => {
     if (onNavigate) onNavigate("family" as Screen, { householdId, familyName: name.replace(" Household", "") });
   };
@@ -266,7 +279,7 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
   };
 
   const handleRiskDisposition = useCallback((riskId: string, action: "resolved" | "snoozed" | "dismissed", reason: string, snoozeDays?: number) => {
-    const risk = data?.allRisks.find(r => r.id === riskId);
+    const risk = rawData?.allRisks.find(r => r.id === riskId);
     if (!risk) return;
     const disposition: RiskDisposition = {
       riskId,
@@ -279,9 +292,15 @@ export function DashboardScreen({ onExit, onNavigate, firmName, role, advisorNam
       label: risk.label,
     };
     addRiskDisposition(disposition);
-    // Force re-render by navigating to self (reload data)
-    window.location.reload();
-  }, [data, firmName]);
+    // Write to SF audit trail (fire-and-forget)
+    callSF("createTask", {
+      subject: `MIN:AUDIT — riskDisposition — success`,
+      description: `Action: ${action}\nReason: ${reason}\nRisk: ${risk.label}\nHousehold: ${risk.householdId}\nActor: ${firmName || "User"}\nTimestamp: ${disposition.timestamp}`,
+      householdId: risk.householdId,
+    }).catch(() => {});
+    // Trigger re-render by bumping version counter
+    setDispositionVersion(v => v + 1);
+  }, [rawData, firmName]);
 
   const isVisible = (id: SectionId) => !hiddenSections.has(id);
 

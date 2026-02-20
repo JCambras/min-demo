@@ -27,10 +27,20 @@ export interface DemoHouseholdHealth {
   contacts: { id: string; firstName: string; lastName: string; email: string; phone: string }[];
 }
 
-export const DEMO_HOUSEHOLDS: DemoHouseholdHealth[] = [
+function computeHealth(breakdown: { score: number; weight: number }[]): number {
+  return Math.round(breakdown.reduce((s, b) => s + b.score * b.weight / 100, 0));
+}
+
+function computeStatus(score: number): "on-track" | "needs-attention" | "at-risk" {
+  if (score >= 80) return "on-track";
+  if (score >= 60) return "needs-attention";
+  return "at-risk";
+}
+
+const _DEMO_HOUSEHOLDS_RAW: Omit<DemoHouseholdHealth, "healthScore" | "status">[] = [
   {
-    id: "hh-rivera", name: "Rivera Household", aum: 3_200_000, healthScore: 92,
-    advisor: "Jon Cambras", status: "on-track",
+    id: "hh-rivera", name: "Rivera Household", aum: 3_200_000,
+    advisor: "Jon Cambras",
     breakdown: [
       { label: "Compliance Coverage", score: 100, weight: 30, detail: "Annual review completed 45 days ago" },
       { label: "DocuSign Velocity", score: 95, weight: 25, detail: "All envelopes signed within 3 days" },
@@ -46,8 +56,8 @@ export const DEMO_HOUSEHOLDS: DemoHouseholdHealth[] = [
     ],
   },
   {
-    id: "hh-patel", name: "Patel Household", aum: 5_100_000, healthScore: 87,
-    advisor: "Marcus Rivera", status: "on-track",
+    id: "hh-patel", name: "Patel Household", aum: 5_100_000,
+    advisor: "Marcus Rivera",
     breakdown: [
       { label: "Compliance Coverage", score: 100, weight: 30, detail: "Annual review completed 60 days ago" },
       { label: "DocuSign Velocity", score: 72, weight: 25, detail: "1 envelope unsigned for 6 days" },
@@ -64,8 +74,8 @@ export const DEMO_HOUSEHOLDS: DemoHouseholdHealth[] = [
     ],
   },
   {
-    id: "hh-chen", name: "Chen/Richards Household", aum: 6_300_000, healthScore: 71,
-    advisor: "Jon Cambras", status: "needs-attention",
+    id: "hh-chen", name: "Chen/Richards Household", aum: 6_300_000,
+    advisor: "Jon Cambras",
     breakdown: [
       { label: "Compliance Coverage", score: 60, weight: 30, detail: "Compliance review 11 months old — renewal due" },
       { label: "DocuSign Velocity", score: 80, weight: 25, detail: "PTE form sent 4 days ago, awaiting signature" },
@@ -83,8 +93,8 @@ export const DEMO_HOUSEHOLDS: DemoHouseholdHealth[] = [
     ],
   },
   {
-    id: "hh-nakamura", name: "Nakamura Household", aum: 1_800_000, healthScore: 73,
-    advisor: "Amy Sato", status: "needs-attention",
+    id: "hh-nakamura", name: "Nakamura Household", aum: 1_800_000,
+    advisor: "Amy Sato",
     breakdown: [
       { label: "Compliance Coverage", score: 0, weight: 30, detail: "No compliance review on file" },
       { label: "DocuSign Velocity", score: 100, weight: 25, detail: "All documents signed" },
@@ -99,8 +109,8 @@ export const DEMO_HOUSEHOLDS: DemoHouseholdHealth[] = [
     ],
   },
   {
-    id: "hh-obrien", name: "O'Brien Household", aum: 2_400_000, healthScore: 68,
-    advisor: "Diane Rivera", status: "needs-attention",
+    id: "hh-obrien", name: "O'Brien Household", aum: 2_400_000,
+    advisor: "Diane Rivera",
     breakdown: [
       { label: "Compliance Coverage", score: 100, weight: 30, detail: "Review completed 90 days ago" },
       { label: "DocuSign Velocity", score: 30, weight: 25, detail: "DocuSign stuck for 12 days — no response" },
@@ -117,8 +127,8 @@ export const DEMO_HOUSEHOLDS: DemoHouseholdHealth[] = [
     ],
   },
   {
-    id: "hh-jackson", name: "Jackson Household", aum: 2_800_000, healthScore: 62,
-    advisor: "Michelle Osei", status: "needs-attention",
+    id: "hh-jackson", name: "Jackson Household", aum: 2_800_000,
+    advisor: "Michelle Osei",
     breakdown: [
       { label: "Compliance Coverage", score: 100, weight: 30, detail: "Review completed 120 days ago" },
       { label: "DocuSign Velocity", score: 50, weight: 25, detail: "1 envelope unsigned for 9 days" },
@@ -135,8 +145,8 @@ export const DEMO_HOUSEHOLDS: DemoHouseholdHealth[] = [
     ],
   },
   {
-    id: "hh-thompson", name: "Thompson Household", aum: 4_700_000, healthScore: 55,
-    advisor: "James Wilder", status: "at-risk",
+    id: "hh-thompson", name: "Thompson Household", aum: 4_700_000,
+    advisor: "James Wilder",
     breakdown: [
       { label: "Compliance Coverage", score: 0, weight: 30, detail: "No compliance review — client for 180+ days" },
       { label: "DocuSign Velocity", score: 60, weight: 25, detail: "1 unsigned envelope (7 days)" },
@@ -154,8 +164,8 @@ export const DEMO_HOUSEHOLDS: DemoHouseholdHealth[] = [
     ],
   },
   {
-    id: "hh-whitfield", name: "Whitfield Household", aum: 1_200_000, healthScore: 48,
-    advisor: "Kevin Trịnh", status: "at-risk",
+    id: "hh-whitfield", name: "Whitfield Household", aum: 1_200_000,
+    advisor: "Kevin Trịnh",
     breakdown: [
       { label: "Compliance Coverage", score: 0, weight: 30, detail: "No compliance review — new client, nothing done" },
       { label: "DocuSign Velocity", score: 0, weight: 25, detail: "Account opening docs never sent" },
@@ -172,6 +182,12 @@ export const DEMO_HOUSEHOLDS: DemoHouseholdHealth[] = [
     ],
   },
 ];
+
+// Derive healthScore and status from breakdown weights — single source of truth
+export const DEMO_HOUSEHOLDS: DemoHouseholdHealth[] = _DEMO_HOUSEHOLDS_RAW.map(hh => {
+  const healthScore = computeHealth(hh.breakdown);
+  return { ...hh, healthScore, status: computeStatus(healthScore) };
+});
 
 // ─── SFTask / SFHousehold Generators ──────────────────────────────────────
 

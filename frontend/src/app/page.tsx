@@ -1,28 +1,11 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { User, Wrench, Crown, Database, ChevronDown, CheckCircle, Shield, Lock, Eye, Server, AlertTriangle, X, Play } from "lucide-react";
+import dynamic from "next/dynamic";
+import { User, Wrench, Crown, Database, ChevronDown, CheckCircle, Shield, Lock, Eye, Server, AlertTriangle, X, Play, Loader2 as DynLoader } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
 import { HomeScreen, DEMO_ADVISORS, ROLES } from "./home/HomeScreen";
-import { FlowScreen } from "./flow/FlowScreen";
-import { OnboardScreen } from "./onboard/OnboardScreen";
-import { ComplianceScreen } from "./compliance/ComplianceScreen";
-import { BriefingScreen } from "./briefing/BriefingScreen";
-import { MeetingScreen } from "./meeting/MeetingScreen";
-import { QueryScreen } from "./query/QueryScreen";
-import { DashboardScreen } from "./dashboard/DashboardScreen";
-import { FamilyScreen } from "./family/FamilyScreen";
-import { TaskManager } from "./tasks/TaskManager";
-import { PlanningScreen } from "./planning/PlanningScreen";
-import { WorkflowScreen } from "./workflows/WorkflowScreen";
-import { MoneyScreen } from "./money/MoneyScreen";
-import { DocumentScreen } from "./documents/DocumentScreen";
-import { PortalScreen } from "./portal/PortalScreen";
-import { ActivityFeedScreen } from "./activity/ActivityFeedScreen";
-import { AuditScreen } from "./audit/AuditScreen";
 import { CommandPalette } from "@/components/shared/CommandPalette";
 import { NotificationCenter } from "@/components/shared/NotificationCenter";
-import { DemoMode } from "./tour/DemoMode";
-import { SettingsScreen } from "./settings/SettingsScreen";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { useIdleTimeout } from "@/lib/use-idle-timeout";
 import { DemoProvider, useDemoMode } from "@/lib/demo-context";
@@ -30,6 +13,27 @@ import { getDemoSFData } from "@/lib/demo-data";
 import { buildHomeStats } from "@/lib/home-stats";
 import { assertNever } from "@/lib/types";
 import type { UserRole } from "@/lib/types";
+
+// ─── Dynamic Imports (code-split screens) ────────────────────────────────────
+const DynLoading = () => <div className="flex h-screen bg-surface items-center justify-center"><DynLoader size={22} className="animate-spin text-slate-400" /></div>;
+const FlowScreen = dynamic(() => import("./flow/FlowScreen").then(m => ({ default: m.FlowScreen })), { ssr: false, loading: DynLoading });
+const OnboardScreen = dynamic(() => import("./onboard/OnboardScreen").then(m => ({ default: m.OnboardScreen })), { ssr: false, loading: DynLoading });
+const ComplianceScreen = dynamic(() => import("./compliance/ComplianceScreen").then(m => ({ default: m.ComplianceScreen })), { ssr: false, loading: DynLoading });
+const BriefingScreen = dynamic(() => import("./briefing/BriefingScreen").then(m => ({ default: m.BriefingScreen })), { ssr: false, loading: DynLoading });
+const MeetingScreen = dynamic(() => import("./meeting/MeetingScreen").then(m => ({ default: m.MeetingScreen })), { ssr: false, loading: DynLoading });
+const QueryScreen = dynamic(() => import("./query/QueryScreen").then(m => ({ default: m.QueryScreen })), { ssr: false, loading: DynLoading });
+const DashboardScreen = dynamic(() => import("./dashboard/DashboardScreen").then(m => ({ default: m.DashboardScreen })), { ssr: false, loading: DynLoading });
+const FamilyScreen = dynamic(() => import("./family/FamilyScreen").then(m => ({ default: m.FamilyScreen })), { ssr: false, loading: DynLoading });
+const TaskManager = dynamic(() => import("./tasks/TaskManager").then(m => ({ default: m.TaskManager })), { ssr: false, loading: DynLoading });
+const PlanningScreen = dynamic(() => import("./planning/PlanningScreen").then(m => ({ default: m.PlanningScreen })), { ssr: false, loading: DynLoading });
+const WorkflowScreen = dynamic(() => import("./workflows/WorkflowScreen").then(m => ({ default: m.WorkflowScreen })), { ssr: false, loading: DynLoading });
+const MoneyScreen = dynamic(() => import("./money/MoneyScreen").then(m => ({ default: m.MoneyScreen })), { ssr: false, loading: DynLoading });
+const DocumentScreen = dynamic(() => import("./documents/DocumentScreen").then(m => ({ default: m.DocumentScreen })), { ssr: false, loading: DynLoading });
+const PortalScreen = dynamic(() => import("./portal/PortalScreen").then(m => ({ default: m.PortalScreen })), { ssr: false, loading: DynLoading });
+const ActivityFeedScreen = dynamic(() => import("./activity/ActivityFeedScreen").then(m => ({ default: m.ActivityFeedScreen })), { ssr: false, loading: DynLoading });
+const AuditScreen = dynamic(() => import("./audit/AuditScreen").then(m => ({ default: m.AuditScreen })), { ssr: false, loading: DynLoading });
+const DemoMode = dynamic(() => import("./tour/DemoMode").then(m => ({ default: m.DemoMode })), { ssr: false });
+const SettingsScreen = dynamic(() => import("./settings/SettingsScreen").then(m => ({ default: m.SettingsScreen })), { ssr: false, loading: DynLoading });
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 

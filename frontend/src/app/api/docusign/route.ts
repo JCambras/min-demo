@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import * as crypto from "crypto";
 import type { ClientInfo } from "@/lib/types";
 import { custodian } from "@/lib/custodian";
+import { writeAuditLog } from "@/lib/audit";
+import { getCRMContext } from "@/lib/crm/factory";
+import type { SFContext } from "@/lib/sf-client";
 
 // ─── Config (from environment) ───────────────────────────────────────────────
 const DS_AUTH = process.env.DOCUSIGN_AUTH_URL || "https://account-d.docusign.com";
@@ -389,6 +392,12 @@ export async function POST(request: Request) {
         const result = await createEnvelope(token, payload);
         results.push({ name: env.name, ...result });
       }
+      // Write audit log for DocuSign sends
+      try {
+        const crmCtx = await getCRMContext();
+        const sfAuth = crmCtx.auth as SFContext;
+        writeAuditLog(sfAuth, "sendDocusign", { envelopeCount: results.length, clientName: data.client?.firstName }, "success", `Sent ${results.length} envelope(s)`);
+      } catch { /* audit failure must not block response */ }
       return NextResponse.json({ success: true, envelopes: results, count: results.length });
     }
 
@@ -410,6 +419,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Unknown action" }, { status: 400 });
   } catch (error) {
     console.error("DocuSign error:", error);
+    // Write audit log for failed DocuSign actions
+    try {
+      const crmCtx = await getCRMContext();
+      const sfAuth = crmCtx.auth as SFContext;
+      writeAuditLog(sfAuth, "docusignError", {}, "error", error instanceof Error ? error.message : "DocuSign error");
+    } catch { /* audit failure must not block response */ }
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "DocuSign error" }, { status: 500 });
   }
 }

@@ -222,6 +222,12 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   const [triageProcessing, setTriageProcessing] = useState<string | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showEmptyState, setShowEmptyState] = useState(false);
+  // ── Dismiss reason state ──
+  const [dismissTarget, setDismissTarget] = useState<string | null>(null);
+  const [dismissReason, setDismissReason] = useState("");
+  // ── Undo state ──
+  const [lastAction, setLastAction] = useState<{ type: "resolve" | "dismiss" | "snooze"; id: string } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -306,11 +312,30 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     setShowEmptyState(false);
   }, [activeTriageItems.length, resolvedTriageIds.size, snoozedTriageIds.size]);
 
+  // ── Undo helper ──
+  const startUndoWindow = (action: { type: "resolve" | "dismiss" | "snooze"; id: string }) => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setLastAction(action);
+    undoTimer.current = setTimeout(() => setLastAction(null), 5000);
+  };
+  const handleUndo = () => {
+    if (!lastAction) return;
+    if (lastAction.type === "dismiss") {
+      setResolvedTriageIds(prev => { const s = new Set(prev); s.delete(lastAction.id); return s; });
+    } else if (lastAction.type === "snooze") {
+      setSnoozedTriageIds(prev => { const s = new Set(prev); s.delete(lastAction.id); return s; });
+    }
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setLastAction(null);
+    showToast("Action undone");
+  };
+
   // ── Triage action handlers ──
   const handleTriageResolve = (item: { id: string; category: string; householdId?: string; householdName?: string }) => {
     if (triageProcessing) return;
     setTriageProcessing(item.id);
     setExpandedTriageId(null);
+    setDismissTarget(null);
     if (!hasInteracted) setHasInteracted(true);
     // Navigate to the relevant workflow screen based on category
     const screen: Screen = item.category === "compliance" ? "compliance" : "family";
@@ -318,15 +343,24 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
       householdId: item.householdId || "",
       familyName: (item.householdName || "").replace(" Household", ""),
     };
+    setTimeout(() => setTriageProcessing(null), 300);
     goTo(screen, ctx);
   };
-  const handleTriageDismiss = (id: string) => {
-    if (triageProcessing) return;
-    setTriageProcessing(id);
-    setResolvedTriageIds(prev => { const s = new Set(prev); s.add(id); return s; });
+  const handleTriageDismissStart = (id: string) => {
+    setDismissTarget(id);
+    setDismissReason("");
     setExpandedTriageId(null);
+  };
+  const handleTriageDismissConfirm = () => {
+    if (!dismissTarget || !dismissReason.trim()) return;
+    if (triageProcessing) return;
+    setTriageProcessing(dismissTarget);
+    setResolvedTriageIds(prev => { const s = new Set(prev); s.add(dismissTarget); return s; });
     if (!hasInteracted) setHasInteracted(true);
-    showToast("Item dismissed");
+    startUndoWindow({ type: "dismiss", id: dismissTarget });
+    showToast(`Dismissed: ${dismissReason.trim().slice(0, 60)}`);
+    setDismissTarget(null);
+    setDismissReason("");
     setTimeout(() => setTriageProcessing(null), 300);
   };
   const handleTriageSnooze = (id: string, label: string) => {
@@ -334,7 +368,9 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
     setTriageProcessing(id);
     setSnoozedTriageIds(prev => { const s = new Set(prev); s.add(id); return s; });
     setExpandedTriageId(null);
+    setDismissTarget(null);
     if (!hasInteracted) setHasInteracted(true);
+    startUndoWindow({ type: "snooze", id });
     showToast(`Snoozed: ${label}`);
     setTimeout(() => setTriageProcessing(null), 300);
   };
@@ -447,7 +483,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
             {ROLES.find(r => r.id === role)?.label || "Advisor"}{role === "principal" && principalAdvisor !== "all" ? ` · ${principalAdvisor}` : ""}
           </button>
           <NotificationCenter stats={stats} onNavigate={goTo} />
-          <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} aria-label="Settings" className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-all"><Settings size={16} /></button>
+          <button onClick={() => goTo("settings")} aria-label="Settings" className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-all"><Settings size={16} /></button>
         </div>
       </div>
 
@@ -620,11 +656,24 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
                           className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors ${isExpanded ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"} disabled:opacity-50`}>
                           Snooze
                         </button>
-                        <button onClick={() => handleTriageDismiss(item.id)} disabled={triageProcessing === item.id}
+                        <button onClick={() => handleTriageDismissStart(item.id)} disabled={triageProcessing === item.id}
                           className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors">
                           Dismiss
                         </button>
                       </div>
+                      {/* Dismiss reason input */}
+                      {dismissTarget === item.id && (
+                        <div className="mt-2 flex items-center gap-2 animate-fade-in">
+                          <input value={dismissReason} onChange={e => setDismissReason(e.target.value)} placeholder="Reason for dismissing..."
+                            autoFocus onKeyDown={e => { if (e.key === "Enter") handleTriageDismissConfirm(); if (e.key === "Escape") setDismissTarget(null); }}
+                            className="flex-1 h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent" />
+                          <button onClick={handleTriageDismissConfirm} disabled={!dismissReason.trim()}
+                            className="text-[11px] px-2.5 py-1 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-40 transition-colors">
+                            Confirm
+                          </button>
+                          <button onClick={() => setDismissTarget(null)} className="text-[11px] px-2 py-1 text-slate-400 hover:text-slate-600 transition-colors">Cancel</button>
+                        </div>
+                      )}
                     </div>
                     {/* Expanded snooze panel — no "Min's Recommendation" header (Tweak 4) */}
                     {isExpanded && (
@@ -670,7 +719,7 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
             <p className="text-[11px] text-blue-400">Pick up where you left off</p>
           </button>
           <button onClick={() => { setLastSession(null); clearLastSession(); }}
-            className="text-blue-300 hover:text-blue-500 transition-colors flex-shrink-0"><X size={14} /></button>
+            aria-label="Dismiss session resume" className="text-blue-300 hover:text-blue-500 transition-colors flex-shrink-0"><X size={14} /></button>
         </div>
       )}
 
@@ -681,8 +730,8 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
           <h2 className="text-lg font-medium text-slate-900 mb-2">Welcome to Min</h2>
           <p className="text-sm text-slate-400 mb-6 max-w-md mx-auto">Your Salesforce is connected but Min doesn&apos;t see any activity yet. Start by onboarding a family or seeding demo data.</p>
           <div className="flex items-center justify-center gap-3">
-            <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "onboard" })} className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors">Onboard Your First Family</button>
-            <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-sm font-medium hover:bg-slate-50 transition-colors">Seed Demo Data</button>
+            <button onClick={() => goTo("onboard")} className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors">Onboard Your First Family</button>
+            <button onClick={() => goTo("settings")} className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-sm font-medium hover:bg-slate-50 transition-colors">Seed Demo Data</button>
           </div>
         </div>
       )}
@@ -804,9 +853,17 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
         {role === "principal" && <TeamTraining onNavigate={goTo} advisorName={advisorName} />}
       </div>
 
+      {/* Undo toast */}
+      {lastAction && (
+        <div className="fixed bottom-16 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl bg-slate-800 text-white text-sm font-medium shadow-lg animate-fade-in z-50 flex items-center gap-3">
+          <span>{lastAction.type === "dismiss" ? "Item dismissed" : "Item snoozed"}</span>
+          <button onClick={handleUndo} className="text-blue-300 hover:text-blue-100 font-semibold transition-colors">Undo</button>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center justify-center gap-3 text-xs text-slate-500 font-medium">
-        <button onClick={() => dispatch({ type: "SET_SCREEN", screen: "settings" })} className="inline-flex items-center gap-1.5 hover:text-slate-600 transition-colors">
+        <button onClick={() => goTo("settings")} className="inline-flex items-center gap-1.5 hover:text-slate-600 transition-colors">
           {isDemoMode ? <div className="w-1.5 h-1.5 rounded-full bg-amber-400" role="img" aria-label="Demo mode" /> : sfConnected === null ? <div className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse" role="img" aria-label="Checking connection" /> : sfConnected ? <div className="w-1.5 h-1.5 rounded-full bg-green-500" role="img" aria-label="Connected" /> : <div className="w-1.5 h-1.5 rounded-full bg-red-400" role="img" aria-label="Not connected" />}
           <span>{isDemoMode ? "Demo Mode — Ctrl+Shift+D to toggle" : sfConnected === null ? "Checking..." : sfConnected ? `Connected to Salesforce: ${sfInstance || "Org"}` : "Not connected"}</span>
         </button>

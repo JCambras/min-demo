@@ -452,6 +452,7 @@ function WebhookPanel() {
         {webhooks.map(wh => (
           <div key={wh.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
             <button onClick={() => toggleWebhook(wh.id)}
+              aria-label={`${wh.enabled ? "Disable" : "Enable"} webhook`} aria-pressed={wh.enabled}
               className={`w-2 h-2 rounded-full flex-shrink-0 ${wh.enabled ? "bg-green-500" : "bg-slate-300"}`} />
             <div className="flex-1 min-w-0">
               <p className="text-sm text-slate-700 truncate font-mono">{wh.url}</p>
@@ -459,7 +460,7 @@ function WebhookPanel() {
                 {wh.events.map(e => <span key={e} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-500">{e}</span>)}
               </div>
             </div>
-            <button onClick={() => removeWebhook(wh.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
+            <button onClick={() => removeWebhook(wh.id)} aria-label={`Remove webhook ${wh.url}`} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
           </div>
         ))}
 
