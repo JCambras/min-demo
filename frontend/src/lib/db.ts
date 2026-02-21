@@ -52,6 +52,23 @@ export async function ensureSchema(): Promise<void> {
       )`,
       args: [],
     },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        org_id TEXT,
+        action TEXT NOT NULL,
+        result TEXT NOT NULL,
+        actor TEXT,
+        household_id TEXT,
+        detail TEXT,
+        duration_ms INTEGER,
+        request_id TEXT,
+        payload_json TEXT,
+        sf_synced INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      args: [],
+    },
   ]);
   schemaReady = true;
 }

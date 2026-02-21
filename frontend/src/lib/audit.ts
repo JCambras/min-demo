@@ -15,6 +15,7 @@
 
 import type { SFContext } from "@/lib/sf-client";
 import { createTask } from "@/lib/sf-client";
+import { getDb, ensureSchema } from "@/lib/db";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -73,14 +74,42 @@ function extractHouseholdId(data: unknown): string | undefined {
   return (d.householdId as string) || undefined;
 }
 
-// ─── Write Audit Record ─────────────────────────────────────────────────────
-// Currently writes to Task. To switch to custom object:
-//   Replace createTask() with create(ctx, "Min_Audit_Log__c", { ... })
+// ─── Write-Ahead Audit Buffer ───────────────────────────────────────────────
+// Step 1: Write to Turso (synchronous, local) — this is the durable record.
+// Step 2: Replicate to Salesforce (async) — this is the customer-visible copy.
+// If Salesforce write fails, the Turso record survives for later retry.
 
-async function writeAuditRecord(ctx: SFContext, entry: AuditEntry, payload: Record<string, unknown>): Promise<void> {
+async function writeToTurso(entry: AuditEntry, payload: Record<string, unknown>): Promise<void> {
+  try {
+    await ensureSchema();
+    const db = getDb();
+    await db.execute({
+      sql: `INSERT INTO audit_log (org_id, action, result, actor, household_id, detail, duration_ms, request_id, payload_json, sf_synced)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      args: [
+        null, // org_id — could be extracted from context in future
+        entry.action,
+        entry.result,
+        entry.actor || null,
+        entry.householdId || extractHouseholdId(payload) || null,
+        entry.detail || null,
+        entry.durationMs || null,
+        entry.requestId || null,
+        JSON.stringify(scrubPII(payload)).slice(0, 4000),
+      ],
+    });
+  } catch (err) {
+    // Turso write failed — log but don't block. Salesforce write may still succeed.
+    console.error("[MIN:AUDIT] Turso write-ahead failed", {
+      action: entry.action,
+      error: err instanceof Error ? err.message : "Unknown",
+    });
+  }
+}
+
+async function writeToSalesforce(ctx: SFContext, entry: AuditEntry, payload: Record<string, unknown>): Promise<void> {
   const householdId = entry.householdId || extractHouseholdId(payload);
 
-  // Build description with scrubbed payload
   const description = [
     `MIN AUDIT LOG`,
     `Action: ${entry.action}`,
@@ -104,6 +133,14 @@ async function writeAuditRecord(ctx: SFContext, entry: AuditEntry, payload: Reco
   });
 }
 
+async function writeAuditRecord(ctx: SFContext, entry: AuditEntry, payload: Record<string, unknown>): Promise<void> {
+  // Step 1: Write-ahead to Turso (durable local record)
+  await writeToTurso(entry, payload);
+
+  // Step 2: Replicate to Salesforce (customer-visible copy)
+  await writeToSalesforce(ctx, entry, payload);
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
@@ -111,6 +148,48 @@ async function writeAuditRecord(ctx: SFContext, entry: AuditEntry, payload: Reco
  */
 export function shouldAudit(action: string): boolean {
   return !READ_ONLY_ACTIONS.has(action);
+}
+
+/**
+ * Write an authentication event to the audit trail. Fire-and-forget.
+ * Auth events are always audited (not subject to READ_ONLY_ACTIONS filter).
+ */
+export async function writeAuthEvent(
+  ctx: SFContext | null,
+  event: "login" | "login_env" | "logout" | "logout_revoke" | "token_refresh" | "auth_failed",
+  detail?: string,
+  metadata?: Record<string, string>,
+): Promise<void> {
+  // If we don't have a Salesforce context (e.g., auth failed before connection),
+  // we can only log to console. The write-ahead buffer (when implemented) will
+  // also capture these to Turso.
+  if (!ctx) {
+    console.warn("[MIN:AUDIT:AUTH]", event, detail || "", metadata || {});
+    return;
+  }
+
+  try {
+    const description = [
+      `MIN AUDIT LOG — Authentication Event`,
+      `Event: ${event}`,
+      detail ? `Detail: ${detail}` : null,
+      `Timestamp: ${new Date().toISOString()}`,
+      metadata ? `\nMetadata:\n${JSON.stringify(metadata, null, 2)}` : null,
+    ].filter(Boolean).join("\n");
+
+    await createTask(ctx, {
+      subject: `MIN:AUDIT — auth:${event} — success`,
+      householdId: "",
+      status: "Completed",
+      priority: event === "auth_failed" ? "High" : "Low",
+      description,
+    });
+  } catch (err) {
+    console.error("[MIN:AUDIT:AUTH] Failed to write auth event", {
+      event,
+      error: err instanceof Error ? err.message : "Unknown",
+    });
+  }
 }
 
 /**
