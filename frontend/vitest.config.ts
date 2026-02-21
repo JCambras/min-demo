@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts"],
     environment: "node",
+    env: {
+      SF_COOKIE_SECRET: "test-only-not-for-production-use-0123456789abcdef",
+    },
   },
   resolve: {
     alias: {

@@ -133,6 +133,26 @@ export function proxy(request: NextRequest) {
   // Prevent referrer leakage
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
 
+  // HSTS — enforce HTTPS for 1 year including subdomains
+  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+
+  // Permissions-Policy — disable browser features Min doesn't use
+  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+
+  // CSP — report-only mode initially to collect violations before enforcing
+  response.headers.set(
+    "Content-Security-Policy-Report-Only",
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "connect-src 'self' *.salesforce.com *.force.com *.docusign.net",
+      "frame-ancestors 'none'",
+    ].join("; "),
+  );
+
   // PDF responses should not be cached (contain sensitive client data)
   if (pathname.startsWith("/api/pdf/")) {
     response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private");

@@ -1,6 +1,6 @@
 "use client";
 import { useReducer, useEffect, useCallback, useRef } from "react";
-import { callSF } from "@/lib/salesforce";
+import { callSF, setCurrentRole } from "@/lib/salesforce";
 import { buildHomeStats } from "@/lib/home-stats";
 import { loadTriageConfig } from "@/lib/triage-config";
 import { log } from "@/lib/logger";
@@ -218,6 +218,11 @@ export function useAppState() {
         dispatch({ type: "SF_STATUS", connected: false, instance: "" });
       });
   }, []);
+
+  // ── Sync role to API client for server-side RBAC ──
+  useEffect(() => {
+    setCurrentRole(state.role);
+  }, [state.role]);
 
   // ── Auto-load stats when ready ──
   useEffect(() => {
