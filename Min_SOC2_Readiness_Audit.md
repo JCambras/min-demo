@@ -227,6 +227,8 @@ Min depends on the following vendors. None have documented vendor risk assessmen
 | Anthropic | LLM API | SOC 2 Type II (verify) | **No client data sent** — confirmed via codebase audit. No direct Anthropic API calls found in production code. AI coding tools used in development only. | Low (development tool) |
 | GitHub | Source code hosting | Yes (SOC 2 Type II) | Source code, no client data | High |
 | npm/pnpm registry | Package manager | No formal SOC 2 | No client data (dependency packages only) | Medium |
+| Wealthbox CRM | CRM integration (planned — architecture stubs exist in `crm-adapter.ts`) | No SOC 2 info publicly available | No data shared yet (integration not implemented) | High (future) |
+| BridgeFT | Custodial data aggregation (planned — referenced in executive summary and reconciliation architecture) | SOC 2 Type II certified | Will share custodial account data (account numbers, balances, positions, transaction history) | Critical (future) |
 
 #### Gap Analysis
 
@@ -586,6 +588,13 @@ Min has a purpose-built audit logging system that logs all mutation actions to S
 - Passed through audit logging, returned in API responses
 - Enables correlation between browser → server → Salesforce → audit trail
 
+**User-Facing vs. System-Level Audit Trail:**
+Does Min's user-facing audit trail match the system-level audit trail? They are the **same system**. Both the COO-facing audit screen (visible in the Min UI) and the system-level audit trail read from the same Salesforce `MIN:AUDIT` Task records written by `audit.ts`. There is no separate "user-facing" trail — the UI is a filtered view of the authoritative audit store. When the COO reviews audit history in Min, they are querying the same Salesforce Task records that a SOC 2 auditor would examine.
+
+However, application-level logs (`logger.ts` → console output) are a separate, ephemeral stream not visible to the COO or to end users. These logs capture operational events (errors, warnings, request timing) but are not part of the compliance audit trail. They are retained only for the duration of the hosting provider's log retention window (Vercel: 1 hour on free tier, 3 days on Pro). This creates a gap: if a security event is logged only to `logger.ts` and not to `audit.ts`, it is invisible to the user-facing audit trail and may be lost before forensic review.
+
+**Recommendation:** Ensure all security-relevant events (authentication, authorization failures, configuration changes) are written to the `MIN:AUDIT` trail — not only to `logger.ts`.
+
 #### Gap Analysis
 
 **CRITICAL (blocks SOC 2):**
@@ -625,6 +634,16 @@ Min has a purpose-built audit logging system that logs all mutation actions to S
 Min uses pnpm as its package manager. The `package.json` includes standard Next.js dependencies plus `@libsql/client`, `jspdf`, and `lucide-react`. No security-specific packages are used (no `helmet`, `cors`, or `csrf` libraries — all implemented manually in `proxy.ts` and `csrf.ts`).
 
 There is no evidence of automated dependency scanning (no Dependabot configuration, no Snyk integration, no npm audit in CI). No `.github/` directory exists, confirming no GitHub Actions workflows.
+
+**Dependency Update Frequency:**
+`package.json` was last modified February 15, 2026 (5 days before this assessment). Based on git history, dependencies are updated roughly weekly — 5 modifications to `package.json` in the 16 days prior to assessment. This is a reasonable cadence for a solo developer but is informal and undocumented.
+
+**Current Vulnerability Status:**
+`pnpm audit` at assessment time reveals **2 HIGH vulnerabilities** in `jspdf@4.1.0`:
+1. **PDF injection via AcroForm** — attacker-controlled input can inject arbitrary AcroForm fields into generated PDFs
+2. **PDF injection via addJS** — attacker-controlled input can inject JavaScript into generated PDFs via the `addJS` method
+
+Patch available: `jspdf>=4.2.0`. Min uses jspdf for client-facing PDF generation (compliance reports, household summaries), making this a material finding — an attacker who can influence PDF content could inject malicious AcroForm fields or JavaScript into documents sent to RIA firm clients. No automated scanning is configured to catch vulnerabilities like these proactively.
 
 **Testing:**
 - 17 test files, 767 passing tests (Vitest)
@@ -750,6 +769,90 @@ Min has no written incident response plan. There is no defined severity classifi
 - Designate a trusted external contact (attorney, advisor, or contract security professional) who can initiate incident response if the founder is unavailable or is the compromised party
 - Pre-stage: this person should have access to the hosting dashboard (Vercel), the ability to revoke Salesforce connected app tokens, and the incident response plan document
 - Document this arrangement and test it semi-annually
+
+**Forensic Procedures:**
+
+For SEV-1 and SEV-2 incidents, the following evidence preservation steps must be executed before any remediation:
+
+1. **Snapshot logs immediately:** Export Salesforce `MIN:AUDIT` Task records for the incident window. Export Vercel application logs (before they rotate). Export Turso analytics records for affected `org_id`s.
+2. **Freeze deployments:** Halt all deployments via Vercel dashboard. No code changes until forensic capture is complete.
+3. **Preserve git state:** Tag the current `HEAD` as `incident-{YYYY-MM-DD}-{SEV}`. Do not force-push, rebase, or amend any commits.
+4. **Capture Salesforce login history:** Export the affected org's login history (Setup → Login History) covering the incident window. This shows all API and UI access.
+5. **Image affected systems:** If a device is suspected compromised, create a forensic disk image before wiping. Use `dd` or a commercial forensic tool (FTK Imager, EnCase).
+6. **Chain of custody documentation:** For each piece of evidence, record: what was collected, when, by whom, hash (SHA-256) of the collected artifact, and where it is stored. Use a dedicated evidence log spreadsheet.
+7. **External forensics engagement:** For SEV-1 incidents, engage an external forensics firm within 24 hours. Pre-identify a forensics partner (recommended: CrowdStrike Services, Mandiant, or Kroll) and have an engagement letter on file.
+
+**Communication Templates:**
+
+*Template 1 — Customer Breach Notification:*
+```
+Subject: Security Incident Notification — Min
+
+Dear [Customer Name],
+
+We are writing to inform you of a security incident affecting your firm's data
+processed by Min.
+
+What happened: [Brief description — e.g., "On [DATE], we detected unauthorized
+access to [SYSTEM]. The access occurred between [START] and [END]."]
+
+What data was affected: [Specific data types — e.g., "Client names and email
+addresses for approximately [N] households in your Salesforce org."]
+
+What we have done: [Actions taken — e.g., "We immediately revoked the
+compromised credentials, engaged an external forensics firm, and implemented
+additional monitoring."]
+
+What you should do: [Recommended actions — e.g., "We recommend reviewing your
+Salesforce login history for the period [START] to [END] and notifying affected
+clients per your firm's breach notification procedures."]
+
+Next steps: [Timeline — e.g., "We will provide a full forensic report within
+[N] business days. Our next update will be on [DATE]."]
+
+Contact: [Name, email, phone for incident coordinator]
+
+Sincerely,
+Jon Cambras, Founder — Min
+```
+
+*Template 2 — Regulatory Notification:*
+```
+Subject: Data Breach Notification — Min (Service Provider to SEC-Registered RIAs)
+
+To: [State Attorney General / SEC / Applicable Regulator]
+
+Reporting Entity: Min ([Address])
+Date of Discovery: [DATE]
+Date of Incident: [DATE or RANGE]
+Number of Affected Individuals: [COUNT or "Under Investigation"]
+Types of Information Involved: [List — e.g., "Names, Social Security Numbers,
+financial account numbers"]
+Description of Incident: [Narrative]
+Steps Taken to Address: [Remediation summary]
+Contact Information: [Name, title, phone, email]
+```
+
+*Template 3 — Internal Incident Report:*
+```
+INCIDENT REPORT — [INCIDENT ID]
+
+Severity: [SEV-1/2/3/4]
+Status: [Open / Investigating / Contained / Resolved / Closed]
+Reported by: [Name]    Date/Time Discovered: [ISO 8601]
+Incident Commander: [Name]
+
+Timeline:
+  [TIMESTAMP] — [Event description]
+  [TIMESTAMP] — [Event description]
+
+Root Cause: [Description — or "Under Investigation"]
+Impact: [Systems affected, data affected, customers affected]
+Remediation: [Actions taken and planned]
+Evidence Collected: [List with SHA-256 hashes]
+Lessons Learned: [Post-incident — to be completed after resolution]
+Follow-up Actions: [Action items with owners and due dates]
+```
 
 **Estimated effort:** 2-3 days to write the full IRP. 4 hours for a tabletop exercise. Semi-annual review and test.
 
@@ -916,6 +1019,16 @@ Min's schema discovery engine (`schema-discovery.ts`, 1,440 lines) auto-classifi
 **Reconciliation:**
 Min has a reconciliation endpoint (`reconciliation/route.ts`) that compares CRM household data against custodial account data using fuzzy matching (exact match → 1.0, substring → 0.8, word overlap scoring). Match categories: Matched (≥0.8), Mismatch (0.5-0.8), Orphan-Custodial, Orphan-CRM. This provides a mechanism for detecting data drift between systems.
 
+**BridgeFT Custodial Data Verification (Future):**
+BridgeFT integration is not yet implemented. Min's architecture references BridgeFT as the target for custodial data aggregation — the reconciliation endpoint (`reconciliation/route.ts`) is designed to compare CRM household data against custodial account data, but the custodial data source is not yet connected. When BridgeFT integration is implemented, the following verification controls should be in place:
+
+1. **Hash-based record comparison:** Compute SHA-256 hashes of canonical record representations at both BridgeFT and Min. Compare hashes to detect any transformation errors during data ingestion.
+2. **Timestamp reconciliation:** Verify that BridgeFT's `lastUpdated` timestamp for each account matches Min's `receivedAt` timestamp within an acceptable skew window (recommended: ≤5 minutes).
+3. **Count verification:** After each sync, compare `SELECT COUNT(*)` of custodial accounts in BridgeFT's response against records stored/displayed in Min. Alert if counts diverge.
+4. **Automated drift detection:** Schedule daily reconciliation runs (outside market hours) comparing all BridgeFT-sourced records against the CRM. Flag and alert on: new orphan records, disappeared records, and field-level value changes not attributable to legitimate updates.
+
+**Current status:** N/A — assessed as a future risk. BridgeFT is SOC 2 Type II certified, which provides baseline assurance for their data handling. However, Min must independently verify data integrity at the integration boundary once the connection is live.
+
 **Compliance Engine Accuracy:**
 The compliance engine (`compliance-engine.ts`, 576 lines) is 100% deterministic. Compliance checks use keyword matching against Salesforce task subjects and descriptions — no LLM involvement. 20 built-in checks map to specific regulatory requirements (FINRA 2090, FINRA 4512, USA PATRIOT Act CIP, Reg BI, DOL PTE 2020-02, SEC Rule 17a-14, Reg S-P, NACHA). Evidence collection is metadata-based (contact count, field population status, task completion counts), not PII-based.
 
@@ -937,6 +1050,19 @@ The custodian rules engine (`custodian-rules.ts`, 1,711 lines) contains document
 - Custodian rules should reference version/effective dates for traceability
 - Reconciliation results should be logged to the audit trail
 
+#### Remediation Plan
+
+| Gap | Action | Effort | Priority |
+|-----|--------|--------|----------|
+| No automated reconciliation schedule | Implement daily automated reconciliation run (outside market hours, e.g., 2 AM ET). Log results to `MIN:AUDIT` trail. Alert on drift exceeding configurable threshold (recommended: >1% mismatch rate). | 2-3 days | High |
+| No custodian rules update process | Create a quarterly custodian rules review checklist. Subscribe to Schwab, Fidelity, and Pershing document update notifications. Add `effectiveDate` and `version` fields to `custodian-rules.ts` rule objects. | 1-2 days | High |
+| No data accuracy SLA | Define accuracy SLA: ≤0.1% field-level error rate for financial data, ≤1% for contact data. Measure via reconciliation output. | 4 hours | Medium |
+| No user-reported accuracy mechanism | Add "Report Data Issue" button in household detail view. Route to Salesforce Case for tracking and resolution. | 1 day | Medium |
+| Hardcoded confidence threshold | Move 0.70 confidence threshold to org-level configuration (Turso `org_patterns` table). Allow customer-specific tuning during onboarding. | 4 hours | Medium |
+| BridgeFT verification controls | Implement hash-based comparison, count verification, timestamp reconciliation, and drift detection (see BridgeFT section above). | 3-5 days (when integration is built) | High (future) |
+
+**Estimated effort:** 5-7 days for current gaps. BridgeFT controls deferred until integration is implemented.
+
 ---
 
 ### 4.2 Data Completeness
@@ -951,6 +1077,17 @@ Schema discovery wraps each API call in try/catch and captures errors in `bundle
 
 However, if a data query partially fails (e.g., Salesforce returns 100 of 500 records before timeout), Min's current architecture would display the 100 records without indicating that data is incomplete. The retry logic (`sf-client.ts:100-150`) would retry the failed request, but if retries are exhausted, partial data is returned.
 
+**Cross-Source Record Mismatch Handling:**
+When records exist in one source but not another, Min's behavior varies by direction:
+
+- **CRM record with no custodial match (Orphan-CRM):** If a Salesforce contact/household has no matching custodial account, Min displays the Salesforce data without flagging the discrepancy to the user. The reconciliation endpoint (`reconciliation/route.ts`) categorizes these as "Orphan-CRM" internally, but this classification is not surfaced proactively in the UI. An advisor viewing a household with zero custodial accounts receives no indication that this might be an error vs. a legitimately non-custodied household.
+
+- **Custodial record with no CRM match (Orphan-Custodial):** When BridgeFT integration is implemented, custodial accounts that don't match any Salesforce household will be categorized as "Orphan-Custodial." These represent a higher risk — an unlinked custodial account means financial data exists that no one at the firm is monitoring through Min.
+
+- **Partial match (Mismatch, 0.5-0.8 confidence):** The reconciliation endpoint flags these but they are not surfaced to users automatically. A mismatch could indicate a name change (marriage, legal change), a data entry error, or a genuinely different person — all of which have different regulatory implications.
+
+**Gap:** Orphan and mismatch records should be surfaced in a dedicated "Reconciliation Dashboard" with actionable categories: confirm match, create link, flag for review. Without this, data completeness gaps accumulate silently.
+
 #### Gap Analysis
 
 **HIGH (required for Type I):**
@@ -959,6 +1096,16 @@ However, if a data query partially fails (e.g., Salesforce returns 100 of 500 re
 **MEDIUM (required for Type II):**
 - No record count verification (compare count from SOQL `COUNT()` query against actual records returned)
 - No automated completeness check on sync operations
+
+#### Remediation Plan
+
+| Gap | Action | Effort | Priority |
+|-----|--------|--------|----------|
+| No completeness indicator | Add a "Data Status" badge to household views: green (all queries succeeded), yellow (partial data — some queries failed after retries), red (critical data missing). Persist status per query in React state. | 1-2 days | High |
+| No record count verification | Before displaying results, issue a parallel `SELECT COUNT()` SOQL query. Compare against `records.length`. If count > records returned, display "Showing X of Y records" with a "Load All" option. | 1 day | Medium |
+| No automated completeness check | Add post-sync validation: after schema discovery completes, verify all expected object types returned data. Log completeness percentage to audit trail. Alert if completeness <95%. | 1 day | Medium |
+
+**Estimated effort:** 3-4 days total.
 
 ---
 
@@ -985,6 +1132,16 @@ However, if a data query partially fails (e.g., Salesforce returns 100 of 500 re
 
 **MEDIUM (required for Type II):**
 - Freshness timestamps conflate "when Min last queried" with "when Salesforce data was last modified." These are different events.
+
+#### Remediation Plan
+
+| Gap | Action | Effort | Priority |
+|-----|--------|--------|----------|
+| No freshness indicator | Add "Last synced: [relative time]" badge to every data view. Color-code: green (<5 min), yellow (5-60 min), orange (1-24 hr), red (>24 hr). | 1 day | High |
+| No maximum staleness threshold | Implement configurable staleness ceiling: refuse to display financial data older than 24 hours, contact data older than 72 hours. Show "Data is stale — please refresh" with a manual refresh button. | 1 day | High |
+| Conflated freshness timestamps | Track two separate timestamps: `queriedAt` (when Min last fetched from Salesforce) and `modifiedAt` (Salesforce's `LastModifiedDate` from the record). Display both to the user on hover. | 4 hours | Medium |
+
+**Estimated effort:** 2-3 days total.
 
 ---
 
@@ -1050,9 +1207,26 @@ Min has no formal data classification policy. However, the codebase implicitly c
 
 #### Remediation Plan — Data Classification Matrix
 
-Produce a formal document with columns: Data Type, Classification (Confidential/Internal/Public), Storage Location, Encryption, Retention Period, Access Controls, Disposal Method. Based on the implicit classifications already in the code.
+The following matrix formalizes Min's implicit data classifications into a SOC 2-ready document. This table should be maintained as a living document and reviewed quarterly.
 
-**Estimated effort:** 1 day
+| Data Type | Classification | Storage Location | Encryption at Rest | Encryption in Transit | Retention Period | Access Controls | Disposal Method |
+|-----------|---------------|-----------------|-------------------|---------------------|-----------------|----------------|----------------|
+| Client SSNs | **Confidential** | Salesforce (firm's org) — transient in browser memory | Salesforce Shield (if customer-enabled); not encrypted by Min | TLS 1.2+ (HTTPS) | Per firm's Salesforce retention; not persisted by Min | OAuth-authenticated users; masked in UI by default; scrubbed from audit logs | Cleared on browser session end; no Min-side deletion needed |
+| Client DOBs | **Confidential** | Salesforce (firm's org) — transient in browser memory | Salesforce Shield (if customer-enabled); not encrypted by Min | TLS 1.2+ (HTTPS) | Per firm's Salesforce retention; not persisted by Min | OAuth-authenticated users; scrubbed from audit logs | Cleared on browser session end |
+| Bank account numbers | **Confidential** | Salesforce (firm's org) — transient in browser memory | Salesforce Shield (if customer-enabled); not encrypted by Min | TLS 1.2+ (HTTPS) | Per firm's Salesforce retention; not persisted by Min | OAuth-authenticated users; last 4 digits only in UI; scrubbed from audit logs | Cleared on browser session end |
+| OAuth access/refresh tokens | **Confidential** | httpOnly cookie (browser) | AES-256-GCM with scrypt KDF | TLS 1.2+ (HTTPS); httpOnly/secure/sameSite flags | 30-day cookie maxAge; 2-hour token expiration | Server-side only (httpOnly); not accessible via JavaScript | Cookie expiration; explicit revocation on logout (to be implemented) |
+| DocuSign RSA private key | **Confidential** | `.env.local` (server filesystem) / Vercel environment variables | Vercel encrypts env vars at rest; plaintext in `.env.local` | N/A (server-side only) | Until rotated | Server-side only; no API exposure | Secure deletion + rotation |
+| Salesforce client credentials | **Confidential** | `.env.local` (server filesystem) / Vercel environment variables | Vercel encrypts env vars at rest; plaintext in `.env.local` | N/A (server-side only) | Until rotated | Server-side only; no API exposure | Secure deletion + rotation |
+| Client names/emails/phones | **Internal** | Salesforce (firm's org) — transient in browser memory | Salesforce platform encryption | TLS 1.2+ (HTTPS) | Per firm's Salesforce retention; not persisted by Min | OAuth-authenticated users; excluded from analytics | Cleared on browser session end |
+| Audit log entries | **Internal** | Salesforce Task records (firm's org) | Salesforce platform encryption | TLS 1.2+ (HTTPS) | 7 years (SEC Rule 204-2) | Salesforce org permissions; PII scrubbed before write | Per firm's Salesforce data management after retention period |
+| Org schema mappings | **Internal** | Turso database + encrypted cookie | AES-256-GCM (cookie); Turso infrastructure encryption (database) | TLS 1.2+ (HTTPS) | Cookie: 90-day maxAge; Database: until customer offboarding + 90 days | Server-side via org_id filtering | SQL DELETE + VACUUM; cookie expiration |
+| Task subjects/descriptions | **Internal** | Salesforce (firm's org) — transient in browser memory | Salesforce platform encryption | TLS 1.2+ (HTTPS) | Per firm's Salesforce retention | OAuth-authenticated users; included in audit logs (not scrubbed) | Cleared on browser session end |
+| Compliance check results | **Internal** | Ephemeral (browser memory only) | N/A (not persisted) | TLS 1.2+ (HTTPS) | Session duration only | OAuth-authenticated users | Cleared on session end / page navigation |
+| Aggregate analytics | **Internal** | Turso database | Turso infrastructure encryption | TLS 1.2+ (HTTPS) | 3 years | Server-side via org_id filtering; PII stripped before storage | SQL DELETE + VACUUM |
+| Custodian rules | **Public** | Source code (GitHub repository) | N/A (no PII content) | N/A | Indefinite (versioned in git) | Public repository access controls | Git history retention |
+| Product documentation | **Public** | Website / GitHub | N/A | TLS 1.2+ (HTTPS) | Indefinite | Public | Standard web content removal |
+
+**Estimated effort:** 1 day to finalize and obtain stakeholder sign-off. Quarterly review thereafter.
 
 ---
 
@@ -1370,56 +1544,107 @@ Most enterprise procurement teams will accept a SOC 2 readiness letter + pentest
 
 ## The 90-Day SOC 2 Roadmap
 
-**Assumptions:** Jon is doing this alongside product development (approximately 30-40% time allocation to SOC 2). Not full-time.
+**Assumptions:** Jon is doing this alongside product development (approximately 30-40% time allocation to SOC 2 — roughly 12-16 hours per week). Not full-time.
 
-### Weeks 1-2: Foundation
-- [ ] Select compliance automation platform (Vanta recommended)
-- [ ] Complete Information Security Policy (draft)
-- [ ] Complete initial risk assessment (use template from Phase 1.2)
-- [ ] Remove dev fallback encryption keys from source code (`sf-connection.ts:12`, `org-query.ts:110`)
-- [ ] Add HSTS, CSP, and Permissions-Policy headers to `proxy.ts`
+### Week 1: Platform Selection and Quick Wins
+- [ ] Evaluate and select compliance automation platform (Vanta recommended — see Section 7.1)
+- [ ] Remove dev fallback encryption keys from source code (`sf-connection.ts:12`, `org-query.ts:110`) — 2 hours
+- [ ] Add HSTS header to `proxy.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`) — 30 minutes
+- [ ] Add Permissions-Policy header to `proxy.ts` (`camera=(), microphone=(), geolocation=()`) — 30 minutes
+- [ ] Upgrade `jspdf` from 4.1.0 to >=4.2.0 to patch 2 HIGH PDF injection vulnerabilities — 1 hour
+- **Deliverables:** Platform contract signed. Three security headers live. Two critical code-level vulnerabilities eliminated.
 
-### Weeks 3-4: Critical Technical Gaps
-- [ ] Implement server-side RBAC (role in encrypted session, permission matrix on endpoints)
-- [ ] Add authentication event logging (login, logout, failed attempts)
-- [ ] Implement token revocation on logout (Salesforce revoke endpoint)
-- [ ] Set up CI/CD pipeline with automated test gate (GitHub Actions)
+### Week 2: Information Security Policy
+- [ ] Draft Information Security Policy (use Vanta/Drata template as starting point — do not write from scratch)
+- [ ] Sections to complete: Purpose & Scope, Roles & Responsibilities, Data Classification (reference matrix from Section 5.1), Access Control Policy, Acceptable Use
+- [ ] Document solo founder compensating controls (quarterly self-assessment checklist)
+- [ ] Draft risk acceptance criteria (what level of residual risk is acceptable)
+- **Deliverables:** ISP v1.0 draft complete. Roles documented even though all held by one person.
 
-### Weeks 5-6: Policies and Documentation
-- [ ] Complete change management policy
-- [ ] Complete incident response plan (use template from Phase 2.6)
-- [ ] Complete personnel security policy
-- [ ] Complete vendor management policy
-- [ ] Begin vendor risk assessments (Salesforce, Vercel, DocuSign, Turso)
+### Week 3: Risk Assessment
+- [ ] Complete formal risk assessment using framework from Section 1.2 (12 risks pre-identified)
+- [ ] Score all risks: likelihood × impact matrix
+- [ ] Document current mitigations and residual risk for each
+- [ ] Establish quarterly review cadence for P1 risks, semi-annual for P2/P3
+- [ ] Upload risk register to compliance platform
+- **Deliverables:** Risk register with 12+ scored risks. Review cadence documented.
 
-### Weeks 7-8: Monitoring and Logging
-- [ ] Configure log aggregation service (Datadog, Axiom, or Betterstack)
-- [ ] Implement write-ahead audit buffer (Turso + Salesforce dual-write)
-- [ ] Set up uptime monitoring and status page
-- [ ] Configure security alerting (failed auth, error spikes, audit failures)
-- [ ] Create system health endpoint (`/api/health`)
+### Week 4: Server-Side RBAC
+- [ ] Implement server-side role enforcement: add role to encrypted session cookie
+- [ ] Define permission matrix: which roles (advisor, operations, principal) can access which API endpoints
+- [ ] Add role validation middleware to all protected API routes
+- [ ] Add tests for role-based access denial (advisor cannot access principal-only endpoints)
+- [ ] Add CSP header in report-only mode (start collecting violation data)
+- **Deliverables:** RBAC enforced server-side. Permission matrix documented and tested.
 
-### Weeks 9-10: Privacy and Data Governance
-- [ ] Draft privacy policy
-- [ ] Create Data Processing Agreement template
-- [ ] Complete data classification matrix
-- [ ] Document data retention schedule
-- [ ] Implement customer data deletion API
+### Week 5: Authentication and Session Security
+- [ ] Add authentication event logging (login via OAuth, logout, failed auth attempts, token refresh) to `MIN:AUDIT` trail
+- [ ] Implement token revocation on logout (call Salesforce `/services/oauth2/revoke` endpoint)
+- [ ] Reduce cookie maxAge from 30 days to 8-12 hours
+- [ ] Add SSN access logging (log when a user clicks "reveal" on masked SSN field)
+- **Deliverables:** Auth events in audit trail. Tokens properly revoked on logout. Session duration hardened.
 
-### Weeks 11-12: Testing and Validation
-- [ ] Engage penetration testing firm
-- [ ] Add tenant isolation tests
-- [ ] Add security-specific test cases (injection, CSRF bypass, auth bypass)
-- [ ] Enable Dependabot/Snyk for dependency scanning
-- [ ] Create vulnerability disclosure policy (`SECURITY.md`)
-- [ ] Complete security awareness training (self-administered)
+### Week 6: CI/CD Pipeline
+- [ ] Create `.github/workflows/ci.yml` with required checks: `pnpm test`, `pnpm lint`, `pnpm build`
+- [ ] Add `pnpm audit --audit-level=high` to CI pipeline (fail on HIGH+ vulnerabilities)
+- [ ] Enable branch protection on `main`: require CI pass + PR (self-review with checklist)
+- [ ] Enable GitHub Dependabot alerts and automated PRs for dependency updates
+- [ ] Create AI-Generated Code Review Checklist (see Section 1.5) and add as PR template
+- **Deliverables:** CI pipeline live. No code merges without passing tests. Dependency scanning active.
 
-### Week 13: Platform Onboarding
-- [ ] Onboard to Vanta/Drata
-- [ ] Connect integrations (GitHub, Vercel, Turso)
-- [ ] Upload all policies and procedures
-- [ ] Configure automated evidence collection
-- [ ] Identify remaining gaps flagged by platform
+### Week 7: Change Management and Personnel Policies
+- [ ] Complete change management policy (standard/normal/emergency change categories, approval process, rollback procedure)
+- [ ] Complete personnel security policy (pre-hire screening, security awareness training, access provisioning/deprovisioning)
+- [ ] Complete vendor management policy (assessment template, review cadence, DPA requirements)
+- [ ] Complete self-administered security awareness training (KnowBe4 or SANS). Document completion with certificate.
+- **Deliverables:** Three policies complete. Security awareness training certificate on file.
+
+### Week 8: Incident Response Plan
+- [ ] Complete incident response plan using templates from Section 2.6 (severity classification, 5 scenario playbooks)
+- [ ] Document forensic procedures (evidence preservation checklist, chain of custody)
+- [ ] Finalize communication templates (customer notification, regulatory notification, internal report)
+- [ ] Designate external incident response contact (attorney or contract security professional)
+- [ ] Conduct abbreviated tabletop exercise (walk through Scenario 1: wrong client data displayed)
+- **Deliverables:** Full IRP with playbooks, forensic procedures, and communication templates. Tabletop exercise documented.
+
+### Week 9: Monitoring and Logging Infrastructure
+- [ ] Configure log aggregation service (Datadog, Axiom, or Betterstack) — connect Vercel log drain
+- [ ] Set retention to 12+ months (SOC 2 observation period coverage)
+- [ ] Implement write-ahead audit buffer: write to Turso first (synchronous), replicate to Salesforce (async with retry)
+- [ ] Create system health endpoint (`/api/health`) checking: app running, database reachable, Salesforce connection valid
+- **Deliverables:** Centralized logging with 12-month retention. Audit trail resilient to Salesforce outages.
+
+### Week 10: Alerting, Monitoring, and Status Page
+- [ ] Set up uptime monitoring (Better Uptime, Pingdom, or Vercel Analytics) for application health
+- [ ] Configure security alerts: >5 failed auth in 5 min, >10 errors in 1 min, audit write failure, API response >10s
+- [ ] Create public status page (Instatus or Better Uptime built-in): Application, Salesforce Integration, DocuSign Integration, Database
+- [ ] Define internal SLA targets: 99.9% application uptime, 99.5% integration availability
+- **Deliverables:** Monitoring live. Status page public. Alerting configured.
+
+### Week 11: Privacy and Data Governance
+- [ ] Draft privacy policy (data collected, purpose, retention, sharing, security measures, data subject rights)
+- [ ] Create Data Processing Agreement template (use outline from Section 12.4, engage privacy attorney for review)
+- [ ] Finalize data classification matrix (Section 5.1) — obtain stakeholder sign-off
+- [ ] Document data retention schedule (Section 5.2) with SEC Rule 204-2 alignment
+- [ ] Begin implementing customer data deletion API (Turso records by `org_id`, offboarding workflow)
+- **Deliverables:** Privacy policy draft. DPA template ready for legal review. Data governance documentation complete.
+
+### Week 12: Security Testing
+- [ ] Engage penetration testing firm (Cobalt, HackerOne, or Synack — budget $5,000-$15,000)
+- [ ] Add tenant isolation tests (verify org_id=A cannot access org_id=B data)
+- [ ] Add security-specific test cases: SOQL injection with malicious input, CSRF token validation edge cases, session expiration enforcement, role-based access denial
+- [ ] Create vulnerability disclosure policy (`SECURITY.md` in GitHub, `/.well-known/security.txt`)
+- [ ] Enable Snyk or `npm audit` in CI for ongoing vulnerability scanning
+- **Deliverables:** Pentest engaged. Security test suite expanded. Vulnerability disclosure published.
+
+### Week 13: Platform Onboarding and Gap Closure
+- [ ] Onboard to Vanta/Drata — connect integrations (GitHub, Vercel, Turso)
+- [ ] Upload all policies and procedures (ISP, risk register, change management, IRP, vendor management, personnel, privacy, data classification, retention)
+- [ ] Configure automated evidence collection (access reviews, vulnerability scans, uptime metrics)
+- [ ] Begin vendor risk assessments: request SOC 2 reports from Salesforce, Vercel, DocuSign, GitHub; verify Turso SOC 2 status
+- [ ] Run platform gap analysis — identify any remaining findings
+- [ ] Address platform-identified gaps (typically: missing evidence screenshots, policy signature dates, training records)
+- **Deliverables:** Compliance platform fully configured. All policies uploaded. Automated evidence collection running. Remaining gaps identified with remediation owners.
 
 **Week 13 Target State:** All critical and high gaps remediated. Policies documented. Technical controls implemented. Monitoring configured. Ready to engage auditor for Type I assessment.
 
