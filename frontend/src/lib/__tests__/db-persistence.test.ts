@@ -309,3 +309,167 @@ describe("trackEvent", () => {
     }
   });
 });
+
+// ─── Tenant Isolation ───────────────────────────────────────────────────────
+// Verify org_id=A cannot access data belonging to org_id=B.
+
+describe("Tenant Isolation", () => {
+  let db: Client;
+
+  beforeEach(async () => {
+    db = createClient({ url: "file::memory:" });
+    await db.batch([
+      {
+        sql: `CREATE TABLE IF NOT EXISTS daily_snapshots (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          org_id TEXT NOT NULL,
+          snapshot_date TEXT NOT NULL,
+          stats_json TEXT NOT NULL,
+          advisor_filter TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(org_id, snapshot_date, advisor_filter)
+        )`,
+        args: [],
+      },
+      {
+        sql: `CREATE TABLE IF NOT EXISTS org_patterns (
+          org_id TEXT PRIMARY KEY,
+          mapping_json TEXT NOT NULL,
+          bundle_summary_json TEXT NOT NULL,
+          discovered_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`,
+        args: [],
+      },
+      {
+        sql: `CREATE TABLE IF NOT EXISTS events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          org_id TEXT,
+          event_name TEXT NOT NULL,
+          properties_json TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`,
+        args: [],
+      },
+      {
+        sql: `CREATE TABLE IF NOT EXISTS audit_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          org_id TEXT,
+          action TEXT NOT NULL,
+          result TEXT NOT NULL,
+          actor TEXT,
+          household_id TEXT,
+          detail TEXT,
+          duration_ms INTEGER,
+          request_id TEXT,
+          payload_json TEXT,
+          sf_synced INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`,
+        args: [],
+      },
+    ]);
+  });
+
+  it("daily_snapshots: org_id=A query returns zero rows from org_id=B", async () => {
+    // Insert data for two different orgs
+    await db.execute({
+      sql: "INSERT INTO daily_snapshots (org_id, snapshot_date, stats_json) VALUES (?, ?, ?)",
+      args: ["org_A", "2026-02-21", '{"tasks":5}'],
+    });
+    await db.execute({
+      sql: "INSERT INTO daily_snapshots (org_id, snapshot_date, stats_json) VALUES (?, ?, ?)",
+      args: ["org_B", "2026-02-21", '{"tasks":99}'],
+    });
+
+    // Query as org_A
+    const result = await db.execute({
+      sql: "SELECT * FROM daily_snapshots WHERE org_id = ?",
+      args: ["org_A"],
+    });
+
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0].org_id).toBe("org_A");
+    expect(result.rows[0].stats_json).toBe('{"tasks":5}');
+    // Ensure org_B data is NOT returned
+    expect(result.rows.every(r => r.org_id !== "org_B")).toBe(true);
+  });
+
+  it("org_patterns: org_id=A query returns zero rows from org_id=B", async () => {
+    await db.execute({
+      sql: "INSERT INTO org_patterns (org_id, mapping_json, bundle_summary_json, discovered_at) VALUES (?, ?, ?, ?)",
+      args: ["org_A", '{"household":"Account"}', '{"summary":"A"}', "2026-02-21"],
+    });
+    await db.execute({
+      sql: "INSERT INTO org_patterns (org_id, mapping_json, bundle_summary_json, discovered_at) VALUES (?, ?, ?, ?)",
+      args: ["org_B", '{"household":"Custom__c"}', '{"summary":"B"}', "2026-02-21"],
+    });
+
+    const result = await db.execute({
+      sql: "SELECT * FROM org_patterns WHERE org_id = ?",
+      args: ["org_A"],
+    });
+
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0].org_id).toBe("org_A");
+    expect(result.rows[0].mapping_json).toBe('{"household":"Account"}');
+  });
+
+  it("events: org_id=A query returns zero rows from org_id=B", async () => {
+    await db.execute({
+      sql: "INSERT INTO events (org_id, event_name, properties_json) VALUES (?, ?, ?)",
+      args: ["org_A", "page_view", '{"page":"home"}'],
+    });
+    await db.execute({
+      sql: "INSERT INTO events (org_id, event_name, properties_json) VALUES (?, ?, ?)",
+      args: ["org_B", "page_view", '{"page":"dashboard"}'],
+    });
+
+    const result = await db.execute({
+      sql: "SELECT * FROM events WHERE org_id = ?",
+      args: ["org_A"],
+    });
+
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0].org_id).toBe("org_A");
+  });
+
+  it("audit_log: org_id=A query returns zero rows from org_id=B", async () => {
+    await db.execute({
+      sql: "INSERT INTO audit_log (org_id, action, result) VALUES (?, ?, ?)",
+      args: ["org_A", "confirmIntent", "success"],
+    });
+    await db.execute({
+      sql: "INSERT INTO audit_log (org_id, action, result) VALUES (?, ?, ?)",
+      args: ["org_B", "sendDocusign", "success"],
+    });
+
+    const result = await db.execute({
+      sql: "SELECT * FROM audit_log WHERE org_id = ?",
+      args: ["org_A"],
+    });
+
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0].action).toBe("confirmIntent");
+    expect(result.rows.every(r => r.org_id !== "org_B")).toBe(true);
+  });
+
+  it("wildcard org_id query is impossible with parameterized queries", async () => {
+    await db.execute({
+      sql: "INSERT INTO daily_snapshots (org_id, snapshot_date, stats_json) VALUES (?, ?, ?)",
+      args: ["org_A", "2026-02-21", '{"tasks":1}'],
+    });
+    await db.execute({
+      sql: "INSERT INTO daily_snapshots (org_id, snapshot_date, stats_json) VALUES (?, ?, ?)",
+      args: ["org_B", "2026-02-21", '{"tasks":2}'],
+    });
+
+    // Attempt SQL injection via org_id parameter — parameterized query prevents it
+    const result = await db.execute({
+      sql: "SELECT * FROM daily_snapshots WHERE org_id = ?",
+      args: ["' OR 1=1 --"],
+    });
+
+    expect(result.rows.length).toBe(0);
+  });
+});

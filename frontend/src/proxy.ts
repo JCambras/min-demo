@@ -74,6 +74,7 @@ export function proxy(request: NextRequest) {
     "/api/pdf/compliance",
     "/api/pdf/dashboard",
     "/api/pdf/operations",
+    "/api/health",
   ]);
 
   if (!SESSION_EXEMPT.has(pathname)) {
