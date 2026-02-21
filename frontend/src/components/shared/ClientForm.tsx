@@ -15,6 +15,18 @@ export function ClientForm({ client, setClient, showSSN, setShowSSN, label, auto
   autofillFrom?: ClientInfo;
 }) {
   const u = (field: keyof ClientInfo, val: string) => setClient({ ...client, [field]: val });
+
+  const handleSSNReveal = (revealed: boolean) => {
+    setShowSSN(revealed);
+    if (revealed && client.ssn) {
+      const clientName = `${client.firstName} ${client.lastName}`.trim() || "Unknown";
+      fetch("/api/audit/pii-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field: "ssn", clientLabel: clientName }),
+      }).catch(() => { /* fire-and-forget */ });
+    }
+  };
   const canAutoFillAddr = autofillFrom && !client.street && autofillFrom.street;
   const canCopyFinancial = autofillFrom && !client.annualIncome && autofillFrom.annualIncome;
   const canFillTrustedFromPrimary = autofillFrom && !client.trustedContactName && autofillFrom.firstName;
@@ -61,7 +73,7 @@ export function ClientForm({ client, setClient, showSSN, setShowSSN, label, auto
             <FieldLabel label="SSN" required />
             <div className="relative">
               <Input type={showSSN ? "text" : "password"} className="h-11 rounded-xl pr-10 font-mono" placeholder="XXX-XX-XXXX" value={client.ssn} onChange={(e) => u("ssn", fmtSSN(e.target.value))} maxLength={11} />
-              <button type="button" onClick={() => setShowSSN(!showSSN)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <button type="button" onClick={() => handleSSNReveal(!showSSN)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                 {showSSN ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
