@@ -1587,7 +1587,7 @@ Most enterprise procurement teams will accept a SOC 2 readiness letter + pentest
 ### Week 6: CI/CD Pipeline
 - [x] Create `.github/workflows/ci.yml` with required checks: `pnpm test`, `pnpm lint`, `pnpm build` — ✅ PR #7
 - [x] Add `pnpm audit --audit-level=high` to CI pipeline (fail on HIGH+ vulnerabilities) — ✅ PR #7
-- [x] Enable branch protection on `main`: require CI pass + PR (self-review with checklist) — ✅ PR #15 (force push + deletion disabled)
+- [x] Enable branch protection on `main`: require CI pass + PR (self-review with checklist) — ✅ PR #15 (force push + deletion disabled) + PR #18 (CI required status check added)
 - [x] Enable GitHub Dependabot alerts and automated PRs for dependency updates — ✅ PR #7 (`.github/dependabot.yml`)
 - [x] Create AI-Generated Code Review Checklist (see Section 1.5) and add as PR template — ✅ PR #7 (`.github/pull_request_template.md`)
 - **Deliverables:** CI pipeline live. No code merges without passing tests. Dependency scanning active.
