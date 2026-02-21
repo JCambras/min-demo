@@ -48,15 +48,17 @@ const makeContact = (first = "Jane", last = "Doe"): SFContact => ({
 // ─── DEFAULT_KEYWORD_MAP ────────────────────────────────────────────────────
 
 describe("DEFAULT_KEYWORD_MAP", () => {
-  it("contains all 13 built-in check IDs", () => {
+  it("contains all built-in check IDs", () => {
     const expectedIds = [
-      "kyc-profile", "trusted-contact", "identity-verified",
-      "suitability-profile", "pte-trigger", "pte-compliance",
-      "form-crs", "adv-delivery", "privacy-notice",
-      "beneficiary-designation", "signatures", "ach-authorization",
-      "completeness-check",
+      "ach-authorization", "adv-delivery", "authorized-signers",
+      "beneficiary-designation", "completeness-check", "entity-resolution",
+      "erisa-compliance", "form-crs", "identity-verified",
+      "kyc-profile", "privacy-notice", "pte-compliance",
+      "pte-trigger", "rmd-tracking", "signatures",
+      "suitability-profile", "trust-agreement", "trust-certification",
+      "trusted-contact", "trustee-verification",
     ];
-    expect(Object.keys(DEFAULT_KEYWORD_MAP).sort()).toEqual(expectedIds.sort());
+    expect(Object.keys(DEFAULT_KEYWORD_MAP).sort()).toEqual(expectedIds);
   });
 
   it("every check has at least one keyword", () => {
