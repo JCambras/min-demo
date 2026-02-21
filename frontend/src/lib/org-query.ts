@@ -104,10 +104,12 @@ async function clearPersistedMapping(): Promise<void> {
 
 function deriveKey(crypto: typeof import("crypto")): Buffer {
   const secret = process.env.SF_COOKIE_SECRET;
-  if (!secret && process.env.NODE_ENV === "production") {
-    throw new Error("SF_COOKIE_SECRET must be set in production");
+  if (!secret) {
+    throw new Error(
+      "SF_COOKIE_SECRET is required. Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+    );
   }
-  return crypto.scryptSync(secret || "min-demo-dev-key-change-in-prod!!", "min-mapping-salt", 32);
+  return crypto.scryptSync(secret, "min-mapping-salt", 32);
 }
 
 // ─── Default Mapping (Demo Fallback) ────────────────────────────────────────

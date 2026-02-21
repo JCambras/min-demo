@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getConnectionStatus, clearConnection } from "@/lib/sf-connection";
+import { getConnectionStatus, clearConnection, revokeAndClearConnection } from "@/lib/sf-connection";
 
 // GET /api/salesforce/connection — current connection status
 export async function GET() {
@@ -15,10 +15,10 @@ export async function GET() {
   }
 }
 
-// DELETE /api/salesforce/connection — disconnect OAuth
+// DELETE /api/salesforce/connection — disconnect OAuth (revokes refresh token at Salesforce)
 export async function DELETE() {
   try {
-    await clearConnection();
+    await revokeAndClearConnection();
     return NextResponse.json({ success: true, message: "Disconnected from Salesforce" });
   } catch (error) {
     console.error("Disconnect error:", error);

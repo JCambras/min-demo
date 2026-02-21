@@ -10,6 +10,7 @@
 import { normalizeResponse } from "./sf-response";
 import type { SFResponse } from "./sf-response";
 import { log } from "./logger";
+import type { UserRole } from "./types";
 
 /** Valid SF API action names — must match handler map keys in api/salesforce/route.ts */
 export type SFAction =
@@ -31,6 +32,14 @@ export type SFAction =
   | "createTask"
   | "createFinancialAccounts"
   | "queryFinancialAccounts";
+
+// ─── Role Management ────────────────────────────────────────────────────────
+
+let currentRole: UserRole | null = null;
+
+export function setCurrentRole(role: UserRole | null): void {
+  currentRole = role;
+}
 
 // ─── CSRF Token Management ──────────────────────────────────────────────────
 
@@ -105,6 +114,7 @@ async function _callSF(action: SFAction, data: Record<string, any>, attempt: num
         headers: {
           "Content-Type": "application/json",
           ...(token ? { "x-csrf-token": token } : {}),
+          ...(currentRole ? { "x-user-role": currentRole } : {}),
         },
         body: JSON.stringify({ action, data }),
         signal: controller.signal,

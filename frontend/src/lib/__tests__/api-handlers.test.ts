@@ -418,10 +418,10 @@ describe("POST Dispatcher", () => {
     POST = routeModule.POST;
   });
 
-  function makeRequest(body: unknown): Request {
+  function makeRequest(body: unknown, role = "principal"): Request {
     return new Request("http://localhost:3000/api/salesforce", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-user-role": role },
       body: JSON.stringify(body),
     });
   }
@@ -509,6 +509,52 @@ describe("POST Dispatcher", () => {
     const body2 = await response2.json();
 
     expect(body1.requestId).not.toBe(body2.requestId);
+  });
+
+  // ─── RBAC Enforcement ──────────────────────────────────────────────────
+  it("returns 403 when no role header is provided", async () => {
+    const req = new Request("http://localhost:3000/api/salesforce", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "completeTask", data: { taskId: "001000000000001AAA" } }),
+    });
+    const response = await POST(req);
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.code).toBe("ROLE_REQUIRED");
+  });
+
+  it("denies advisor from calling onboarding actions", async () => {
+    const response = await POST(makeRequest({ action: "confirmIntent", data: {} }, "advisor"));
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("denies advisor from calling task mutation actions", async () => {
+    const response = await POST(makeRequest({ action: "completeTask", data: { taskId: "001000000000001AAA" } }, "advisor"));
+    expect(response.status).toBe(403);
+  });
+
+  it("allows operations to call onboarding actions", async () => {
+    (query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const response = await POST(makeRequest({ action: "searchContacts", data: { query: "test" } }, "operations"));
+    const body = await response.json();
+    expect(body.success).toBe(true);
+  });
+
+  it("allows principal to call any action", async () => {
+    (query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const response = await POST(makeRequest({ action: "queryTasks", data: {} }, "principal"));
+    const body = await response.json();
+    expect(body.success).toBe(true);
+  });
+
+  it("denies operations from calling meeting note actions", async () => {
+    const response = await POST(makeRequest({ action: "recordMeetingNote", data: {} }, "operations"));
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.code).toBe("FORBIDDEN");
   });
 });
 

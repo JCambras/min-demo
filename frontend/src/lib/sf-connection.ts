@@ -7,10 +7,12 @@ import * as crypto from "crypto";
 const LOG_PREFIX = "[sf-connection]";
 
 const COOKIE_NAME = "min_sf_connection";
-const ENCRYPTION_KEY = process.env.SF_COOKIE_SECRET || (() => {
-  if (process.env.NODE_ENV === "production") throw new Error("SF_COOKIE_SECRET must be set in production");
-  return "min-demo-dev-key-change-in-prod!!";
-})();
+if (!process.env.SF_COOKIE_SECRET) {
+  throw new Error(
+    "SF_COOKIE_SECRET is required. Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+  );
+}
+const ENCRYPTION_KEY = process.env.SF_COOKIE_SECRET;
 
 // OAuth app config — these are for YOUR Connected App in Salesforce
 // In production, each customer would use their own Connected App or you'd use a managed package
@@ -93,6 +95,22 @@ export async function getStoredConnection(): Promise<SFConnection | null> {
 export async function clearConnection(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(COOKIE_NAME);
+}
+
+export async function revokeAndClearConnection(): Promise<void> {
+  const stored = await getStoredConnection();
+  if (stored?.refreshToken) {
+    try {
+      await fetch(`${stored.instanceUrl}/services/oauth2/revoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token: stored.refreshToken }),
+      });
+    } catch (err) {
+      console.error(LOG_PREFIX, "Token revocation failed (clearing cookie anyway):", err);
+    }
+  }
+  await clearConnection();
 }
 
 // ─── Token Resolution ────────────────────────────────────────────────────────

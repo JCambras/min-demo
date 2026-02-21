@@ -25,6 +25,44 @@ import { onboardingHandlers } from "./handlers/onboarding";
 import { complianceHandlers, meetingHandlers } from "./handlers/compliance-meetings";
 import { financialAccountHandlers } from "./handlers/financial-accounts";
 import { ensureMappingLoaded } from "@/lib/org-query";
+import type { UserRole } from "@/lib/types";
+
+// ─── RBAC Permission Matrix ─────────────────────────────────────────────────
+// Maps each action to the roles that are allowed to call it.
+// Read-only actions are allowed for all authenticated roles.
+// Mutations are restricted based on the UI's role → action mapping.
+
+const VALID_ROLES = new Set<string>(["advisor", "operations", "principal"]);
+
+const ACTION_ROLES: Record<string, UserRole[]> = {
+  // Read-only — all roles
+  searchContacts:         ["advisor", "operations", "principal"],
+  searchHouseholds:       ["advisor", "operations", "principal"],
+  getHouseholdDetail:     ["advisor", "operations", "principal"],
+  queryTasks:             ["advisor", "operations", "principal"],
+  queryFinancialAccounts: ["advisor", "operations", "principal"],
+
+  // Onboarding & account opening — operations + principal
+  confirmIntent:          ["operations", "principal"],
+  recordFunding:          ["operations", "principal"],
+  recordMoneyLink:        ["operations", "principal"],
+  recordBeneficiaries:    ["operations", "principal"],
+  recordCompleteness:     ["operations", "principal"],
+  recordPaperwork:        ["operations", "principal"],
+  recordDocusignConfig:   ["operations", "principal"],
+  sendDocusign:           ["operations", "principal"],
+  createFinancialAccounts:["operations", "principal"],
+
+  // Task management — operations + principal
+  completeTask:           ["operations", "principal"],
+  createTask:             ["operations", "principal"],
+
+  // Compliance — all roles
+  recordComplianceReview: ["advisor", "operations", "principal"],
+
+  // Meeting notes — advisor + principal
+  recordMeetingNote:      ["advisor", "principal"],
+};
 
 // ─── Error Sanitization ──────────────────────────────────────────────────────
 // Strip Salesforce instance URLs and custom field names from error messages
@@ -69,6 +107,25 @@ export async function POST(request: Request) {
         { success: false, error: { code: "UNKNOWN_ACTION", message: `Unknown action: ${action}` }, requestId },
         { status: 400 }
       );
+    }
+
+    // ── RBAC: validate role has permission for this action ──
+    const role = request.headers.get("x-user-role");
+    const allowedRoles = ACTION_ROLES[action];
+    if (allowedRoles) {
+      if (!role || !VALID_ROLES.has(role)) {
+        return NextResponse.json(
+          { success: false, error: { code: "ROLE_REQUIRED", message: "A valid user role is required" }, requestId },
+          { status: 403 }
+        );
+      }
+      if (!allowedRoles.includes(role as UserRole)) {
+        console.warn(`[authz] RBAC denied: role="${role}" action="${action}" requestId=${requestId}`);
+        return NextResponse.json(
+          { success: false, error: { code: "FORBIDDEN", message: "Your role does not have permission for this action" }, requestId },
+          { status: 403 }
+        );
+      }
     }
 
     const adapter = getCRMAdapter();
