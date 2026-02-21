@@ -141,6 +141,46 @@ async function writeAuditRecord(ctx: SFContext, entry: AuditEntry, payload: Reco
   await writeToSalesforce(ctx, entry, payload);
 }
 
+// ─── PII Access Logging ─────────────────────────────────────────────────────
+// Logs when a user reveals masked PII (e.g., clicks "show SSN").
+// This satisfies SOC 2 CC6.1 (logical access to sensitive data is logged).
+
+export async function writePIIAccessEvent(
+  ctx: SFContext | null,
+  field: "ssn" | "idNumber" | "bankAcct",
+  clientLabel: string,
+  metadata?: Record<string, string>,
+): Promise<void> {
+  const entry: AuditEntry = {
+    action: `pii_access:${field}`,
+    result: "success",
+    detail: `User revealed ${field} for ${clientLabel}`,
+    actor: metadata?.actor,
+  };
+
+  const payload = {
+    field,
+    clientLabel,
+    ...metadata,
+    timestamp: new Date().toISOString(),
+  };
+
+  // Write to Turso (always available, even without SF context)
+  await writeToTurso(entry, payload);
+
+  // Write to Salesforce if context available
+  if (ctx) {
+    try {
+      await writeToSalesforce(ctx, entry, payload);
+    } catch (err) {
+      console.error("[MIN:AUDIT:PII] SF write failed for PII access log", {
+        field,
+        error: err instanceof Error ? err.message : "Unknown",
+      });
+    }
+  }
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
