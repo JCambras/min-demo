@@ -1604,8 +1604,8 @@ Most enterprise procurement teams will accept a SOC 2 readiness letter + pentest
 - [x] Document forensic procedures (evidence preservation checklist, chain of custody) — ✅ PR #14 (IRP §8)
 - [x] Finalize communication templates (customer notification, regulatory notification, internal report) — ✅ PR #14 (IRP §10)
 - [ ] Designate external incident response contact (attorney or contract security professional)
-- [ ] Conduct abbreviated tabletop exercise (walk through Scenario 1: wrong client data displayed)
-- **Deliverables:** Full IRP with playbooks, forensic procedures, and communication templates. ~~Tabletop exercise documented.~~
+- [x] Conduct abbreviated tabletop exercise (walk through Scenario 1: wrong client data displayed) — ✅ PR #17 (`policies/Tabletop_Exercise_001.md`)
+- **Deliverables:** Full IRP with playbooks, forensic procedures, and communication templates. Tabletop exercise documented.
 
 ### Week 9: Monitoring and Logging Infrastructure
 - [ ] Configure log aggregation service (Datadog, Axiom, or Betterstack) — connect Vercel log drain
@@ -1618,7 +1618,7 @@ Most enterprise procurement teams will accept a SOC 2 readiness letter + pentest
 - [ ] Set up uptime monitoring (Better Uptime, Pingdom, or Vercel Analytics) for application health
 - [ ] Configure security alerts: >5 failed auth in 5 min, >10 errors in 1 min, audit write failure, API response >10s
 - [ ] Create public status page (Instatus or Better Uptime built-in): Application, Salesforce Integration, DocuSign Integration, Database
-- [ ] Define internal SLA targets: 99.9% application uptime, 99.5% integration availability
+- [x] Define internal SLA targets: 99.9% application uptime, 99.5% integration availability — ✅ PR #17 (`policies/Service_Level_Targets.md`)
 - **Deliverables:** Monitoring live. Status page public. Alerting configured.
 
 ### Week 11: Privacy and Data Governance
