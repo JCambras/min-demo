@@ -334,12 +334,26 @@ export function HomeScreen({ state, dispatch, goTo, goHome, loadStats, showToast
   };
 
   // ── Triage action handlers ──
-  const handleTriageResolve = (item: { id: string; label: string; category: string; householdId?: string; householdName?: string }) => {
+  const handleTriageResolve = (item: { id: string; label: string; category: string; url?: string; householdId?: string; householdName?: string }) => {
     if (triageProcessing) return;
     setTriageProcessing(item.id);
     setExpandedTriageId(null);
     setDismissTarget(null);
     if (!hasInteracted) setHasInteracted(true);
+
+    // Unsigned DocuSign items → open the SF task directly (avoids slow household load)
+    if (item.category === "unsigned" && item.url) {
+      callSF("createTask", {
+        subject: `MIN:AUDIT — triageResolve — ${item.category}`,
+        description: `Triage item "${item.label}" resolved via open in Salesforce\nHousehold: ${item.householdName || "unknown"}`,
+        householdId: item.householdId || "",
+      }).catch(() => {});
+      setResolvedTriageIds(prev => { const s = new Set(prev); s.add(item.id); return s; });
+      setTriageProcessing(null);
+      window.open(item.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
     // Navigate to the relevant workflow screen based on category
     const screen: Screen = item.category === "compliance" ? "compliance" : "family";
     const ctx: WorkflowContext = {
