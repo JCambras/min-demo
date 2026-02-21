@@ -154,8 +154,9 @@ export function proxy(request: NextRequest) {
     ].join("; "),
   );
 
-  // PDF responses should not be cached (contain sensitive client data)
-  if (pathname.startsWith("/api/pdf/")) {
+  // API responses containing client data must not be cached
+  // (Tabletop Exercise TEX-2026-02-001 Finding #1: prevent cross-tenant cache leakage)
+  if (pathname.startsWith("/api/salesforce") || pathname.startsWith("/api/pdf/")) {
     response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
     response.headers.set("Pragma", "no-cache");
   }
